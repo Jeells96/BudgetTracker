@@ -36,6 +36,7 @@ export const DEFAULT_SETTINGS = {
   cc: { start: 0, asOf: null, mode: 'auto', manual: 0, chargesAdj: 0, strategy: 'extra' },
   weekStartDay: 5,                  // day the weekly budget resets (0=Sun … 6=Sat); default Friday
   weekResetAt: null,                // week-start (YYYY-MM-DD) the user cleared the rollover for
+  pending: [],                      // "track later" items: price only, not yet logged {id, amount, date}
   seeded: false                     // spreadsheet history imported?
 };
 

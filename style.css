@@ -280,3 +280,10 @@ select[data-set]:focus { outline:2px solid var(--brand); }
 .avg-tx { display:flex; justify-content:space-between; gap:10px; padding:10px 14px; background:var(--card); border-radius:12px; margin-bottom:6px; box-shadow:var(--shadow); font-size:.92rem; }
 .avg-tx .d { color:var(--ink); min-width:0; } .avg-tx .a { font-weight:700; white-space:nowrap; }
 .avg-tx.skip { opacity:.55; } .avg-tx.skip .a { text-decoration:line-through; }
+
+/* v23: track later / loose logs */
+.loose-row { display:flex; align-items:center; gap:4px; border-top:1px solid var(--line); }
+.loose-row:first-of-type { border-top:0; }
+.loose { flex:1; display:flex; align-items:center; gap:12px; width:100%; text-align:left; background:none; border:0; padding:12px 0; cursor:pointer; }
+.loose .t { font-weight:700; } .loose .s { font-size:.85rem; color:var(--muted); }
+.loose .chev { color:var(--muted); font-size:1.3rem; opacity:.5; margin-left:auto; }

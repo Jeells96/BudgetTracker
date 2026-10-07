@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=22';
-import { TRANSFERS } from './defaults.js?v=22';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, standardWeek, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, cardPlan, weekPlan, monthlyIncome, trends } from './calc.js?v=22';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=25';
+import { TRANSFERS } from './defaults.js?v=25';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, standardWeek, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, cardPlan, weekPlan, monthlyIncome, trends } from './calc.js?v=25';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -33,6 +33,12 @@ const barClass = (spent, budget) => (spent > budget ? 'over' : spent > budget * 
 const pct = (a, b) => (b > 0 ? Math.max(0, Math.min(100, (a / b) * 100)) : 0);
 
 // ---------- rendering ----------
+let pendingPromptShown = false;
+function maybePendingPrompt() {
+  if (pendingPromptShown || !(S().pending || []).length || !$('#sheet').hidden) return;
+  pendingPromptShown = true;
+  openPending();
+}
 function render() {
   document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === ui.tab));
   $('#app').innerHTML = { home, bills, plan: planTab, activity, settings }[ui.tab]();
@@ -48,6 +54,7 @@ function header(title, nav = true) {
 
 function home() {
   const s = S(), ms = MS();
+  const pend = s.pending || [];
   const ws = weekStats(s, store.txs);
   const bal = cardBalance(s, store.txs);
   const weekly = ms.isCurrent && s.weeklyBudget > 0;
@@ -102,7 +109,11 @@ function home() {
     ${rollover}
     <button class="log-btn" data-act="log"><span class="plus">+</span> Log a purchase</button>
     <h2>This month</h2><div class="card">${list}</div>
-    <h2>Recent</h2><div class="card">${recent.length ? recent.map(txRow).join('') : '<div class="empty">Nothing logged yet this month.<br>Tap the big button to add your first purchase.</div>'}</div>`;
+    <h2>Recent</h2><div class="card">${recent.length ? recent.map(txRow).join('') : '<div class="empty">Nothing logged yet this month.<br>Tap the big button to add your first purchase.</div>'}</div>
+    <div class="twobtn" style="margin-top:16px">
+      <button class="btn block" data-act="track-later">🕗 Track later</button>
+      <button class="btn block ${pend.length ? 'primary' : ''}" data-act="finish-loose" ${pend.length ? '' : 'disabled'}>✓ Finish loose logs${pend.length ? ` (${pend.length})` : ''}</button>
+    </div>`;
 }
 
 function txRow(t) {
@@ -330,8 +341,57 @@ function settings() {
 }
 
 // ---------- the sheet (add flow + edit) ----------
-let flow = null, edit = null, billEdit = null;
-function closeSheet() { const el = $('#sheet'); el.hidden = true; el.className = 'sheet'; el.innerHTML = ''; flow = null; edit = null; billEdit = null; }
+let flow = null, edit = null, billEdit = null, track = null;
+function closeSheet() { const el = $('#sheet'); el.hidden = true; el.className = 'sheet'; el.innerHTML = ''; flow = null; edit = null; billEdit = null; track = null; }
+
+// ----- "track later": capture a price only, to finish with category/description later -----
+const keypad = () => `<div class="pad">${['1','2','3','4','5','6','7','8','9','.','0','⌫'].map((k) => `<button data-${track ? 'track' : 'flow'}="key" data-v="${k}">${k}</button>`).join('')}</div>`;
+function addPending(amt) {
+  const a = round(parseFloat(amt) || 0);
+  if (!(a > 0)) return;
+  S().pending = [...(S().pending || []), { id: uid(), amount: a, date: today() }];
+  saveSettings();
+}
+function openTrack() { track = { amt: '', count: 0 }; drawTrack(); $('#sheet').hidden = false; }
+function drawTrack() {
+  const f = track, amtNum = parseFloat(f.amt) || 0, dis = amtNum ? '' : 'disabled style="opacity:.4"';
+  $('#sheet').innerHTML = `<div class="panel"><div class="head"><span style="width:40px"></span><span class="step">Track later</span><button data-track="close" aria-label="Close">✕</button></div>
+    <div class="q">Just the price</div>
+    <p class="note" style="margin:0 0 10px">Saved aside to finish (category + details) later — not logged yet.</p>
+    <div class="amount ${amtNum ? '' : 'zero'}">$${esc(f.amt || '0')}</div>
+    ${keypad()}
+    <div class="twobtn"><button class="btn block" data-track="more" ${dis}>+ Add more</button><button class="btn primary block" data-track="done" ${dis}>Done</button></div>
+    ${f.count ? `<p class="note" style="text-align:center;margin-bottom:0">${f.count} saved to finish later</p>` : ''}</div>`;
+}
+function trackClick(btn) {
+  const f = track, v = btn.dataset.v;
+  switch (btn.dataset.track) {
+    case 'close': return closeSheet();
+    case 'key':
+      if (v === '⌫') f.amt = f.amt.slice(0, -1);
+      else if (v === '.') { if (!f.amt.includes('.')) f.amt = (f.amt || '0') + '.'; }
+      else if (!(f.amt.includes('.') && f.amt.split('.')[1].length >= 2) && f.amt.replace('.', '').length < 8) f.amt = f.amt === '0' ? v : f.amt + v;
+      return drawTrack();
+    case 'more': if (parseFloat(f.amt) > 0) { addPending(f.amt); f.count += 1; f.amt = ''; drawTrack(); render(); toast('Saved to finish later'); } return;
+    case 'done': if (parseFloat(f.amt) > 0) addPending(f.amt); closeSheet(); render(); if (parseFloat(f.amt) > 0 || f.count) toast('Saved to finish later'); return;
+  }
+}
+
+// ----- the list of loose logs to finish (also the first-open reminder) -----
+function openPending() {
+  const pend = (S().pending || []).slice().sort((a, b) => b.date.localeCompare(a.date));
+  if (!pend.length) return;
+  const rows = pend.map((x) => `<div class="loose-row">
+    <button class="loose" data-act="finish-item" data-id="${esc(x.id)}"><div class="emoji">🕗</div>
+      <div class="body"><div class="t">${money(x.amount)}</div><div class="s">added ${parseYmd(x.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · tap to finish</div></div><span class="chev">›</span></button>
+    <button class="x" data-act="pending-del" data-id="${esc(x.id)}" aria-label="Discard">✕</button></div>`).join('');
+  $('#sheet').innerHTML = `<div class="panel"><div class="head"><span style="width:40px"></span><span class="step">Loose logs to finish</span><button data-act="sheet-close" aria-label="Later">✕</button></div>
+    <p class="note" style="margin:0 0 10px">${pend.length} item${pend.length === 1 ? '' : 's'} captured as price-only. Tap one to add its category and details and log it.</p>
+    ${rows}
+    <button class="btn block" data-act="sheet-close" style="margin-top:12px">Later</button></div>`;
+  $('#sheet').className = 'sheet';
+  $('#sheet').hidden = false;
+}
 
 // ----- edit a bill: fixed amount, past-month history, 12-month average -----
 const monthLabelShort = (ym) => parseYmd(ym + '-01').toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
@@ -370,7 +430,7 @@ const logCat = (id) => logCats().find((c) => c.id === id);
 
 // ----- add entries (category first, then amount → description; Save or Add another) -----
 function openFlow(opts = {}) {
-  flow = { step: opts.category ? 2 : 1, category: opts.category || null, amt: '', note: '', date: today(), pay: 'credit', count: 0 };
+  flow = { step: opts.category ? 2 : 1, category: opts.category || null, amt: opts.amt || '', note: '', date: today(), pay: 'credit', count: 0, pendingId: opts.pendingId || null, amtLocked: !!opts.amtLocked };
   drawFlow(); $('#sheet').hidden = false;
 }
 
@@ -409,8 +469,10 @@ function drawFlow() {
       <input class="sheet-input" id="f-date" type="date" value="${f.date}" max="${today()}">
       ${payToggle}
       ${exToggle}
-      <div class="twobtn"><button class="btn block" data-flow="again">+ Add another</button><button class="btn primary block" data-flow="save">Save</button></div>
-      ${f.count ? `<p class="note" style="text-align:center;margin-bottom:0">${f.count} added under ${esc(c.name)} so far</p>` : `<p class="note" style="text-align:center;margin-bottom:0">“Add another” keeps ${esc(c.name)} selected for the next item.</p>`}`;
+      ${f.pendingId
+        ? `<button class="btn primary block" data-flow="save">Save &amp; log it</button>`
+        : `<div class="twobtn"><button class="btn block" data-flow="again">+ Add another</button><button class="btn primary block" data-flow="save">Save</button></div>
+      ${f.count ? `<p class="note" style="text-align:center;margin-bottom:0">${f.count} added under ${esc(c.name)} so far</p>` : `<p class="note" style="text-align:center;margin-bottom:0">“Add another” keeps ${esc(c.name)} selected for the next item.</p>`}`}`;
   }
   el.innerHTML = `<div class="panel"><div class="head">
     ${f.step > 1 ? '<button data-flow="back" aria-label="Back">←</button>' : '<span style="width:40px"></span>'}
@@ -428,6 +490,7 @@ function flowCommit() {
   const tx = { type: c.type, amount: round(parseFloat(f.amt)), category: c.type === 'income' ? 'income' : c.id, note, date };
   if (c.type === 'expense') { tx.pay = f.pay === 'cash' ? 'cash' : 'credit'; if (c.useAvg && f.exAvg) tx.exAvg = true; }
   addTx(tx);
+  if (f.pendingId) { S().pending = (S().pending || []).filter((x) => x.id !== f.pendingId); saveSettings(); }
   ui.month = date.slice(0, 7);
   if (ui.tab === 'settings') ui.tab = 'home';
   return tx;
@@ -437,7 +500,15 @@ function flowClick(btn) {
   const f = flow, v = btn.dataset.v;
   switch (btn.dataset.flow) {
     case 'close': return closeSheet();
-    case 'cat': f.category = v; f.step = 2; return drawFlow();
+    case 'cat': {
+      f.category = v;
+      if (f.amtLocked) {
+        const c = logCat(v);
+        if (c.type === 'expense') { f.step = 3; return drawFlow(); }
+        const tx = flowCommit(); closeSheet(); render(); toast(savedMsg(tx)); return;  // non-expense: nothing more to enter
+      }
+      f.step = 2; return drawFlow();
+    }
     case 'key':
       if (v === '⌫') f.amt = f.amt.slice(0, -1);
       else if (v === '.') { if (!f.amt.includes('.')) f.amt = (f.amt || '0') + '.'; }
@@ -445,7 +516,7 @@ function flowClick(btn) {
       return drawFlow();
     case 'next': if (parseFloat(f.amt) > 0) { f.step = 3; drawFlow(); } return;
     case 'pay': { if ($('#f-note')) f.note = $('#f-note').value; if ($('#f-date')) f.date = $('#f-date').value || f.date; if ($('#f-ex')) f.exAvg = $('#f-ex').checked; f.pay = v; return drawFlow(); }
-    case 'back': f.step -= 1; if (f.step < 1) f.step = 1; return drawFlow();
+    case 'back': f.step = f.amtLocked && f.step === 3 ? 1 : f.step - 1; if (f.step < 1) f.step = 1; return drawFlow();
     case 'save': { if (!(parseFloat(f.amt) > 0)) return; const tx = flowCommit(); closeSheet(); render(); toast(savedMsg(tx)); return; }
     case 'again': { if (!(parseFloat(f.amt) > 0)) return; const tx = flowCommit(); f.count += 1; f.amt = ''; f.note = ''; f.exAvg = false; f.step = 2; drawFlow(); render(); toast(savedMsg(tx)); return; }
   }
@@ -661,6 +732,7 @@ document.addEventListener('click', (e) => {
   maybeRollCard();
   const fe = e.target.closest('[data-edit]'); if (fe && edit) return editClick(fe);
   const fl = e.target.closest('[data-flow]'); if (fl && flow) return flowClick(fl);
+  const ft = e.target.closest('[data-track]'); if (ft && track) return trackClick(ft);
   if (e.target === $('#sheet')) return closeSheet();
   const tab = e.target.closest('#tabs button');
   if (tab) { if (tab.dataset.tab !== 'plan') ui.planDraft = null; ui.tab = tab.dataset.tab; scrollTo(0, 0); return render(); }
@@ -675,6 +747,10 @@ document.addEventListener('click', (e) => {
     case 'cc-mode': { S().cc = { ...S().cc, mode: id }; saveSettings(); return render(); }
     case 'cc-charges-reset': { S().cc = { ...S().cc, chargesAdj: 0 }; saveSettings(); return render(); }
     case 'catavg-view': return openCatAvg(id);
+    case 'track-later': return openTrack();
+    case 'finish-loose': return openPending();
+    case 'finish-item': { const it = (S().pending || []).find((x) => x.id === id); closeSheet(); if (it) openFlow({ amt: String(it.amount), pendingId: it.id, amtLocked: true }); return; }
+    case 'pending-del': { if (confirm('Discard this loose item without logging it?')) { S().pending = (S().pending || []).filter((x) => x.id !== id); saveSettings(); render(); if ((S().pending || []).length) openPending(); else closeSheet(); } return; }
     case 'plan-reset': ui.planDraft = null; return render();
     case 'trends': return openTrends();
     case 'sheet-close': return closeSheet();
@@ -727,7 +803,12 @@ document.addEventListener('change', (e) => {
   render();
 });
 
+let interacted = false;
+document.addEventListener('pointerdown', () => { interacted = true; }, true);
+
 loadLocal();
 maybeRollCard();
 render();
+maybePendingPrompt();                                   // from localStorage, if any
+setTimeout(() => { if (!interacted) maybePendingPrompt(); pendingPromptShown = true; }, 3000);  // catch cloud-synced pending unless the user is already busy
 initFirebase();
