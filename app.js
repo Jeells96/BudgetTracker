@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=6';
-import { TRANSFERS } from './defaults.js?v=6';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, standardWeek, billsTotal, firstTotal, cardBalance, cardPlan, weekPlan, monthlyIncome, trends } from './calc.js?v=6';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=9';
+import { TRANSFERS } from './defaults.js?v=9';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, standardWeek, billsTotal, firstTotal, cardBalance, cardPlan, weekPlan, monthlyIncome, trends } from './calc.js?v=9';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -19,7 +19,7 @@ const dayLabel = (s) => {
 };
 const ordinal = (n) => n + (['th', 'st', 'nd', 'rd'][(n % 100 >> 3) ^ 1 && n % 10 < 4 ? n % 10 : 0]);
 
-const ui = { tab: 'home', month: monthKey(new Date()), filter: 'all', all: false, q: '' };
+const ui = { tab: 'home', month: monthKey(new Date()), filter: 'all', all: false, q: '', planDraft: null };
 
 // ---------- helpers ----------
 const S = () => store.settings;
@@ -168,36 +168,60 @@ function cardSection(cp) {
     <button class="btn block" data-act="log-xfer" data-id="card">+ Log a card payment</button></div>`;
 }
 
+// Merge the (ephemeral) what-if draft over the computed recommendation.
+function planValues() {
+  const wp = weekPlan(S(), store.txs);
+  const rc = wp.rec, d = ui.planDraft || {};
+  const v = (f) => (d[f] !== undefined ? d[f] : rc[f]);
+  const pay = v('pay'), bills = v('bills'), groceries = v('groceries'), everyday = v('everyday'), savings = v('savings');
+  const hasCard = wp.cardBalance > 0;
+  const extra = hasCard ? v('extra') : round(pay - bills - groceries - everyday - savings);
+  const leftover = hasCard ? round(pay - bills - groceries - everyday - savings - extra) : 0;
+  return { wp, hasCard, pay, bills, groceries, everyday, savings, extra, leftover };
+}
+
+function calloutHTML(leftover) {
+  return leftover < 0
+    ? `You're <b>${money(-leftover)}</b> short this week. Trim everyday spending or savings, or stretch the card payoff on the Bills tab.`
+    : `You've got <b>${money(leftover)}</b> to spare this week beyond the plan.`;
+}
+
+// Live update of the derived cells while the user edits — no save, no full re-render.
+function planRecalc() {
+  const p = planValues();
+  const ex = $('#plan-extra'); if (ex) ex.textContent = money(p.extra);
+  const lo = $('#plan-leftover'); if (lo) lo.textContent = money(p.leftover);
+  const loRow = $('#plan-leftover-row'); if (loRow) { loRow.classList.toggle('neg', p.leftover < 0); loRow.classList.toggle('total', p.leftover >= 0); }
+  const co = $('#plan-callout'); if (co) { co.className = 'callout ' + (p.leftover < 0 ? 'bad' : 'good'); co.innerHTML = calloutHTML(p.leftover); }
+  const rb = $('#plan-reset-btn'); if (rb) rb.hidden = false;
+}
+
 function planTab() {
-  const s = S(), wp = weekPlan(s, store.txs);
-  const st = wp.standard, rc = wp.rec;
-  const row = (label, a, b, cls = '') => `<div class="trow ${cls}"><span>${label}</span><span class="b">${money(a)}</span><span class="n">${money(b)}</span></div>`;
+  const s = S(), p = planValues(), wp = p.wp, st = wp.standard;
   const stratName = { extra: 'use your leftover', spend: 'spend less', save: 'save less', split: 'split spending & savings', stretch: 'take 2 months' }[wp.strategy];
-  const notes = [];
-  if (wp.isCurrent && wp.billsLeft > 0) notes.push(`<b>Bills</b> is ${money(rc.bills)} to catch up the ${money(wp.billsLeft)} still owed this month.`);
-  if (wp.cardBalance > 0) {
-    notes.push(`<b>Extra / credit card</b> is the ${money(rc.extra)} card payment for your chosen strategy — <b>${stratName}</b>${wp.strategy === 'stretch' ? ` (over ${wp.stretchWeeks} weeks)` : ''}. Change it on the Bills tab.`);
-    if (wp.strategy === 'spend' && rc.everyday !== st.everyday) notes.push(`Everyday spending drops to ${money(rc.everyday)} to fund the card.`);
-    if (wp.strategy === 'save' && rc.savings !== st.savings) notes.push(`Savings drops to ${money(rc.savings)} to fund the card.`);
-    if (wp.strategy === 'split') notes.push(`Everyday and savings each drop a little to fund the card.`);
-  } else notes.push(`<b>Extra / credit card</b> is spare money — there's no card balance to pay down.`);
+  const edited = ui.planDraft && Object.keys(ui.planDraft).length;
+  // editable recommended cell
+  const erow = (label, field, val) => `<div class="trow"><span>${label}</span><span class="b">${money(st[field])}</span><span class="n"><input class="plancell" data-plan="${field}" type="number" inputmode="decimal" value="${val}"></span></div>`;
+
+  const extraRow = p.hasCard
+    ? erow('Extra / credit card', 'extra', p.extra)
+    : `<div class="trow"><span>Extra / credit card</span><span class="b">${money(st.extra)}</span><span class="n" id="plan-extra">${money(p.extra)}</span></div>`;
 
   return `${header('Plan', false)}
-    <p class="lead"><b>Standard week</b> is your plan from Settings. <b>Recommended</b> keeps your pay the same, catches up bills still owed, and pays the card off your way${wp.cardBalance > 0 ? ` (${stratName})` : ''}.</p>
+    <p class="lead"><b>Standard week</b> is your plan from Settings. <b>Recommended</b> keeps your pay the same, catches up bills still owed, and pays the card off your way${wp.cardBalance > 0 ? ` (${stratName})` : ''}. Tap any Recommended number to try a what-if — it resets when you leave this tab.</p>
     <div class="card plan-table">
       <div class="trow head"><span></span><span class="b">Standard week</span><span class="n">Recommended</span></div>
-      ${row('Paycheck', st.pay, rc.pay)}
-      ${row('To bills account', st.bills, rc.bills)}
-      ${row('Groceries', st.groceries, rc.groceries)}
-      ${row('Everyday spending', st.everyday, rc.everyday)}
-      ${row('Savings', st.savings, rc.savings)}
-      ${row('Extra / credit card', st.extra, rc.extra)}
-      <div class="trow ${rc.leftover < 0 ? 'neg' : 'total'}"><span>Leftover</span><span class="b">${money(0)}</span><span class="n">${money(rc.leftover)}</span></div>
+      ${erow('Paycheck', 'pay', p.pay)}
+      ${erow('To bills account', 'bills', p.bills)}
+      ${erow('Groceries', 'groceries', p.groceries)}
+      ${erow('Everyday spending', 'everyday', p.everyday)}
+      ${erow('Savings', 'savings', p.savings)}
+      ${extraRow}
+      <div class="trow ${p.leftover < 0 ? 'neg' : 'total'}" id="plan-leftover-row"><span>Leftover</span><span class="b">${money(0)}</span><span class="n" id="plan-leftover">${money(p.leftover)}</span></div>
     </div>
-    ${rc.leftover < 0
-      ? `<div class="callout bad">You're <b>${money(-rc.leftover)}</b> short this week. Trim everyday spending or savings, or stretch the card payoff — see the Bills tab.</div>`
-      : `<div class="callout good">You've got <b>${money(rc.leftover)}</b> to spare this week beyond the plan.</div>`}
-    ${notes.length ? `<ul class="why">${notes.map((n) => `<li>${n}</li>`).join('')}</ul>` : '<p class="note">Right now the recommended week matches your standard week.</p>'}`;
+    <div class="callout ${p.leftover < 0 ? 'bad' : 'good'}" id="plan-callout">${calloutHTML(p.leftover)}</div>
+    <button class="btn block" id="plan-reset-btn" data-act="plan-reset" ${edited ? '' : 'hidden'}>↺ Reset to recommended</button>
+    <p class="note">${p.hasCard ? `Extra / credit card is your ${stratName} payment (change the strategy on the Bills tab). Edits here are just what-ifs and never save.` : `Extra / credit card is spare money — edits here are just what-ifs and never save.`}</p>`;
 }
 
 function activityList() {
@@ -416,7 +440,7 @@ function openWeek() {
   const log = inWeek.length ? inWeek.map(txRow).join('') : '<div class="empty">Nothing logged this week yet.</div>';
 
   $('#sheet').innerHTML = `<div class="panel sheet-page"><div class="head">
-    <span style="width:40px"></span><span class="step">This week · ${range}</span><button data-act="sheet-close" aria-label="Close">✕</button></div>
+    <button class="backbtn" data-act="sheet-close" aria-label="Back">← Back</button><span class="step">This week · ${range}</span><span style="width:40px"></span></div>
     <div class="card hero" style="box-shadow:none;padding:0 0 4px">
       <div class="label">Left this week</div>
       <div class="big ${ws.left < 0 ? 'neg' : ''}">${money(ws.left)}</div>
@@ -440,7 +464,7 @@ function openTrends() {
       <div class="tr-sub">${sub}</div></div>`;
   }).join('');
   $('#sheet').innerHTML = `<div class="panel sheet-page"><div class="head">
-    <span style="width:40px"></span><span class="step">Monthly trends</span><button data-act="sheet-close" aria-label="Close">✕</button></div>
+    <button class="backbtn" data-act="sheet-close" aria-label="Back">← Back</button><span class="step">Monthly trends</span><span style="width:40px"></span></div>
     <p class="lead">Averages across ${t.count} month${t.count === 1 ? '' : 's'} of data.</p>
     <div class="tiles">${tile('Avg spent / mo', t.avg.spent)}${tile('Avg saved / mo', t.avg.savings)}${tile('Avg income / mo', t.avg.income)}</div>
     <div class="tiles" style="margin-top:8px">${tile('Avg to bills / mo', t.avg.bills)}${tile('Avg card paid / mo', t.avg.card)}</div>
@@ -466,7 +490,7 @@ document.addEventListener('click', (e) => {
   const fl = e.target.closest('[data-flow]'); if (fl && flow) return flowClick(fl);
   if (e.target === $('#sheet')) return closeSheet();
   const tab = e.target.closest('#tabs button');
-  if (tab) { ui.tab = tab.dataset.tab; scrollTo(0, 0); return render(); }
+  if (tab) { if (tab.dataset.tab !== 'plan') ui.planDraft = null; ui.tab = tab.dataset.tab; scrollTo(0, 0); return render(); }
   const b = e.target.closest('[data-act]'); if (!b) return;
   const id = b.dataset.id, i = +b.dataset.i;
   switch (b.dataset.act) {
@@ -475,10 +499,11 @@ document.addEventListener('click', (e) => {
     case 'week': return openWeek();
     case 'week-reset': { S().weekResetAt = weekStats(S(), store.txs).start; saveSettings(); return render(); }
     case 'cc-strategy': { S().cc = { ...S().cc, strategy: id }; saveSettings(); return render(); }
+    case 'plan-reset': ui.planDraft = null; return render();
     case 'trends': return openTrends();
     case 'sheet-close': return closeSheet();
-    case 'goto': ui.tab = id; scrollTo(0, 0); return render();
-    case 'cat-filter': ui.filter = id; ui.all = false; ui.tab = 'activity'; scrollTo(0, 0); return render();
+    case 'goto': ui.planDraft = null; ui.tab = id; scrollTo(0, 0); return render();
+    case 'cat-filter': ui.planDraft = null; ui.filter = id; ui.all = false; ui.tab = 'activity'; scrollTo(0, 0); return render();
     case 'prev': case 'next': { const d = parseYmd(ui.month + '-01'); d.setMonth(d.getMonth() + (b.dataset.act === 'next' ? 1 : -1)); ui.month = monthKey(d); return render(); }
     case 'filter': ui.filter = id; return render();
     case 'all': ui.all = !ui.all; return render();
@@ -494,13 +519,14 @@ document.addEventListener('click', (e) => {
 document.addEventListener('input', (e) => {
   if (e.target.id === 'q') { ui.q = e.target.value; $('#actlist').innerHTML = activityList(); }
   else if (e.target.id === 'sav-slider') slideSavings(+e.target.value);
+  else if (e.target.dataset.plan) { (ui.planDraft ||= {})[e.target.dataset.plan] = parseFloat(e.target.value) || 0; planRecalc(); }
 });
 
 document.addEventListener('change', (e) => {
   const t = e.target, num = () => parseFloat(t.value) || 0;
   if (t.id === 'sav-slider') { slideSavings(+t.value); saveSettings(); return; }
   if (t.dataset.set) { S()[t.dataset.set] = num(); saveSettings(); }
-  else if (t.dataset.cc) { S().cc = { balance: num(), asOf: today() }; saveSettings(); }
+  else if (t.dataset.cc) { S().cc = { ...S().cc, balance: num(), asOf: today() }; saveSettings(); }
   else if (t.dataset.cat) { const c = S().categories[+t.dataset.cat]; c[t.dataset.field] = t.type === 'checkbox' ? t.checked : num(); saveSettings(); }
   else if (t.dataset.bill) {
     const b = S().bills[+t.dataset.bill], f = t.dataset.field;

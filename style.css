@@ -195,3 +195,11 @@ select[data-set]:focus { outline:2px solid var(--brand); }
 .strat.on .radio::after { content:""; position:absolute; inset:3px; border-radius:50%; background:var(--brand); }
 .strat .st-body { display:flex; flex-direction:column; gap:2px; min-width:0; }
 .strat .st-body b { font-size:.98rem; } .strat .st-body span { font-size:.84rem; color:var(--muted); }
+
+/* v7: plan what-if inputs + sheet back button */
+.plancell { width:92px; text-align:right; font-weight:700; background:var(--bg); border:1.5px solid var(--line); border-radius:9px; padding:7px 9px; -moz-appearance:textfield; }
+.plancell:focus { outline:2px solid var(--brand); border-color:transparent; }
+.plan-table .trow .n { display:flex; justify-content:flex-end; align-items:center; }
+.backbtn { font-weight:700; color:var(--brand); font-size:.95rem; padding:4px 2px; white-space:nowrap; }
+
+[hidden] { display: none !important; }
