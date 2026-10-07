@@ -68,6 +68,17 @@ export function monthStats(s, txs, month, now = new Date()) {
   };
 }
 
+// The everyday budget to actually hold to this week. If the chosen card-payoff
+// strategy reduces spending (spend-less or split), that lower number is the budget.
+export function effectiveEveryday(s, txs, now = new Date()) {
+  const cp = cardPlan(s, txs, now);
+  if (cp.balance <= 0) return s.weeklyBudget;
+  const strat = s.cc.strategy || 'extra';
+  if (strat === 'spend') return cp.options.spend.newSpend;
+  if (strat === 'split') return cp.options.split.newSpend;
+  return s.weeklyBudget;
+}
+
 export function weekStats(s, txs, now = new Date()) {
   const startDay = s.weekStartDay ?? 5;
   const ws = weekStart(now, startDay);
@@ -75,13 +86,16 @@ export function weekStats(s, txs, now = new Date()) {
   const ids = s.categories.filter((c) => c.weekly).map((c) => c.id);
   const spentBetween = (from, to) => sum(txs.filter((t) => t.type === 'expense' && t.date >= from && t.date < to && ids.includes(t.category)).map((t) => t.amount));
   const spent = spentBetween(ws, end);
-  // Roll a previous over-spend into this week (reduces the budget) unless this week was reset.
+  const base = effectiveEveryday(s, txs, now);        // strategy-adjusted everyday budget
+  const trimmedByCard = round(s.weeklyBudget - base);  // >0 when the card strategy cut spending
+  // Roll a previous over-spend into this week (measured against the plan budget,
+  // so it doesn't compound with the card trim) unless this week was reset.
   const prevStart = weekStart(addDays(parseYmd(ws), -1), startDay);
   const prevLeft = round(s.weeklyBudget - spentBetween(prevStart, ws));
   const reset = s.weekResetAt === ws;
   const carryover = !reset && prevLeft < 0 ? prevLeft : 0;
-  const budget = round(s.weeklyBudget + carryover);
-  return { start: ws, end, ids, spent, baseBudget: s.weeklyBudget, carryover, budget, left: round(budget - spent), reset };
+  const budget = round(base + carryover);
+  return { start: ws, end, ids, spent, baseBudget: base, planBudget: s.weeklyBudget, trimmedByCard, carryover, budget, left: round(budget - spent), reset };
 }
 
 // ---- credit card payoff ----

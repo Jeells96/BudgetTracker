@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=9';
-import { TRANSFERS } from './defaults.js?v=9';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, standardWeek, billsTotal, firstTotal, cardBalance, cardPlan, weekPlan, monthlyIncome, trends } from './calc.js?v=9';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=11';
+import { TRANSFERS } from './defaults.js?v=11';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, standardWeek, billsTotal, firstTotal, cardBalance, cardPlan, weekPlan, monthlyIncome, trends } from './calc.js?v=11';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -73,6 +73,9 @@ function home() {
       <div class="big">${money(ms.spent)}</div>
       <div class="note" style="margin:8px 0 0">${n} purchase${n === 1 ? '' : 's'}${ms.income ? ` · ${money(ms.income)} income` : ''}</div></div>`;
   }
+  const cardTrim = weekly && ws.trimmedByCard > 0
+    ? `<div class="rollover info">Everyday budget is ${money(ws.baseBudget)} this week — trimmed ${money(ws.trimmedByCard)} to pay off your card. <button class="link" data-act="goto" data-id="bills">Change strategy</button></div>`
+    : '';
   const rollover = weekly && ws.carryover < 0
     ? `<div class="rollover">You went ${money(-ws.carryover)} over last week, so this week is trimmed to ${money(ws.budget)}. <button class="link" data-act="week-reset">Reset to ${money(ws.baseBudget)}</button></div>`
     : '';
@@ -94,6 +97,7 @@ function home() {
 
   return `${header('Budget')}
     ${hero}
+    ${cardTrim}
     ${rollover}
     <button class="log-btn" data-act="log"><span class="plus">+</span> Log a purchase</button>
     <h2>This month</h2><div class="card">${list}</div>

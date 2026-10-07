@@ -203,3 +203,5 @@ select[data-set]:focus { outline:2px solid var(--brand); }
 .backbtn { font-weight:700; color:var(--brand); font-size:.95rem; padding:4px 2px; white-space:nowrap; }
 
 [hidden] { display: none !important; }
+
+.rollover.info { background:color-mix(in srgb,var(--brand) 12%,var(--card)); }
