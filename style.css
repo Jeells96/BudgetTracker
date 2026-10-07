@@ -205,3 +205,30 @@ select[data-set]:focus { outline:2px solid var(--brand); }
 [hidden] { display: none !important; }
 
 .rollover.info { background:color-mix(in srgb,var(--brand) 12%,var(--card)); }
+
+/* v12: sticky sheet header, week dropdowns, plan-table redesign */
+.panel.sheet-page { padding-top:0; }
+.sheet-page .head { position:sticky; top:0; z-index:5; background:var(--card); margin:0 -18px 8px; padding:14px 18px 10px; border-bottom:1px solid var(--line); }
+.sheet-page .head .backbtn { font-size:1.4rem; width:40px; }
+
+/* week-by-week dropdowns */
+.wk-week { border-top:1px solid var(--line); }
+.wk-week:first-child { border-top:0; }
+.wk-week > summary { display:flex; align-items:center; gap:10px; padding:14px 0; cursor:pointer; list-style:none; }
+.wk-week > summary::-webkit-details-marker { display:none; }
+.wk-left { flex:1; display:flex; flex-direction:column; gap:2px; }
+.wk-n { font-weight:700; } .wk-range { font-size:.8rem; color:var(--muted); }
+.wk-amt { text-align:right; } .wk-amt b { display:block; font-weight:700; } .wk-amt span { font-size:.7rem; color:var(--muted); }
+.wk-week .caret { color:var(--muted); transition:transform .15s; font-size:.9rem; }
+.wk-week[open] .caret { transform:rotate(90deg); }
+.wk-body { padding:0 0 8px; border-top:1px dashed var(--line); }
+
+/* Plan table — readable two-column compare with inline editable cells */
+.plan-table .trow { grid-template-columns:1fr 80px 94px; gap:10px; align-items:center; font-size:.92rem; }
+.plan-table .trow > span:first-child { line-height:1.2; }
+.plan-table .head .b, .plan-table .head .n { white-space:normal; line-height:1.15; font-size:.62rem; align-self:end; }
+.plan-table .trow .n { display:block; text-align:right; }
+.plancell { display:block; width:100%; box-sizing:border-box; text-align:right; font-weight:700; color:var(--ink);
+  background:color-mix(in srgb, var(--brand) 13%, var(--card)); border:1.5px solid color-mix(in srgb, var(--brand) 34%, transparent);
+  border-radius:10px; padding:8px 9px; -moz-appearance:textfield; }
+.plancell:focus { outline:2px solid var(--brand); border-color:transparent; }

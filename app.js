@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=11';
-import { TRANSFERS } from './defaults.js?v=11';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, standardWeek, billsTotal, firstTotal, cardBalance, cardPlan, weekPlan, monthlyIncome, trends } from './calc.js?v=11';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=12';
+import { TRANSFERS } from './defaults.js?v=12';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, standardWeek, billsTotal, firstTotal, cardBalance, cardPlan, weekPlan, monthlyIncome, trends } from './calc.js?v=12';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -426,32 +426,56 @@ function toast(msg) {
   clearTimeout(toast.h); toast.h = setTimeout(() => (t.hidden = true), 3500);
 }
 
-// ----- this week's breakdown -----
+// ----- this month, week by week -----
+const shortDate = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
 function openWeek() {
   const s = S(), now = new Date();
+  const startDay = s.weekStartDay ?? 5;
   const ws = weekStats(s, store.txs, now);
-  const ms = monthStats(s, store.txs, ymd(now).slice(0, 7), now);
-  const inWeek = store.txs.filter((t) => t.date >= ws.start && t.date < ws.end).sort(sortTx);
-  const weekByCat = {};
-  s.categories.forEach((c) => { weekByCat[c.id] = round(inWeek.filter((t) => t.type === 'expense' && t.category === c.id).reduce((a, t) => a + t.amount, 0)); });
-  const range = `${parseYmd(ws.start).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} – ${addDays(parseYmd(ws.start), 6).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}`;
+  const ms = monthStats(s, store.txs, ui.month, now);
+  const [y, m] = ui.month.split('-').map(Number);
+  const monthStart = new Date(y, m - 1, 1), nextMonth = new Date(y, m, 1);
 
-  const catRows = s.categories.map((c) => `
-    <div class="wk-cat"><div class="emoji">${c.emoji}</div>
+  // Build each week window overlapping this month, clipped to the month.
+  const weeks = [];
+  let wkStart = parseYmd(weekStart(monthStart, startDay)), n = 1;
+  while (wkStart < nextMonth) {
+    const wkEnd = addDays(wkStart, 7);
+    const from = ymd(wkStart < monthStart ? monthStart : wkStart);
+    const to = ymd(wkEnd > nextMonth ? nextMonth : wkEnd);
+    const txsIn = store.txs.filter((t) => t.date >= from && t.date < to).sort(sortTx);
+    const spent = round(txsIn.filter((t) => t.type === 'expense').reduce((a, t) => a + t.amount, 0));
+    const everyday = round(txsIn.filter((t) => t.type === 'expense' && ws.ids.includes(t.category)).reduce((a, t) => a + t.amount, 0));
+    weeks.push({ n, startYmd: ymd(wkStart), from, to, spent, everyday, txsIn, isNow: ymd(wkStart) === ws.start });
+    wkStart = wkEnd; n++;
+  }
+
+  const weekRows = weeks.map((w) => {
+    const rng = `${shortDate(parseYmd(w.from))} – ${shortDate(addDays(parseYmd(w.to), -1))}`;
+    const body = w.txsIn.length ? w.txsIn.map(txRow).join('') : '<div class="empty">Nothing this week.</div>';
+    return `<details class="wk-week"${w.isNow ? ' open' : ''}><summary>
+      <span class="wk-left"><span class="wk-n">Week ${w.n}${w.isNow ? ' · now' : ''}</span><span class="wk-range">${rng}</span></span>
+      <span class="wk-amt"><b>${money(w.spent)}</b><span>${money(w.everyday)} everyday</span></span><span class="caret">▸</span></summary>
+      <div class="wk-body">${body}</div></details>`;
+  }).join('');
+
+  const catRows = s.categories.map((c) => {
+    const wk = round(store.txs.filter((t) => t.type === 'expense' && t.category === c.id && t.date >= ws.start && t.date < ws.end).reduce((a, t) => a + t.amount, 0));
+    return `<div class="wk-cat"><div class="emoji">${c.emoji}</div>
       <div class="body"><span class="n">${esc(c.name)}</span>${c.weekly ? '<span class="tag">weekly</span>' : ''}</div>
-      <div class="wk-nums"><div><b>${money(weekByCat[c.id])}</b><span>week</span></div><div><b class="muted">${money(ms.byCat[c.id])}${c.budget ? ` / ${money(c.budget)}` : ''}</b><span>month</span></div></div></div>`).join('');
-
-  const log = inWeek.length ? inWeek.map(txRow).join('') : '<div class="empty">Nothing logged this week yet.</div>';
+      <div class="wk-nums"><div><b>${money(wk)}</b><span>week</span></div><div><b class="muted">${money(ms.byCat[c.id])}${c.budget ? ` / ${money(c.budget)}` : ''}</b><span>month</span></div></div></div>`;
+  }).join('');
 
   $('#sheet').innerHTML = `<div class="panel sheet-page"><div class="head">
-    <button class="backbtn" data-act="sheet-close" aria-label="Back">← Back</button><span class="step">This week · ${range}</span><span style="width:40px"></span></div>
-    <div class="card hero" style="box-shadow:none;padding:0 0 4px">
-      <div class="label">Left this week</div>
+      <button class="backbtn" data-act="sheet-close" aria-label="Back">←</button><span class="step">${monthShort(ui.month)} · weekly</span><span style="width:28px"></span></div>
+    <div class="card hero" style="box-shadow:none;padding:4px 0">
+      <div class="label">Left to spend this week</div>
       <div class="big ${ws.left < 0 ? 'neg' : ''}">${money(ws.left)}</div>
       <div class="bar ${barClass(ws.spent, ws.budget)}"><i style="width:${pct(ws.spent, ws.budget)}%"></i></div>
-      <div class="note" style="margin:8px 0 0">${money(ws.spent)} of ${money(ws.budget)} everyday budget${ws.carryover < 0 ? ` <span class="negtext">(incl. ${money(ws.carryover)} rolled over from last week)</span>` : ''}</div></div>
-    <h2>Every category</h2><div class="card">${catRows}</div>
-    <h2>This week's activity</h2><div class="card" style="padding:6px 18px">${log}</div></div>`;
+      <div class="note" style="margin:8px 0 0">${money(ws.spent)} of ${money(ws.budget)} everyday budget${ws.carryover < 0 ? ` <span class="negtext">(incl. ${money(ws.carryover)} rolled over)</span>` : ''}</div></div>
+    <h2>Week by week</h2><div class="card" style="padding:4px 18px">${weekRows}</div>
+    <h2>This week by category</h2><div class="card">${catRows}</div></div>`;
   $('#sheet').hidden = false;
 }
 
