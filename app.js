@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=12';
-import { TRANSFERS } from './defaults.js?v=12';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, standardWeek, billsTotal, firstTotal, cardBalance, cardPlan, weekPlan, monthlyIncome, trends } from './calc.js?v=12';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=13';
+import { TRANSFERS } from './defaults.js?v=13';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, standardWeek, billsTotal, firstTotal, cardBalance, cardPlan, weekPlan, monthlyIncome, trends } from './calc.js?v=13';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -298,66 +298,83 @@ function settings() {
 
 // ---------- the sheet (add flow + edit) ----------
 let flow = null, edit = null;
-function closeSheet() { $('#sheet').hidden = true; $('#sheet').innerHTML = ''; flow = null; edit = null; }
+function closeSheet() { const el = $('#sheet'); el.hidden = true; el.className = 'sheet'; el.innerHTML = ''; flow = null; edit = null; }
 
-// ----- add a purchase (step-by-step) -----
-function openFlow(preset = {}) {
-  flow = { step: 1, type: 'expense', amt: '', category: null, note: '', date: today(), ...preset };
+// Categories you can log into: your spending categories, then Income + money moves.
+const SPECIAL_CATS = [
+  { id: 'income', name: 'Income', emoji: '💰', type: 'income' },
+  { id: 'bills', name: 'Bills', emoji: '🏦', type: 'transfer' },
+  { id: 'savings', name: 'Savings', emoji: '🐷', type: 'transfer' },
+  { id: 'card', name: 'Credit card', emoji: '💳', type: 'transfer' }
+];
+const logCats = () => [...S().categories.map((c) => ({ id: c.id, name: c.name, emoji: c.emoji, type: 'expense' })), ...SPECIAL_CATS];
+const logCat = (id) => logCats().find((c) => c.id === id);
+
+// ----- add entries (category first, then amount → description; Save or Add another) -----
+function openFlow(opts = {}) {
+  flow = { step: opts.category ? 2 : 1, category: opts.category || null, amt: '', note: '', date: today(), count: 0 };
   drawFlow(); $('#sheet').hidden = false;
 }
-const flowSteps = (f) => (f.type === 'income' || f.preset ? 2 : 3);
 
 function drawFlow() {
   const f = flow, el = $('#sheet');
+  const c = f.category ? logCat(f.category) : null;
   const amtNum = parseFloat(f.amt) || 0;
-  const stepNo = f.step === 3 && flowSteps(f) === 2 ? 2 : f.step;
-  let body = '';
+  let body, title;
   if (f.step === 1) {
-    const seg = f.preset ? '' : `<div class="seg">${[['expense', 'Purchase'], ['income', 'Income'], ['transfer', 'Transfer']].map(([v, l]) => `<button data-flow="type" data-v="${v}" class="${f.type === v ? 'on' : ''}">${l}</button>`).join('')}</div>`;
-    const title = f.preset ? (f.category === 'card' ? 'Card payment — how much?' : 'Move how much to bills?') : 'How much?';
-    body = `<div class="q">${title}</div>${seg}
+    title = 'Pick a category';
+    body = `<div class="q">What's it for?</div>
+      <div class="cats">${logCats().map((x) => `<button data-flow="cat" data-v="${esc(x.id)}"><span class="e">${x.emoji}</span>${esc(x.name)}</button>`).join('')}</div>`;
+  } else if (f.step === 2) {
+    title = 'Step 2 of 3';
+    body = `<div class="q">How much?</div>
+      <div class="catpill"><span class="e">${c.emoji}</span>${esc(c.name)}${f.count ? ` · item ${f.count + 1}` : ''}</div>
       <div class="amount ${amtNum ? '' : 'zero'}">$${esc(f.amt || '0')}</div>
       <div class="pad">${['1','2','3','4','5','6','7','8','9','.','0','⌫'].map((k) => `<button data-flow="key" data-v="${k}">${k}</button>`).join('')}</div>
       <button class="btn primary block" data-flow="next" ${amtNum ? '' : 'disabled style="opacity:.4"'}>Continue</button>`;
-  } else if (f.step === 2) {
-    const items = f.type === 'transfer' ? TRANSFERS : S().categories;
-    body = `<div class="q">${f.type === 'transfer' ? 'Where did it go?' : 'What was it for?'}</div><div class="cats">${items.map((c) => `<button data-flow="cat" data-v="${esc(c.id)}"><span class="e">${c.emoji}</span>${esc(c.name)}</button>`).join('')}</div>`;
   } else {
-    const label = f.type === 'income' ? 'Income' : f.type === 'transfer' ? 'To ' + tfer(f.category).name.toLowerCase() : cat(f.category).name;
-    const icon = f.type === 'income' ? '💰' : f.type === 'transfer' ? tfer(f.category).emoji : cat(f.category).emoji;
-    body = `<div class="q">Any details?</div>
-      <div class="summary"><div class="emoji" style="background:var(--card)">${icon}</div><div><b>${money(amtNum)}</b><div class="muted">${esc(label)}</div></div></div>
-      <input class="sheet-input" id="f-note" type="text" placeholder="${f.type === 'income' ? 'Paycheck, refund…' : f.type === 'transfer' ? 'Note' : 'Wingstop, groceries…'} (optional)" value="${esc(f.note)}" autocomplete="off">
+    title = 'Step 3 of 3';
+    const ph = c.type === 'income' ? 'Paycheck, refund…' : c.type === 'transfer' ? 'Note (optional)' : 'What was it? (e.g. Wingstop)';
+    body = `<div class="q">Add a description</div>
+      <div class="summary"><div class="emoji" style="background:var(--card)">${c.emoji}</div><div><b>${money(amtNum)}</b><div class="muted">${esc(c.name)}</div></div></div>
+      <input class="sheet-input" id="f-note" type="text" placeholder="${ph}" value="${esc(f.note)}" autocomplete="off">
       <input class="sheet-input" id="f-date" type="date" value="${f.date}" max="${today()}">
-      <button class="btn primary block" data-flow="save">Save</button>`;
+      <div class="twobtn"><button class="btn block" data-flow="again">+ Add another</button><button class="btn primary block" data-flow="save">Save</button></div>
+      ${f.count ? `<p class="note" style="text-align:center;margin-bottom:0">${f.count} added under ${esc(c.name)} so far</p>` : `<p class="note" style="text-align:center;margin-bottom:0">“Add another” keeps ${esc(c.name)} selected for the next item.</p>`}`;
   }
   el.innerHTML = `<div class="panel"><div class="head">
     ${f.step > 1 ? '<button data-flow="back" aria-label="Back">←</button>' : '<span style="width:40px"></span>'}
-    <span class="step">Step ${stepNo} of ${flowSteps(f)}</span><button data-flow="close" aria-label="Close">✕</button></div>${body}</div>`;
+    <span class="step">${title}</span><button data-flow="close" aria-label="Close">✕</button></div>${body}</div>`;
   if (f.step === 3) setTimeout(() => $('#f-note')?.focus(), 50);
+}
+
+// Build + save the current entry; returns the tx (for the toast).
+function flowCommit() {
+  const f = flow, c = logCat(f.category);
+  const note = $('#f-note') ? $('#f-note').value.trim() : f.note;
+  const date = $('#f-date') ? ($('#f-date').value || today()) : f.date;
+  f.date = date;
+  const tx = { type: c.type, amount: round(parseFloat(f.amt)), category: c.type === 'income' ? 'income' : c.id, note, date };
+  addTx(tx);
+  ui.month = date.slice(0, 7);
+  if (ui.tab === 'settings') ui.tab = 'home';
+  return tx;
 }
 
 function flowClick(btn) {
   const f = flow, v = btn.dataset.v;
   switch (btn.dataset.flow) {
     case 'close': return closeSheet();
-    case 'type': f.type = v; f.category = null; return drawFlow();
+    case 'cat': f.category = v; f.step = 2; return drawFlow();
     case 'key':
       if (v === '⌫') f.amt = f.amt.slice(0, -1);
       else if (v === '.') { if (!f.amt.includes('.')) f.amt = (f.amt || '0') + '.'; }
       else if (!(f.amt.includes('.') && f.amt.split('.')[1].length >= 2) && f.amt.replace('.', '').length < 8) f.amt = f.amt === '0' ? v : f.amt + v;
       return drawFlow();
-    case 'next': if (parseFloat(f.amt) > 0) { f.step = f.type === 'income' ? 3 : f.preset ? 3 : 2; if (f.type === 'income') f.category = 'income'; drawFlow(); } return;
-    case 'cat': f.category = v; f.step = 3; return drawFlow();
-    case 'back': f.step = f.step === 3 && flowSteps(f) === 2 ? 1 : f.step - 1; return drawFlow();
-    case 'save': {
-      const note = $('#f-note').value.trim(), date = $('#f-date').value || today();
-      const tx = { type: f.type, amount: round(parseFloat(f.amt)), category: f.type === 'income' ? 'income' : f.category, note, date };
-      addTx(tx);
-      ui.month = date.slice(0, 7);
-      if (ui.tab === 'settings') ui.tab = 'home';
-      closeSheet(); render(); toast(savedMsg(tx));
-    }
+    case 'next': if (parseFloat(f.amt) > 0) { f.step = 3; drawFlow(); } return;
+    case 'back': f.step -= 1; if (f.step < 1) f.step = 1; return drawFlow();
+    case 'save': { const tx = flowCommit(); closeSheet(); render(); toast(savedMsg(tx)); return; }
+    case 'again': { const tx = flowCommit(); f.count += 1; f.amt = ''; f.note = ''; f.step = 2; drawFlow(); render(); toast(savedMsg(tx)); return; }
   }
 }
 
@@ -476,6 +493,7 @@ function openWeek() {
       <div class="note" style="margin:8px 0 0">${money(ws.spent)} of ${money(ws.budget)} everyday budget${ws.carryover < 0 ? ` <span class="negtext">(incl. ${money(ws.carryover)} rolled over)</span>` : ''}</div></div>
     <h2>Week by week</h2><div class="card" style="padding:4px 18px">${weekRows}</div>
     <h2>This week by category</h2><div class="card">${catRows}</div></div>`;
+  $('#sheet').className = 'sheet page';
   $('#sheet').hidden = false;
 }
 
@@ -497,6 +515,7 @@ function openTrends() {
     <div class="tiles">${tile('Avg spent / mo', t.avg.spent)}${tile('Avg saved / mo', t.avg.savings)}${tile('Avg income / mo', t.avg.income)}</div>
     <div class="tiles" style="margin-top:8px">${tile('Avg to bills / mo', t.avg.bills)}${tile('Avg card paid / mo', t.avg.card)}</div>
     <h2>By month</h2><div class="card">${rows || '<div class="empty">No data yet.</div>'}</div></div>`;
+  $('#sheet').className = 'sheet page';
   $('#sheet').hidden = false;
 }
 
@@ -523,7 +542,7 @@ document.addEventListener('click', (e) => {
   const id = b.dataset.id, i = +b.dataset.i;
   switch (b.dataset.act) {
     case 'log': return openFlow();
-    case 'log-xfer': return openFlow({ type: 'transfer', category: id, preset: true });
+    case 'log-xfer': return openFlow({ category: id });
     case 'week': return openWeek();
     case 'week-reset': { S().weekResetAt = weekStats(S(), store.txs).start; saveSettings(); return render(); }
     case 'cc-strategy': { S().cc = { ...S().cc, strategy: id }; saveSettings(); return render(); }
