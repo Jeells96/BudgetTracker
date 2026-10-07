@@ -1,6 +1,6 @@
-import { firebaseConfig } from './firebase-config.js?v=3';
-import { DEFAULT_SETTINGS } from './defaults.js?v=3';
-import { HISTORY } from './history.js?v=3';
+import { firebaseConfig } from './firebase-config.js?v=4';
+import { DEFAULT_SETTINGS } from './defaults.js?v=4';
+import { HISTORY } from './history.js?v=4';
 
 const LS_KEY = 'budget-tracker-v2';
 const CDN = 'https://www.gstatic.com/firebasejs/11.0.2/';
@@ -73,6 +73,12 @@ export function saveSettings() {
 }
 export function addTx(tx) {
   tx.id = uid(); store.txs.push(tx); persist(); store.onChange(); cloudSet(tx); return tx;
+}
+export function updateTx(id, patch) {
+  const t = store.txs.find((x) => x.id === id);
+  if (!t) return;
+  Object.assign(t, patch);
+  persist(); store.onChange(); cloudSet(t);
 }
 export function deleteTx(id) {
   store.txs = store.txs.filter((t) => t.id !== id); persist(); store.onChange();

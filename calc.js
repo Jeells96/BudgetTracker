@@ -28,6 +28,19 @@ export function baseline(s) {
   };
 }
 
+// The settings-driven "standard week": take-home pay split into commitments and
+// a leftover pool that divides between savings and extra spending.
+export function standardWeek(s) {
+  const pay = s.weeklyPay;
+  const bills = round(billsTotal(s) / 4);
+  const groceries = round((s.categories.find((c) => c.id === 'groceries')?.budget || 0) / 4);
+  const everyday = s.weeklyBudget;
+  const pool = round(pay - bills - groceries - everyday);          // leftover for savings + extra
+  const savings = Math.max(0, Math.min(s.weeklySavings, Math.max(0, pool)));
+  const extra = round(pool - savings);
+  return { pay, bills, groceries, everyday, pool, savings, extra };
+}
+
 export function monthStats(s, txs, month, now = new Date()) {
   const list = txs.filter((t) => t.date.startsWith(month));
   const exp = list.filter((t) => t.type === 'expense');
@@ -72,9 +85,9 @@ export function cardPlan(s, txs, now = new Date()) {
   const bal = cardBalance(s, txs);
   const ms = monthStats(s, txs, ymd(now).slice(0, 7), now);
   const weeks = ms.weeksLeft;
-  const b = baseline(s);
+  const sw = standardWeek(s);
   const perWeek = round(bal / weeks);
-  const extra = Math.max(0, b.week.extra - s.weeklyBudget);   // leftover once the everyday budget is covered
+  const extra = Math.max(0, sw.extra);   // discretionary left once everyday spending is covered
   const need = Math.max(0, round(perWeek - extra));             // what extra can't cover
   const spendCut = Math.min(need, s.weeklyBudget), saveCut = Math.min(need, s.weeklyPay ? s.weeklySavings : 0);
   const half = round(need / 2);
@@ -90,17 +103,35 @@ export function cardPlan(s, txs, now = new Date()) {
   };
 }
 
-// ---- this week's plan: your spreadsheet "Standard Week" vs. what the numbers say to do now ----
+// Average of the most recent paychecks, to catch a pay shortage/overage.
+export function recentPay(txs) {
+  const checks = txs.filter((t) => t.type === 'income' && t.amount >= 300).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 4);
+  return checks.length >= 2 ? { avg: round(sum(checks.map((t) => t.amount)) / checks.length), n: checks.length } : null;
+}
+
+// Standard week (your plan) vs Recommended week (adjusts for recent pay,
+// bills still owed this month, and paying the credit card off by month end).
 export function weekPlan(s, txs, now = new Date()) {
-  const b = baseline(s), ms = monthStats(s, txs, ymd(now).slice(0, 7), now), cp = cardPlan(s, txs, now);
-  const billsNow = ms.isCurrent ? round(ms.billsLeft / ms.weeksLeft) : b.week.bills;
-  const groceries = b.week.groceries;
-  const rows = {
-    bills: Math.max(0, billsNow), savings: s.weeklySavings, groceries,
-    spending: s.weeklyBudget, card: cp.perWeek
+  const sw = standardWeek(s);
+  const ms = monthStats(s, txs, ymd(now).slice(0, 7), now);
+  const cp = cardPlan(s, txs, now);
+  const rp = recentPay(txs);
+  const usedRecent = rp && Math.abs(rp.avg - sw.pay) >= 1;
+
+  const pay = usedRecent ? rp.avg : sw.pay;
+  const bills = ms.isCurrent ? Math.max(0, round(ms.billsLeft / ms.weeksLeft)) : sw.bills;
+  const groceries = sw.groceries;
+  const everyday = sw.everyday;
+  const savings = sw.savings;
+  const extra = cp.balance > 0 ? cp.perWeek : sw.extra;
+  const leftover = round(pay - bills - groceries - everyday - savings - extra);
+
+  return {
+    standard: sw,
+    rec: { pay, bills, groceries, everyday, savings, extra, leftover },
+    usedRecent, recentPay: rp ? rp.avg : null,
+    cardBalance: cp.balance, weeksLeft: ms.weeksLeft, billsLeft: ms.billsLeft, isCurrent: ms.isCurrent
   };
-  const leftover = round(s.weeklyPay - rows.bills - rows.savings - rows.groceries - rows.spending - rows.card);
-  return { baseline: b.week, rows, leftover };
 }
 
 // ---- the coach ----

@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=3';
-import { TRANSFERS } from './defaults.js?v=3';
-import { round, ymd, parseYmd, monthStats, weekStats, baseline, billsTotal, firstTotal, cardBalance, cardPlan, weekPlan, coach, monthlyIncome } from './calc.js?v=3';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=4';
+import { TRANSFERS } from './defaults.js?v=4';
+import { round, ymd, parseYmd, monthStats, weekStats, standardWeek, billsTotal, firstTotal, cardBalance, cardPlan, weekPlan, monthlyIncome } from './calc.js?v=4';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -9,6 +9,7 @@ const money = (n) => (n < 0 ? '-' : '') + '$' + Math.abs(n).toLocaleString('en-U
 const today = () => ymd(new Date());
 const monthKey = (d) => ymd(d).slice(0, 7);
 const monthLabel = (k) => parseYmd(k + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+const monthShort = (k) => parseYmd(k + '-01').toLocaleDateString('en-US', { month: 'long' });
 const dayLabel = (s) => {
   if (s === today()) return 'Today';
   const y = new Date(); y.setDate(y.getDate() - 1);
@@ -33,7 +34,7 @@ const pct = (a, b) => (b > 0 ? Math.max(0, Math.min(100, (a / b) * 100)) : 0);
 // ---------- rendering ----------
 function render() {
   document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === ui.tab));
-  $('#app').innerHTML = { home, bills, coach: coachTab, activity, settings }[ui.tab]();
+  $('#app').innerHTML = { home, bills, plan: planTab, activity, settings }[ui.tab]();
 }
 store.onChange = () => { if (!document.activeElement || !document.activeElement.closest('#app input')) render(); };
 
@@ -45,18 +46,34 @@ function header(title, nav = true) {
 }
 
 function home() {
-  const s = S(), ms = MS(), b = baseline(s);
-  const left = round(ms.budget - ms.spent);
+  const s = S(), ms = MS();
   const ws = weekStats(s, store.txs);
-  const tip = coach(s, store.txs).tips[0];
+  const bal = cardBalance(s, store.txs);
+  const weekly = ms.isCurrent && s.weeklyBudget > 0;
 
-  let week = '';
-  if (ms.isCurrent && s.weeklyBudget > 0) {
-    week = `<h2>This week</h2><div class="card">
-      <div class="week"><span class="muted">Everyday spending left</span><b style="${ws.left < 0 ? 'color:var(--bad)' : ''}">${money(ws.left)}</b></div>
+  let hero;
+  if (weekly) {
+    const stat3 = bal > 0
+      ? `<div><b>${money(bal)}</b><span>Card balance</span></div>`
+      : `<div><b>${money(s.weeklySavings)}</b><span>Weekly savings</span></div>`;
+    hero = `<div class="card hero">
+      <div class="label">Left to spend this week</div>
+      <div class="big ${ws.left < 0 ? 'neg' : ''}">${money(ws.left)}</div>
       <div class="bar ${barClass(ws.spent, ws.budget)}"><i style="width:${pct(ws.spent, ws.budget)}%"></i></div>
-      <div class="note" style="margin:8px 0 0">${money(ws.spent)} of ${money(ws.budget)} · ${ws.ids.map((i) => esc(cat(i)?.name)).join(', ')}</div></div>`;
+      <div class="note" style="margin:8px 0 0">${money(ws.spent)} of ${money(ws.budget)} · ${ws.ids.map((i) => esc(cat(i)?.name)).join(', ')}</div>
+      <div class="stats">
+        <div><b>${money(ws.spent)}</b><span>Spent this week</span></div>
+        <div><b>${money(ms.billsLeft)}</b><span>Still to bills</span></div>
+        ${stat3}
+      </div></div>`;
+  } else {
+    const n = ms.list.filter((t) => t.type === 'expense').length;
+    hero = `<div class="card hero">
+      <div class="label">Spent in ${monthShort(ui.month)}</div>
+      <div class="big">${money(ms.spent)}</div>
+      <div class="note" style="margin:8px 0 0">${n} purchase${n === 1 ? '' : 's'}${ms.income ? ` · ${money(ms.income)} income` : ''}</div></div>`;
   }
+
   const catRows = s.categories.map((c) => {
     const sp = ms.byCat[c.id];
     const inner = c.budget > 0
@@ -68,19 +85,8 @@ function home() {
   const recent = monthTxs().slice(0, 5);
 
   return `${header('Budget')}
-    <div class="card hero">
-      <div class="label">Left to spend</div>
-      <div class="big ${left < 0 ? 'neg' : ''}">${money(left)}</div>
-      <div class="bar ${barClass(ms.spent, ms.budget)}"><i style="width:${pct(ms.spent, ms.budget)}%"></i></div>
-      <div class="stats">
-        <div><b>${money(ms.spent)}</b><span>Spent of ${money(ms.budget)}</span></div>
-        <div><b>${money(ms.billsLeft)}</b><span>Still to bills account</span></div>
-        <div><b>${money(b.expectedSavings)}</b><span>Planned savings</span></div>
-      </div>
-    </div>
+    ${hero}
     <button class="log-btn" data-act="log"><span class="plus">+</span> Log a purchase</button>
-    ${tip ? `<button class="coach-peek" data-act="tab" data-id="coach"><span class="ico">${tip.icon}</span><span><b>${esc(tip.title)}</b><br><span class="muted">Tap for your coach plan →</span></span></button>` : ''}
-    ${week}
     <h2>Categories</h2><div class="card">${catRows}</div>
     <h2>Recent</h2><div class="card">${recent.length ? recent.map(txRow).join('') : '<div class="empty">Nothing logged yet this month.<br>Tap the big button to add your first purchase.</div>'}</div>`;
 }
@@ -91,7 +97,7 @@ function txRow(t) {
   else if (t.type === 'transfer') { const x = tfer(t.category); icon = x?.emoji || '🔁'; label = t.note || 'Transfer'; sub = 'To ' + (x?.name || t.category).toLowerCase(); amt = `<div class="amt xfer">${money(t.amount)}</div>`; }
   else { const c = cat(t.category); icon = c ? c.emoji : '🧾'; label = t.note || (c ? c.name : 'Purchase'); sub = c ? c.name : t.category; amt = `<div class="amt">${money(t.amount)}</div>`; }
   return `<button class="tx" data-act="tx" data-id="${esc(t.id)}"><div class="emoji">${icon}</div>
-    <div class="body"><div class="t">${esc(label)}</div><div class="s">${esc(sub)} · ${parseYmd(t.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div></div>${amt}</button>`;
+    <div class="body"><div class="t">${esc(label)}</div><div class="s">${esc(sub)} · ${parseYmd(t.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div></div>${amt}<span class="chev">›</span></button>`;
 }
 
 function bills() {
@@ -106,7 +112,7 @@ function bills() {
   const milestone = (label, goal, sub) => {
     const need = Math.max(0, round(goal - F));
     return `<div class="card mile"><div class="week"><span class="muted">${label}</span><b style="${need ? '' : 'color:var(--good)'}">${need ? money(need) + ' more' : 'Funded ✓'}</b></div>
-      <div class="bar ${need ? '' : ''}"><i style="width:${pct(F, goal)}%"></i></div>
+      <div class="bar"><i style="width:${pct(F, goal)}%"></i></div>
       <div class="note" style="margin:8px 0 0">${money(Math.min(F, goal))} of ${money(goal)} · ${sub}</div></div>`;
   };
 
@@ -150,33 +156,31 @@ function cardSection(cp) {
     <button class="btn block" data-act="log-xfer" data-id="card">+ Log a card payment</button></div>`;
 }
 
-function coachTab() {
-  const s = S(), { tips } = coach(s, store.txs), wp = weekPlan(s, store.txs), b = baseline(s);
-  const r = wp.rows, bl = wp.baseline;
-  const row = (label, base, now, cls = '') => `<div class="trow ${cls}"><span>${label}</span><span class="b">${base == null ? '—' : money(base)}</span><span class="n">${now == null ? '—' : money(now)}</span></div>`;
-  return `${header('Coach', false)}
-    <div class="bubble coach-hello"><span class="ico">🧠</span><div><b>Here's what I'd do with your money.</b><br><span class="muted">Based on your pay, bills and everything you've logged.</span></div></div>
-    ${tips.map((t) => `<div class="bubble ${t.tone}"><span class="ico">${t.icon}</span><div><b>${esc(t.title)}</b><br>${esc(t.body)}</div></div>`).join('')}
-    <h2>This week's plan</h2><div class="card plan-table">
-      <div class="trow head"><span></span><span class="b">Spreadsheet</span><span class="n">This week</span></div>
-      ${row('Paycheck', bl.pay, s.weeklyPay)}
-      ${row('To bills account', bl.bills, r.bills)}
-      ${row('Savings', bl.savings, r.savings)}
-      ${row('Groceries', bl.groceries, r.groceries)}
-      ${row('Everyday spending', null, r.spending)}
-      ${row('Extra / credit card', bl.extra, r.card)}
-      ${row('Leftover', 0, wp.leftover, wp.leftover < 0 ? 'neg' : 'total')}
+function planTab() {
+  const s = S(), wp = weekPlan(s, store.txs);
+  const st = wp.standard, rc = wp.rec;
+  const row = (label, a, b, cls = '') => `<div class="trow ${cls}"><span>${label}</span><span class="b">${money(a)}</span><span class="n">${money(b)}</span></div>`;
+  const notes = [];
+  if (wp.usedRecent) notes.push(`<b>Paycheck</b> uses your recent average of ${money(wp.recentPay)} (not the ${money(st.pay)} standard).`);
+  if (wp.isCurrent && wp.billsLeft > 0) notes.push(`<b>Bills</b> is ${money(rc.bills)} to catch up the ${money(wp.billsLeft)} still owed this month.`);
+  if (wp.cardBalance > 0) notes.push(`<b>Extra</b> goes to clearing the ${money(wp.cardBalance)} card balance by month end.`);
+
+  return `${header('Plan', false)}
+    <p class="lead"><b>Standard week</b> is your plan from Settings. <b>Recommended</b> adjusts it for what's actually happening — your recent pay, bills still owed, and the credit card.</p>
+    <div class="card plan-table">
+      <div class="trow head"><span></span><span class="b">Standard week</span><span class="n">Recommended</span></div>
+      ${row('Paycheck', st.pay, rc.pay)}
+      ${row('To bills account', st.bills, rc.bills)}
+      ${row('Groceries', st.groceries, rc.groceries)}
+      ${row('Everyday spending', st.everyday, rc.everyday)}
+      ${row('Savings', st.savings, rc.savings)}
+      ${row('Extra / credit card', st.extra, rc.extra)}
+      <div class="trow ${rc.leftover < 0 ? 'neg' : 'total'}"><span>Leftover</span><span class="b">${money(0)}</span><span class="n">${money(rc.leftover)}</span></div>
     </div>
-    ${wp.leftover < 0 ? `<p class="note">You're ${money(-wp.leftover)} short for a full week. The card plan on the Bills tab shows how to close the gap by spending or saving a little less.</p>` : `<p class="note">${money(wp.leftover)} is left over after everything — extra for the card or savings.</p>`}
-    <h2>Your spreadsheet baseline</h2><div class="card plan-table">
-      ${row('Monthly income (4 × weekly pay)', null, b.income)}
-      ${row('Monthly bills', null, b.bills)}
-      ${row('Category budgets', null, b.budgets)}
-      ${row('Expected savings', null, b.expectedSavings, 'total')}
-      ${row('Due on the 1st', null, b.firstOfMonth)}
-      ${row('Bills per week', null, b.billsPerWeek)}
-      ${row('Left per week after bills', null, b.leftoverAfterBills)}
-    </div>`;
+    ${rc.leftover < 0
+      ? `<div class="callout bad">You're <b>${money(-rc.leftover)}</b> short this week. Trim everyday spending or savings, or stretch the card payoff — see the Bills tab.</div>`
+      : `<div class="callout good">You've got <b>${money(rc.leftover)}</b> to spare this week beyond the plan.</div>`}
+    ${notes.length ? `<ul class="why">${notes.map((n) => `<li>${n}</li>`).join('')}</ul>` : '<p class="note">Right now the recommended week matches your standard week.</p>'}`;
 }
 
 function activityList() {
@@ -193,7 +197,7 @@ function activityList() {
     if (t.date !== last) { if (last) html += '</div>'; html += `<div class="day">${dayLabel(t.date)}</div><div class="card" style="padding:6px 18px">`; last = t.date; }
     html += txRow(t);
   }
-  return `<p class="note">${list.length} line item${list.length > 1 ? 's' : ''} · ${money(spent)} spent</p>${html}</div>`;
+  return `<p class="note">${list.length} line item${list.length > 1 ? 's' : ''} · ${money(spent)} spent · tap any to edit</p>${html}</div>`;
 }
 
 function activity() {
@@ -206,16 +210,21 @@ function activity() {
 }
 
 function settings() {
-  const s = S();
+  const s = S(), sw = standardWeek(s);
+  const poolBase = round(s.weeklyPay - sw.bills - sw.groceries - s.weeklyBudget);
   const syncText = { local: 'Saved on this device only', connecting: 'Connecting…', synced: 'Synced to the cloud ✓', error: 'Not syncing' }[store.sync];
   return `${header('Settings', false)}
-    <h2>Sync</h2><div class="card"><div class="field"><label>${syncText}</label></div>
-      ${store.syncError ? `<div class="err">${esc(store.syncError)}</div>` : ''}
-      <button class="btn block" data-act="reimport">Re-import spreadsheet history</button></div>
-    <h2>Pay &amp; plan</h2><div class="card">
-      <div class="field"><label>Estimated weekly pay<br><span class="muted" style="font-size:.8rem">= ${money(monthlyIncome(s))} a month (4 weeks)</span></label><input type="number" inputmode="decimal" value="${s.weeklyPay}" data-set="weeklyPay"></div>
-      <div class="field"><label>Weekly savings goal</label><input type="number" inputmode="decimal" value="${s.weeklySavings}" data-set="weeklySavings"></div>
-      <div class="field"><label>Weekly everyday budget<br><span class="muted" style="font-size:.8rem">For categories marked “weekly” below</span></label><input type="number" inputmode="decimal" value="${s.weeklyBudget}" data-set="weeklyBudget"></div></div>
+    <h2>Weekly plan</h2><div class="card planner">
+      <div class="field"><label>Weekly pay<br><span class="muted" style="font-size:.8rem">= ${money(monthlyIncome(s))} a month</span></label><input type="number" inputmode="decimal" value="${s.weeklyPay}" data-set="weeklyPay"></div>
+      <div class="prow"><span>− Bills account <span class="muted">(total ÷ 4)</span></span><b>${money(sw.bills)}</b></div>
+      <div class="prow"><span>− Groceries <span class="muted">(budget ÷ 4)</span></span><b>${money(sw.groceries)}</b></div>
+      <div class="field"><label>− Everyday spending</label><input type="number" inputmode="decimal" value="${s.weeklyBudget}" data-set="weeklyBudget"></div>
+      <div class="prow total"><span>Leftover to divide</span><b id="pool" class="${poolBase < 0 ? 'negtext' : ''}">${money(poolBase)}</b></div>
+      <div class="splitrow"><div class="splitlabel"><span>🐷 Savings</span><b id="sav-amt">${money(sw.savings)}</b></div>
+        <input type="range" id="sav-slider" min="0" max="${Math.max(5, Math.ceil(poolBase))}" step="5" value="${sw.savings}"></div>
+      <div class="prow"><span>💳 Extra spending <span class="muted">(auto)</span></span><b id="extra-amt" class="${sw.extra < 0 ? 'negtext' : ''}">${money(sw.extra)}</b></div>
+      ${poolBase < 0 ? `<div class="err">Your pay doesn't cover bills + groceries + everyday spending — nothing left to save.</div>` : ''}
+      <div class="note">Drag to move money between savings and extra spending. This sets the “standard week” on the Plan tab.</div></div>
     <h2>Category budgets (monthly)</h2><div class="card">${s.categories.map((c, i) => `
       <div class="field weekly"><span class="emoji" style="width:36px;height:36px">${c.emoji}</span><label>${esc(c.name)}</label>
         <input type="number" inputmode="decimal" value="${c.budget}" data-cat="${i}" data-field="budget">
@@ -231,16 +240,21 @@ function settings() {
         <button class="x" data-act="delbill" data-i="${i}" aria-label="Delete">✕</button></div>`).join('')}
       <button class="btn block" data-act="addbill">+ Add bill</button>
       <div class="note">Day = the day of the month the bill auto-pays. Bills on day 1 make up your “ready for the 1st” goal (${money(firstTotal(s))}). Total: ${money(billsTotal(s))}.</div></div>
+    <h2>Sync &amp; data</h2><div class="card"><div class="field"><label>${syncText}</label></div>
+      ${store.syncError ? `<div class="err">${esc(store.syncError)}</div>` : ''}
+      <button class="btn block" data-act="reimport">Re-import spreadsheet history</button></div>
     <p class="note">Everything saves automatically.</p>`;
 }
 
-// ---------- log a purchase (step-by-step sheet) ----------
-let flow = null;
+// ---------- the sheet (add flow + edit) ----------
+let flow = null, edit = null;
+function closeSheet() { $('#sheet').hidden = true; $('#sheet').innerHTML = ''; flow = null; edit = null; }
+
+// ----- add a purchase (step-by-step) -----
 function openFlow(preset = {}) {
   flow = { step: 1, type: 'expense', amt: '', category: null, note: '', date: today(), ...preset };
   drawFlow(); $('#sheet').hidden = false;
 }
-function closeFlow() { $('#sheet').hidden = true; $('#sheet').innerHTML = ''; flow = null; }
 const flowSteps = (f) => (f.type === 'income' || f.preset ? 2 : 3);
 
 function drawFlow() {
@@ -276,7 +290,7 @@ function drawFlow() {
 function flowClick(btn) {
   const f = flow, v = btn.dataset.v;
   switch (btn.dataset.flow) {
-    case 'close': return closeFlow();
+    case 'close': return closeSheet();
     case 'type': f.type = v; f.category = null; return drawFlow();
     case 'key':
       if (v === '⌫') f.amt = f.amt.slice(0, -1);
@@ -292,13 +306,67 @@ function flowClick(btn) {
       addTx(tx);
       ui.month = date.slice(0, 7);
       if (ui.tab === 'settings') ui.tab = 'home';
-      const ms = MS(); let msg;
-      if (tx.type === 'income') msg = `Added ${money(tx.amount)} income`;
-      else if (tx.type === 'transfer') msg = tx.category === 'bills' ? `Moved ${money(tx.amount)} to bills · ${ms.billsLeft ? money(ms.billsLeft) + ' still needed' : 'fully funded ✓'}`
-        : tx.category === 'card' ? `Paid ${money(tx.amount)} on the card · ${money(cardBalance(S(), store.txs))} left` : `Saved ${money(tx.amount)}`;
-      else { const c = cat(tx.category); msg = `Logged ${money(tx.amount)} · ${c.name}`;
-        if (c.budget > 0) { const left = round(c.budget - ms.byCat[c.id]); msg += left >= 0 ? ` · ${money(left)} left` : ` · ${money(-left)} over`; } }
-      closeFlow(); render(); toast(msg);
+      closeSheet(); render(); toast(savedMsg(tx));
+    }
+  }
+}
+
+function savedMsg(tx) {
+  const ms = MS();
+  if (tx.type === 'income') return `Added ${money(tx.amount)} income`;
+  if (tx.type === 'transfer') return tx.category === 'bills' ? `Moved ${money(tx.amount)} to bills · ${ms.billsLeft ? money(ms.billsLeft) + ' still needed' : 'fully funded ✓'}`
+    : tx.category === 'card' ? `Paid ${money(tx.amount)} on the card · ${money(cardBalance(S(), store.txs))} left` : `Saved ${money(tx.amount)}`;
+  const c = cat(tx.category); let msg = `Logged ${money(tx.amount)} · ${c?.name || tx.category}`;
+  if (c && c.budget > 0) { const left = round(c.budget - ms.byCat[c.id]); msg += left >= 0 ? ` · ${money(left)} left` : ` · ${money(-left)} over`; }
+  return msg;
+}
+
+// ----- edit an existing item (single form) -----
+function openEdit(tx) {
+  edit = { ...tx };
+  drawEdit(); $('#sheet').hidden = false;
+}
+function syncEditInputs() {
+  const a = $('#e-amt'), n = $('#e-note'), d = $('#e-date');
+  if (a) edit.amount = parseFloat(a.value) || 0;
+  if (n) edit.note = n.value;
+  if (d) edit.date = d.value || edit.date;
+}
+function drawEdit() {
+  const e = edit, el = $('#sheet');
+  const items = e.type === 'transfer' ? TRANSFERS : S().categories;
+  const picker = e.type === 'income' ? '' : `<label class="editlbl">${e.type === 'transfer' ? 'Destination' : 'Category'}</label>
+    <div class="cats edit">${items.map((c) => `<button data-edit="cat" data-v="${esc(c.id)}" class="${e.category === c.id ? 'on' : ''}"><span class="e">${c.emoji}</span>${esc(c.name)}</button>`).join('')}</div>`;
+  el.innerHTML = `<div class="panel"><div class="head"><span style="width:40px"></span><span class="step">Edit item</span><button data-edit="close" aria-label="Close">✕</button></div>
+    <div class="seg">${[['expense', 'Purchase'], ['income', 'Income'], ['transfer', 'Transfer']].map(([v, l]) => `<button data-edit="type" data-v="${v}" class="${e.type === v ? 'on' : ''}">${l}</button>`).join('')}</div>
+    <label class="editlbl">Amount</label>
+    <input class="sheet-input" id="e-amt" type="number" inputmode="decimal" value="${e.amount}">
+    ${picker}
+    <label class="editlbl">Note</label>
+    <input class="sheet-input" id="e-note" type="text" value="${esc(e.note || '')}" placeholder="Note" autocomplete="off">
+    <label class="editlbl">Date</label>
+    <input class="sheet-input" id="e-date" type="date" value="${e.date}" max="${today()}">
+    <button class="btn primary block" data-edit="save">Save changes</button>
+    <button class="btn danger block" data-edit="delete">Delete</button></div>`;
+}
+function editClick(btn) {
+  const e = edit, v = btn.dataset.v;
+  switch (btn.dataset.edit) {
+    case 'close': return closeSheet();
+    case 'type': syncEditInputs(); e.type = v; e.category = v === 'income' ? 'income' : v === 'transfer' ? 'bills' : (cat(e.category) ? e.category : S().categories[0].id); return drawEdit();
+    case 'cat': syncEditInputs(); e.category = v; return drawEdit();
+    case 'save': {
+      syncEditInputs();
+      if (!(e.amount > 0)) return toast('Enter an amount');
+      const patch = { type: e.type, amount: round(e.amount), category: e.type === 'income' ? 'income' : e.category, note: (e.note || '').trim(), date: e.date };
+      updateTx(e.id, patch);
+      ui.month = e.date.slice(0, 7);
+      closeSheet(); render(); toast('Changes saved');
+      return;
+    }
+    case 'delete': {
+      if (confirm(`Delete "${e.note || cat(e.category)?.name || tfer(e.category)?.name || 'this item'}" (${money(e.amount)})?`)) { deleteTx(e.id); closeSheet(); render(); toast('Deleted'); }
+      return;
     }
   }
 }
@@ -308,11 +376,23 @@ function toast(msg) {
   clearTimeout(toast.h); toast.h = setTimeout(() => (t.hidden = true), 3500);
 }
 
+// ---------- live savings slider (no full re-render while dragging) ----------
+function slideSavings(val) {
+  const s = S(), sw = standardWeek(s);
+  const poolBase = round(s.weeklyPay - sw.bills - sw.groceries - s.weeklyBudget);
+  const sav = Math.max(0, Math.min(val, Math.max(0, poolBase)));
+  s.weeklySavings = sav;
+  const ex = round(poolBase - sav);
+  if ($('#sav-amt')) $('#sav-amt').textContent = money(sav);
+  const exEl = $('#extra-amt');
+  if (exEl) { exEl.textContent = money(ex); exEl.classList.toggle('negtext', ex < 0); }
+}
+
 // ---------- events ----------
 document.addEventListener('click', (e) => {
-  const fl = e.target.closest('[data-flow]');
-  if (fl && flow) return flowClick(fl);
-  if (e.target === $('#sheet')) return closeFlow();
+  const fe = e.target.closest('[data-edit]'); if (fe && edit) return editClick(fe);
+  const fl = e.target.closest('[data-flow]'); if (fl && flow) return flowClick(fl);
+  if (e.target === $('#sheet')) return closeSheet();
   const tab = e.target.closest('#tabs button');
   if (tab) { ui.tab = tab.dataset.tab; scrollTo(0, 0); return render(); }
   const b = e.target.closest('[data-act]'); if (!b) return;
@@ -320,11 +400,10 @@ document.addEventListener('click', (e) => {
   switch (b.dataset.act) {
     case 'log': return openFlow();
     case 'log-xfer': return openFlow({ type: 'transfer', category: id, preset: true });
-    case 'tab': ui.tab = id; scrollTo(0, 0); return render();
     case 'prev': case 'next': { const d = parseYmd(ui.month + '-01'); d.setMonth(d.getMonth() + (b.dataset.act === 'next' ? 1 : -1)); ui.month = monthKey(d); return render(); }
     case 'filter': ui.filter = id; return render();
     case 'all': ui.all = !ui.all; return render();
-    case 'tx': { const t = store.txs.find((x) => x.id === id); if (t && confirm(`Delete "${t.note || cat(t.category)?.name || tfer(t.category)?.name || 'this item'}" (${money(t.amount)})?`)) deleteTx(id); return; }
+    case 'tx': { const t = store.txs.find((x) => x.id === id); if (t) openEdit(t); return; }
     case 'addcat': { const name = prompt('Category name?'); if (name?.trim()) { S().categories.push({ id: uid(), name: name.trim(), emoji: '🏷️', budget: 0, weekly: false }); saveSettings(); } return; }
     case 'delcat': if (confirm(`Delete "${S().categories[i].name}"? Existing transactions are kept.`)) { S().categories.splice(i, 1); saveSettings(); } return;
     case 'addbill': { const name = prompt('Bill name?'); if (name?.trim()) { S().bills.push({ id: uid(), name: name.trim(), amount: 0, day: 1 }); saveSettings(); } return; }
@@ -335,17 +414,19 @@ document.addEventListener('click', (e) => {
 
 document.addEventListener('input', (e) => {
   if (e.target.id === 'q') { ui.q = e.target.value; $('#actlist').innerHTML = activityList(); }
+  else if (e.target.id === 'sav-slider') slideSavings(+e.target.value);
 });
 
 document.addEventListener('change', (e) => {
   const t = e.target, num = () => parseFloat(t.value) || 0;
+  if (t.id === 'sav-slider') { slideSavings(+t.value); saveSettings(); return; }
   if (t.dataset.set) { S()[t.dataset.set] = num(); saveSettings(); }
   else if (t.dataset.cc) { S().cc = { balance: num(), asOf: today() }; saveSettings(); }
   else if (t.dataset.cat) { const c = S().categories[+t.dataset.cat]; c[t.dataset.field] = t.type === 'checkbox' ? t.checked : num(); saveSettings(); }
   else if (t.dataset.bill) {
     const b = S().bills[+t.dataset.bill], f = t.dataset.field;
     b[f] = f === 'name' ? t.value : f === 'day' ? Math.min(31, Math.max(1, Math.round(num()) || 1)) : num(); saveSettings();
-  }
+  } else return;
   render();
 });
 
