@@ -22,6 +22,20 @@ export function billAmount(b) {
 }
 export const billsTotal = (s) => sum(s.bills.map(billAmount));
 export const firstTotal = (s) => sum(s.bills.filter((b) => b.day === 1).map(billAmount));
+
+// Average monthly spend for a category, over the last up to 12 completed months
+// of logged data (the current partial month is excluded). Used for the gas budget.
+export function categoryAvg(txs, id, now = new Date()) {
+  const cur = ymd(now).slice(0, 7);
+  const by = {};
+  txs.filter((t) => t.type === 'expense' && t.category === id).forEach((t) => { const m = t.date.slice(0, 7); by[m] = (by[m] || 0) + t.amount; });
+  const months = Object.keys(by).filter((m) => m < cur).sort().slice(-12);
+  return months.length ? round(months.reduce((a, m) => a + by[m], 0) / months.length) : 0;
+}
+// A category's effective budget: its rolling average when useAvg is on, else the fixed budget.
+export function categoryBudget(s, txs, c, now = new Date()) {
+  return c.useAvg ? categoryAvg(txs, c.id, now) : (c.budget || 0);
+}
 export const budgetTotal = (s) => sum(s.categories.map((c) => c.budget));
 const money = (n) => (n < 0 ? '-' : '') + '$' + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: Math.abs(n) % 1 ? 2 : 0, maximumFractionDigits: 2 });
 

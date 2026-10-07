@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=18';
-import { TRANSFERS } from './defaults.js?v=18';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, standardWeek, billsTotal, firstTotal, billAmount, cardBalance, cardDetail, cycleWindow, rollCardBaseline, cardPlan, weekPlan, monthlyIncome, trends } from './calc.js?v=18';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=19';
+import { TRANSFERS } from './defaults.js?v=19';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, standardWeek, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, cardPlan, weekPlan, monthlyIncome, trends } from './calc.js?v=19';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -24,6 +24,7 @@ const ui = { tab: 'home', month: monthKey(new Date()), filter: 'all', all: false
 // ---------- helpers ----------
 const S = () => store.settings;
 const cat = (id) => S().categories.find((c) => c.id === id);
+const cb = (c) => categoryBudget(S(), store.txs, c);   // effective category budget (avg for gas when on)
 const tfer = (id) => TRANSFERS.find((t) => t.id === id);
 const sortTx = (a, b) => b.date.localeCompare(a.date) || (b.id > a.id ? 1 : -1);
 const monthTxs = () => store.txs.filter((t) => t.date.startsWith(ui.month)).sort(sortTx);
@@ -90,7 +91,7 @@ function home() {
   };
   const list = [
     moneyRow('💰', 'Income', ms.income, estIncome, 'cat-filter', 'income', true),
-    ...s.categories.map((c) => moneyRow(c.emoji, c.name, ms.byCat[c.id], c.budget, 'cat-filter', c.id, c.budget > 0)),
+    ...s.categories.map((c) => { const bud = cb(c); return moneyRow(c.emoji, c.name, ms.byCat[c.id], bud, 'cat-filter', c.id, bud > 0); }),
     moneyRow('🏦', 'Bills account', ms.billsIn, ms.billsTotal, 'goto', 'bills', true)
   ].join('');
   const recent = monthTxs().slice(0, 5);
@@ -303,11 +304,14 @@ function settings() {
       <div class="field"><label>Week starts on<br><span class="muted" style="font-size:.8rem">When the weekly budget resets</span></label>
         <select data-set="weekStartDay">${['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map((d, i) => `<option value="${i}" ${(+s.weekStartDay) === i ? 'selected' : ''}>${d}</option>`).join('')}</select></div>
       <div class="note">Going over one week trims the next week's budget to compensate. You can reset it from the home screen any time.</div></div>
-    <h2>Category budgets (monthly)</h2><div class="card">${s.categories.map((c, i) => `
-      <div class="field weekly"><span class="emoji" style="width:36px;height:36px">${c.emoji}</span><label>${esc(c.name)}</label>
-        <input type="number" inputmode="decimal" value="${c.budget}" data-cat="${i}" data-field="budget">
+    <h2>Category budgets (monthly)</h2><div class="card">${s.categories.map((c, i) => {
+      const avgRow = c.id === 'gas' ? `<label class="muted" style="flex-basis:100%;font-size:.8rem;padding-left:46px"><input type="checkbox" ${c.useAvg ? 'checked' : ''} data-catavg="${i}"> use 12-month average${c.useAvg ? ` (${money(categoryAvg(store.txs, c.id))})` : ''}</label>` : '';
+      return `<div class="field weekly"><span class="emoji" style="width:36px;height:36px">${c.emoji}</span><label>${esc(c.name)}</label>
+        <input type="number" inputmode="decimal" value="${c.useAvg ? categoryAvg(store.txs, c.id) : c.budget}" ${c.useAvg ? 'disabled title="Using 12-month average"' : ''} data-cat="${i}" data-field="budget">
         <button class="x" data-act="delcat" data-i="${i}" aria-label="Delete">✕</button>
-        <label class="muted" style="flex-basis:100%;font-size:.8rem;padding-left:46px"><input type="checkbox" ${c.weekly ? 'checked' : ''} data-cat="${i}" data-field="weekly"> counts toward weekly everyday budget</label></div>`).join('')}
+        <label class="muted" style="flex-basis:100%;font-size:.8rem;padding-left:46px"><input type="checkbox" ${c.weekly ? 'checked' : ''} data-cat="${i}" data-field="weekly"> counts toward weekly everyday budget</label>
+        ${avgRow}</div>`;
+    }).join('')}
       <button class="btn block" data-act="addcat">+ Add category</button></div>
     <h2>Bills &amp; due days</h2><div class="card">
       <div class="field bill-head"><span style="flex:1">Bill</span><span style="width:84px;text-align:right">Amount</span><span style="width:46px;text-align:center">Day</span><span style="width:64px"></span></div>
@@ -450,7 +454,7 @@ function savedMsg(tx) {
   if (tx.type === 'transfer') return tx.category === 'bills' ? `Moved ${money(tx.amount)} to bills · ${ms.billsLeft ? money(ms.billsLeft) + ' still needed' : 'fully funded ✓'}`
     : tx.category === 'card' ? `Paid ${money(tx.amount)} on the card · ${money(cardBalance(S(), store.txs))} left` : `Saved ${money(tx.amount)}`;
   const c = cat(tx.category); let msg = `Logged ${money(tx.amount)} · ${c?.name || tx.category}`;
-  if (c && c.budget > 0) { const left = round(c.budget - ms.byCat[c.id]); msg += left >= 0 ? ` · ${money(left)} left` : ` · ${money(-left)} over`; }
+  if (c) { const bud = cb(c); if (bud > 0) { const left = round(bud - ms.byCat[c.id]); msg += left >= 0 ? ` · ${money(left)} left` : ` · ${money(-left)} over`; } }
   return msg;
 }
 
@@ -552,7 +556,7 @@ function openWeek() {
     const wk = round(store.txs.filter((t) => t.type === 'expense' && t.category === c.id && t.date >= ws.start && t.date < ws.end).reduce((a, t) => a + t.amount, 0));
     return `<div class="wk-cat"><div class="emoji">${c.emoji}</div>
       <div class="body"><span class="n">${esc(c.name)}</span>${c.weekly ? '<span class="tag">weekly</span>' : ''}</div>
-      <div class="wk-nums"><div><b>${money(wk)}</b><span>week</span></div><div><b class="muted">${money(ms.byCat[c.id])}${c.budget ? ` / ${money(c.budget)}` : ''}</b><span>month</span></div></div></div>`;
+      <div class="wk-nums"><div><b>${money(wk)}</b><span>week</span></div><div><b class="muted">${money(ms.byCat[c.id])}${cb(c) ? ` / ${money(cb(c))}` : ''}</b><span>month</span></div></div></div>`;
   }).join('');
 
   $('#sheet').innerHTML = `<div class="panel sheet-page"><div class="head">
@@ -673,6 +677,7 @@ document.addEventListener('change', (e) => {
   else if (t.dataset.billfix) { S().bills[billEdit].amount = num(); saveSettings(); drawBillEdit(); return; }
   else if (t.hasAttribute('data-billavg')) { S().bills[billEdit].useAvg = t.checked; saveSettings(); drawBillEdit(); render(); return; }
   else if (t.dataset.bh) { const h = (S().bills[billEdit].history || []).find((x) => x.id === t.dataset.bh); if (h) { h[t.dataset.f] = t.dataset.f === 'amount' ? num() : (t.value || h.month); saveSettings(); drawBillEdit(); } return; }
+  else if (t.dataset.catavg) { S().categories[+t.dataset.catavg].useAvg = t.checked; saveSettings(); }
   else if (t.dataset.cat) { const c = S().categories[+t.dataset.cat]; c[t.dataset.field] = t.type === 'checkbox' ? t.checked : num(); saveSettings(); }
   else if (t.dataset.bill) {
     const b = S().bills[+t.dataset.bill], f = t.dataset.field;
