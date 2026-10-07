@@ -130,6 +130,21 @@ export function cardDetail(s, txs) {
 }
 export const cardComputed = (s, txs) => cardDetail(s, txs).computed;
 
+// Carry the balance across statement cycles: once a statement has closed, fold
+// that cycle's net charges into the starting balance and advance the baseline to
+// the new cycle. The Current balance is unchanged — only "purchases since" resets
+// to the new cycle. Returns a new cc to save, or null if nothing to roll.
+export function rollCardBaseline(s, txs, now = new Date()) {
+  const cc = s.cc;
+  if (!cc || !cc.asOf) return null;
+  const cyc = cycleWindow(now).start;
+  if (cc.asOf >= cyc) return null;                 // baseline already in the current cycle
+  const creditBefore = sum(txs.filter((t) => t.type === 'expense' && t.pay !== 'cash' && t.date >= cc.asOf && t.date < cyc).map((t) => t.amount));
+  const paidBefore = sum(txs.filter((t) => t.type === 'transfer' && t.category === 'card' && t.date >= cc.asOf && t.date < cyc).map((t) => t.amount));
+  const newStart = Math.max(0, round((cc.start || 0) + creditBefore + (cc.chargesAdj || 0) - paidBefore));
+  return { ...cc, start: newStart, asOf: cyc, chargesAdj: 0 };
+}
+
 // The balance the rest of the app uses: computed in auto mode, your typed number in manual.
 export function cardBalance(s, txs) {
   return s.cc.mode === 'manual' ? Math.max(0, round(s.cc.manual || 0)) : cardComputed(s, txs);

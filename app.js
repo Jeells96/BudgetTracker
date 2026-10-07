@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=15';
-import { TRANSFERS } from './defaults.js?v=15';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, standardWeek, billsTotal, firstTotal, cardBalance, cardDetail, cycleWindow, cardPlan, weekPlan, monthlyIncome, trends } from './calc.js?v=15';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=16';
+import { TRANSFERS } from './defaults.js?v=16';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, standardWeek, billsTotal, firstTotal, cardBalance, cardDetail, cycleWindow, rollCardBaseline, cardPlan, weekPlan, monthlyIncome, trends } from './calc.js?v=16';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -557,6 +557,16 @@ function openTrends() {
   $('#sheet').hidden = false;
 }
 
+// Carry the card balance across statement cycles (folds each closed cycle into
+// the starting balance). Runs at startup and on interaction; cheap no-op when
+// the baseline is already current.
+let rolling = false;
+function maybeRollCard() {
+  if (rolling) return;
+  const rolled = rollCardBaseline(store.settings, store.txs);
+  if (rolled) { rolling = true; store.settings.cc = rolled; saveSettings(); rolling = false; }
+}
+
 // ---------- live savings slider (no full re-render while dragging) ----------
 function slideSavings(val) {
   const s = S(), sw = standardWeek(s);
@@ -571,6 +581,7 @@ function slideSavings(val) {
 
 // ---------- events ----------
 document.addEventListener('click', (e) => {
+  maybeRollCard();
   const fe = e.target.closest('[data-edit]'); if (fe && edit) return editClick(fe);
   const fl = e.target.closest('[data-flow]'); if (fl && flow) return flowClick(fl);
   if (e.target === $('#sheet')) return closeSheet();
@@ -625,5 +636,6 @@ document.addEventListener('change', (e) => {
 });
 
 loadLocal();
+maybeRollCard();
 render();
 initFirebase();
