@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=17';
-import { TRANSFERS } from './defaults.js?v=17';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, standardWeek, billsTotal, firstTotal, billAmount, cardBalance, cardDetail, cycleWindow, rollCardBaseline, cardPlan, weekPlan, monthlyIncome, trends } from './calc.js?v=17';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=18';
+import { TRANSFERS } from './defaults.js?v=18';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, standardWeek, billsTotal, firstTotal, billAmount, cardBalance, cardDetail, cycleWindow, rollCardBaseline, cardPlan, weekPlan, monthlyIncome, trends } from './calc.js?v=18';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -380,12 +380,18 @@ function drawFlow() {
     body = `<div class="q">What's it for?</div>
       <div class="cats">${logCats().map((x) => `<button data-flow="cat" data-v="${esc(x.id)}"><span class="e">${x.emoji}</span>${esc(x.name)}</button>`).join('')}</div>`;
   } else if (f.step === 2) {
-    title = 'Step 2 of 3';
+    const isExpense = c.type === 'expense';
+    title = isExpense ? 'Step 2 of 3' : 'Step 2 of 2';
+    const dis = amtNum ? '' : 'disabled style="opacity:.4"';
+    const actions = isExpense
+      ? `<button class="btn primary block" data-flow="next" ${dis}>Continue</button>`
+      : `<div class="twobtn"><button class="btn block" data-flow="again" ${dis}>+ Add another</button><button class="btn primary block" data-flow="save" ${dis}>Save</button></div>
+         ${f.count ? `<p class="note" style="text-align:center;margin-bottom:0">${f.count} added under ${esc(c.name)} so far</p>` : ''}`;
     body = `<div class="q">How much?</div>
       <div class="catpill"><span class="e">${c.emoji}</span>${esc(c.name)}${f.count ? ` · item ${f.count + 1}` : ''}</div>
       <div class="amount ${amtNum ? '' : 'zero'}">$${esc(f.amt || '0')}</div>
       <div class="pad">${['1','2','3','4','5','6','7','8','9','.','0','⌫'].map((k) => `<button data-flow="key" data-v="${k}">${k}</button>`).join('')}</div>
-      <button class="btn primary block" data-flow="next" ${amtNum ? '' : 'disabled style="opacity:.4"'}>Continue</button>`;
+      ${actions}`;
   } else {
     title = 'Step 3 of 3';
     const ph = c.type === 'income' ? 'Paycheck, refund…' : c.type === 'transfer' ? 'Note (optional)' : 'What was it? (e.g. Wingstop)';
@@ -433,8 +439,8 @@ function flowClick(btn) {
     case 'next': if (parseFloat(f.amt) > 0) { f.step = 3; drawFlow(); } return;
     case 'pay': { if ($('#f-note')) f.note = $('#f-note').value; if ($('#f-date')) f.date = $('#f-date').value || f.date; f.pay = v; return drawFlow(); }
     case 'back': f.step -= 1; if (f.step < 1) f.step = 1; return drawFlow();
-    case 'save': { const tx = flowCommit(); closeSheet(); render(); toast(savedMsg(tx)); return; }
-    case 'again': { const tx = flowCommit(); f.count += 1; f.amt = ''; f.note = ''; f.step = 2; drawFlow(); render(); toast(savedMsg(tx)); return; }
+    case 'save': { if (!(parseFloat(f.amt) > 0)) return; const tx = flowCommit(); closeSheet(); render(); toast(savedMsg(tx)); return; }
+    case 'again': { if (!(parseFloat(f.amt) > 0)) return; const tx = flowCommit(); f.count += 1; f.amt = ''; f.note = ''; f.step = 2; drawFlow(); render(); toast(savedMsg(tx)); return; }
   }
 }
 
