@@ -125,18 +125,27 @@ export function weekPlan(s, txs, now = new Date()) {
   const pay = sw.pay;                                                // always your settings income
   const bills = ms.isCurrent ? Math.max(0, round(ms.billsLeft / ms.weeksLeft)) : sw.bills;
   const groceries = sw.groceries;
-  const everyday = sw.everyday;
-  const savings = sw.savings;
-  const pool = round(pay - bills - groceries - everyday - savings); // money for card / extra
-  // With a balance, the Extra line is the suggested card payment and anything
-  // left over after it becomes Leftover. With no balance, it's just extra money.
-  const extra = cp.balance > 0 ? cp.perWeek : pool;
-  const leftover = cp.balance > 0 ? round(pool - cp.perWeek) : 0;
+  let everyday = sw.everyday, savings = sw.savings, extra, leftover;
+  const strat = cp.balance > 0 ? (s.cc.strategy || 'extra') : 'none';
+  const o = cp.options;
+
+  if (cp.balance > 0) {
+    // The chosen strategy decides where the card payment comes from.
+    if (strat === 'spend') everyday = o.spend.newSpend;
+    else if (strat === 'save') savings = o.save.newSave;
+    else if (strat === 'split') { everyday = o.split.newSpend; savings = o.split.newSave; }
+    extra = strat === 'stretch' ? cp.stretch.perWeek : cp.perWeek;    // Extra line = the card payment
+    leftover = round(pay - bills - groceries - everyday - savings - extra);
+  } else {
+    extra = round(pay - bills - groceries - everyday - savings);      // just spare money
+    leftover = 0;
+  }
 
   return {
     standard: sw,
     rec: { pay, bills, groceries, everyday, savings, extra, leftover },
-    cardBalance: cp.balance, cardPerWeek: cp.perWeek, weeksLeft: ms.weeksLeft, billsLeft: ms.billsLeft, isCurrent: ms.isCurrent
+    strategy: strat, cardBalance: cp.balance, cardPerWeek: cp.perWeek, stretchPerWeek: cp.stretch.perWeek,
+    stretchWeeks: cp.stretch.weeks, weeksLeft: ms.weeksLeft, billsLeft: ms.billsLeft, isCurrent: ms.isCurrent
   };
 }
 

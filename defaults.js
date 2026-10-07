@@ -29,7 +29,7 @@ export const DEFAULT_SETTINGS = {
     { id: 'church',   name: 'Church Dues', amount: 70,     day: 15 },
     { id: 'union',    name: 'Union Dues',  amount: 65,     day: 15 }
   ],
-  cc: { balance: 0, asOf: null },   // credit card balance you typed in, and the date you typed it
+  cc: { balance: 0, asOf: null, strategy: 'extra' },  // balance, the date you typed it, and the chosen payoff strategy
   weekStartDay: 5,                  // day the weekly budget resets (0=Sun … 6=Sat); default Friday
   weekResetAt: null,                // week-start (YYYY-MM-DD) the user cleared the rollover for
   seeded: false                     // spreadsheet history imported?

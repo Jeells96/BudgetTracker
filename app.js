@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=5';
-import { TRANSFERS } from './defaults.js?v=5';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, standardWeek, billsTotal, firstTotal, cardBalance, cardPlan, weekPlan, monthlyIncome, trends } from './calc.js?v=5';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=6';
+import { TRANSFERS } from './defaults.js?v=6';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, standardWeek, billsTotal, firstTotal, cardBalance, cardPlan, weekPlan, monthlyIncome, trends } from './calc.js?v=6';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -143,20 +143,23 @@ function bills() {
 
 function cardSection(cp) {
   const s = S(), o = cp.options, now = new Date();
+  const strat = s.cc.strategy || 'extra';
   const eom = new Date(now.getFullYear(), now.getMonth() + 1, 0).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   let plan = '';
   if (cp.balance > 0) {
-    plan = `<div class="plan"><div class="week"><span class="muted">To clear it by ${eom}</span><b>${money(cp.perWeek)} / week</b></div>
-      <div class="note" style="margin:0 0 10px">${cp.weeks} paycheck${cp.weeks > 1 ? 's' : ''} left this month${cp.extra > 0 ? ` · your leftover extra (${money(cp.extra)}/wk) covers part of it` : ''}.</div>`;
-    if (cp.need <= 0) plan += `<div class="opt good">✅ No cuts needed — your leftover covers it.</div>`;
-    else {
-      plan += `<div class="note" style="margin:0 0 8px">You'd still need <b>${money(cp.need)}</b> more per week. Pick a way:</div>
-        <div class="opt"><b>Spend less</b><span>Everyday ${money(o.spend.newSpend)}/wk <em>(−${money(o.spend.cut)})</em>${o.spend.short > 0 ? `<br><i>still ${money(o.spend.short)}/wk short</i>` : ''}</span></div>
-        <div class="opt"><b>Save less</b><span>Savings ${money(o.save.newSave)}/wk <em>(−${money(o.save.cut)})</em>${o.save.short > 0 ? `<br><i>still ${money(o.save.short)}/wk short</i>` : ''}</span></div>
-        <div class="opt"><b>Split it</b><span>Everyday ${money(o.split.newSpend)} + savings ${money(o.split.newSave)} /wk${o.split.short > 0 ? `<br><i>still ${money(o.split.short)}/wk short</i>` : ''}</span></div>
-        <div class="opt alt"><b>Or take 2 months</b><span>${money(cp.stretch.perWeek)}/wk over ${cp.stretch.weeks} weeks</span></div>`;
-    }
-    plan += '</div>';
+    const shortNote = (sh) => (sh > 0 ? ` <span class="negtext">still ${money(sh)}/wk short</span>` : '');
+    const opt = (id, title, desc) => `<button class="strat ${strat === id ? 'on' : ''}" data-act="cc-strategy" data-id="${id}">
+      <span class="radio"></span><span class="st-body"><b>${title}</b><span>${desc}</span></span></button>`;
+    plan = `<div class="plan">
+      <div class="week"><span class="muted">${strat === 'stretch' ? 'Paid off in about 2 months' : `To clear it by ${eom}`}</span><b>${money(strat === 'stretch' ? cp.stretch.perWeek : cp.perWeek)} / week</b></div>
+      <div class="note" style="margin:0 0 10px">${cp.weeks} paycheck${cp.weeks > 1 ? 's' : ''} left this month · your ${money(cp.extra)}/wk leftover covers ${cp.need <= 0 ? 'all of it' : `part of it (${money(cp.need)}/wk short)`}.</div>
+      <div class="pickhdr">Choose how to pay it off:</div>
+      ${opt('extra', 'Use my leftover only', cp.need <= 0 ? `Your ${money(cp.extra)}/wk covers it — no cuts.` : `Put ${money(cp.extra)}/wk toward it;${shortNote(cp.need)}`)}
+      ${opt('spend', 'Spend less', `Everyday → ${money(o.spend.newSpend)}/wk (−${money(o.spend.cut)})${shortNote(o.spend.short)}`)}
+      ${opt('save', 'Save less', `Savings → ${money(o.save.newSave)}/wk (−${money(o.save.cut)})${shortNote(o.save.short)}`)}
+      ${opt('split', 'Split spending & savings', `Everyday ${money(o.split.newSpend)} + savings ${money(o.split.newSave)}/wk${shortNote(o.split.short)}`)}
+      ${opt('stretch', 'Take 2 months', `${money(cp.stretch.perWeek)}/wk over ${cp.stretch.weeks} weeks — easiest, slower`)}
+      <div class="note" style="margin:8px 0 0">Your pick shows as the <b>Recommended</b> column on the Plan tab.</div></div>`;
   }
   return `<h2>Credit card</h2><div class="card">
     <div class="field"><label>Current balance<br><span class="muted" style="font-size:.8rem">Type your balance, then log payments below</span></label>
@@ -169,13 +172,18 @@ function planTab() {
   const s = S(), wp = weekPlan(s, store.txs);
   const st = wp.standard, rc = wp.rec;
   const row = (label, a, b, cls = '') => `<div class="trow ${cls}"><span>${label}</span><span class="b">${money(a)}</span><span class="n">${money(b)}</span></div>`;
+  const stratName = { extra: 'use your leftover', spend: 'spend less', save: 'save less', split: 'split spending & savings', stretch: 'take 2 months' }[wp.strategy];
   const notes = [];
   if (wp.isCurrent && wp.billsLeft > 0) notes.push(`<b>Bills</b> is ${money(rc.bills)} to catch up the ${money(wp.billsLeft)} still owed this month.`);
-  if (wp.cardBalance > 0) notes.push(`<b>Extra / credit card</b> is the ${money(wp.cardPerWeek)} suggested to clear the ${money(wp.cardBalance)} card balance by month end; anything left after it drops to Leftover.`);
-  else notes.push(`<b>Extra / credit card</b> is spare money — there's no card balance to pay down.`);
+  if (wp.cardBalance > 0) {
+    notes.push(`<b>Extra / credit card</b> is the ${money(rc.extra)} card payment for your chosen strategy — <b>${stratName}</b>${wp.strategy === 'stretch' ? ` (over ${wp.stretchWeeks} weeks)` : ''}. Change it on the Bills tab.`);
+    if (wp.strategy === 'spend' && rc.everyday !== st.everyday) notes.push(`Everyday spending drops to ${money(rc.everyday)} to fund the card.`);
+    if (wp.strategy === 'save' && rc.savings !== st.savings) notes.push(`Savings drops to ${money(rc.savings)} to fund the card.`);
+    if (wp.strategy === 'split') notes.push(`Everyday and savings each drop a little to fund the card.`);
+  } else notes.push(`<b>Extra / credit card</b> is spare money — there's no card balance to pay down.`);
 
   return `${header('Plan', false)}
-    <p class="lead"><b>Standard week</b> is your plan from Settings. <b>Recommended</b> keeps your pay the same but catches up bills still owed and routes the extra to the credit card.</p>
+    <p class="lead"><b>Standard week</b> is your plan from Settings. <b>Recommended</b> keeps your pay the same, catches up bills still owed, and pays the card off your way${wp.cardBalance > 0 ? ` (${stratName})` : ''}.</p>
     <div class="card plan-table">
       <div class="trow head"><span></span><span class="b">Standard week</span><span class="n">Recommended</span></div>
       ${row('Paycheck', st.pay, rc.pay)}
@@ -466,6 +474,7 @@ document.addEventListener('click', (e) => {
     case 'log-xfer': return openFlow({ type: 'transfer', category: id, preset: true });
     case 'week': return openWeek();
     case 'week-reset': { S().weekResetAt = weekStats(S(), store.txs).start; saveSettings(); return render(); }
+    case 'cc-strategy': { S().cc = { ...S().cc, strategy: id }; saveSettings(); return render(); }
     case 'trends': return openTrends();
     case 'sheet-close': return closeSheet();
     case 'goto': ui.tab = id; scrollTo(0, 0); return render();
