@@ -251,3 +251,9 @@ select[data-set]:focus { outline:2px solid var(--brand); }
 .ccbreak .tot span { color:var(--ink); } .ccbreak .tot b { font-size:1.05rem; }
 .paytoggle { margin:8px 0 2px; }
 .paytoggle button { font-size:.9rem; }
+
+/* v15: editable charges line */
+.ccedit { display:flex; align-items:center; gap:6px; }
+.ccinput { width:92px; text-align:right; background:var(--card); border:1.5px solid var(--line); border-radius:8px; padding:5px 8px; font-weight:600; color:var(--ink); -moz-appearance:textfield; }
+.ccinput:focus { outline:2px solid var(--brand); border-color:transparent; }
+.ccbreak small { font-size:.68rem; color:var(--brand); }

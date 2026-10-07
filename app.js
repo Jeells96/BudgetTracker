@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=14';
-import { TRANSFERS } from './defaults.js?v=14';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, standardWeek, billsTotal, firstTotal, cardBalance, cardDetail, cycleWindow, cardPlan, weekPlan, monthlyIncome, trends } from './calc.js?v=14';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=15';
+import { TRANSFERS } from './defaults.js?v=15';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, standardWeek, billsTotal, firstTotal, cardBalance, cardDetail, cycleWindow, cardPlan, weekPlan, monthlyIncome, trends } from './calc.js?v=15';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -180,7 +180,8 @@ function cardSection(cp) {
         <input type="number" inputmode="decimal" value="${cc.start || ''}" placeholder="0" data-cc="start"></div>
       <div class="ccbreak">
         <div><span>Starting balance</span><b>${money(det.start)}</b></div>
-        <div><span>+ credit-card purchases since</span><b>${money(det.credit)}</b></div>
+        <div><span>+ purchases since${det.adj ? ' <small>(adjusted)</small>' : ''}</span>
+          <span class="ccedit">${det.adj ? '<button class="link" data-act="cc-charges-reset" title="Back to tracked">↺</button>' : ''}<input class="ccinput" type="number" inputmode="decimal" value="${det.credit}" data-cc="charges"></span></div>
         <div><span>− card payments since</span><b>${money(det.paid)}</b></div>
         <div class="tot"><span>Current balance</span><b>${money(det.computed)}</b></div></div>`;
   } else {
@@ -584,6 +585,7 @@ document.addEventListener('click', (e) => {
     case 'week-reset': { S().weekResetAt = weekStats(S(), store.txs).start; saveSettings(); return render(); }
     case 'cc-strategy': { S().cc = { ...S().cc, strategy: id }; saveSettings(); return render(); }
     case 'cc-mode': { S().cc = { ...S().cc, mode: id }; saveSettings(); return render(); }
+    case 'cc-charges-reset': { S().cc = { ...S().cc, chargesAdj: 0 }; saveSettings(); return render(); }
     case 'plan-reset': ui.planDraft = null; return render();
     case 'trends': return openTrends();
     case 'sheet-close': return closeSheet();
@@ -613,6 +615,7 @@ document.addEventListener('change', (e) => {
   if (t.dataset.set) { S()[t.dataset.set] = num(); saveSettings(); }
   else if (t.dataset.cc === 'start') { S().cc = { ...S().cc, start: num(), asOf: today() }; saveSettings(); }
   else if (t.dataset.cc === 'manual') { S().cc = { ...S().cc, manual: num() }; saveSettings(); }
+  else if (t.dataset.cc === 'charges') { const raw = cardDetail(S(), store.txs).rawCredit; S().cc = { ...S().cc, chargesAdj: round(num() - raw) }; saveSettings(); }
   else if (t.dataset.cat) { const c = S().categories[+t.dataset.cat]; c[t.dataset.field] = t.type === 'checkbox' ? t.checked : num(); saveSettings(); }
   else if (t.dataset.bill) {
     const b = S().bills[+t.dataset.bill], f = t.dataset.field;

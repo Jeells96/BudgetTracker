@@ -33,7 +33,7 @@ export const DEFAULT_SETTINGS = {
   //  start  = balance when you last baselined it; asOf = the date that applies from
   //  mode   = 'auto' (app computes balance from logged credit charges) or 'manual'
   //  manual = your typed current balance (used when mode = manual)
-  cc: { start: 0, asOf: null, mode: 'auto', manual: 0, strategy: 'extra' },
+  cc: { start: 0, asOf: null, mode: 'auto', manual: 0, chargesAdj: 0, strategy: 'extra' },
   weekStartDay: 5,                  // day the weekly budget resets (0=Sun … 6=Sat); default Friday
   weekResetAt: null,                // week-start (YYYY-MM-DD) the user cleared the rollover for
   seeded: false                     // spreadsheet history imported?

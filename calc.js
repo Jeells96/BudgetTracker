@@ -122,9 +122,11 @@ export function cycleWindow(now = new Date()) {
 // purchases logged since the baseline date − card payments since then.
 export function cardDetail(s, txs) {
   const start = s.cc.start || 0, asOf = s.cc.asOf;
-  const credit = asOf ? sum(txs.filter((t) => t.type === 'expense' && t.pay !== 'cash' && t.date >= asOf).map((t) => t.amount)) : 0;
+  const rawCredit = asOf ? sum(txs.filter((t) => t.type === 'expense' && t.pay !== 'cash' && t.date >= asOf).map((t) => t.amount)) : 0;
+  const adj = s.cc.chargesAdj || 0;                 // manual correction; new purchases still add on top
+  const credit = round(rawCredit + adj);
   const paid = asOf ? sum(txs.filter((t) => t.type === 'transfer' && t.category === 'card' && t.date >= asOf).map((t) => t.amount)) : 0;
-  return { start, asOf, credit, paid, computed: Math.max(0, round(start + credit - paid)) };
+  return { start, asOf, rawCredit, adj, credit, paid, computed: Math.max(0, round(start + credit - paid)) };
 }
 export const cardComputed = (s, txs) => cardDetail(s, txs).computed;
 
