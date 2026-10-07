@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=19';
-import { TRANSFERS } from './defaults.js?v=19';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, standardWeek, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, cardPlan, weekPlan, monthlyIncome, trends } from './calc.js?v=19';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=21';
+import { TRANSFERS } from './defaults.js?v=21';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, standardWeek, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, cardPlan, weekPlan, monthlyIncome, trends } from './calc.js?v=21';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -110,7 +110,7 @@ function txRow(t) {
   if (t.type === 'income') { icon = '💰'; label = t.note || 'Paycheck'; sub = 'Income'; amt = `<div class="amt in">+${money(t.amount)}</div>`; }
   else if (t.type === 'transfer') { const x = tfer(t.category); icon = x?.emoji || '🔁'; label = t.note || 'Transfer'; sub = 'To ' + (x?.name || t.category).toLowerCase(); amt = `<div class="amt xfer">${money(t.amount)}</div>`; }
   else { const c = cat(t.category); icon = c ? c.emoji : '🧾'; label = t.note || (c ? c.name : 'Purchase'); sub = c ? c.name : t.category; amt = `<div class="amt">${money(t.amount)}</div>`; }
-  const ccDot = t.type === 'expense' && t.pay === 'credit' ? ' <span class="cc-dot" title="Credit card">💳</span>' : '';
+  const ccDot = (t.type === 'expense' && t.pay === 'credit' ? ' <span class="cc-dot" title="Credit card">💳</span>' : '') + (t.exAvg ? ' <span class="ex-tag" title="Excluded from average">excl. avg</span>' : '');
   return `<button class="tx" data-act="tx" data-id="${esc(t.id)}"><div class="emoji">${icon}</div>
     <div class="body"><div class="t">${esc(label)}${ccDot}</div><div class="s">${esc(sub)} · ${parseYmd(t.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div></div>${amt}<span class="chev">›</span></button>`;
 }
@@ -365,7 +365,7 @@ const SPECIAL_CATS = [
   { id: 'savings', name: 'Savings', emoji: '🐷', type: 'transfer' },
   { id: 'card', name: 'Credit card', emoji: '💳', type: 'transfer' }
 ];
-const logCats = () => [...S().categories.map((c) => ({ id: c.id, name: c.name, emoji: c.emoji, type: 'expense' })), ...SPECIAL_CATS];
+const logCats = () => [...S().categories.map((c) => ({ id: c.id, name: c.name, emoji: c.emoji, type: 'expense', useAvg: !!c.useAvg })), ...SPECIAL_CATS];
 const logCat = (id) => logCats().find((c) => c.id === id);
 
 // ----- add entries (category first, then amount → description; Save or Add another) -----
@@ -402,11 +402,13 @@ function drawFlow() {
     const payToggle = c.type === 'expense' ? `<div class="seg paytoggle">
       <button data-flow="pay" data-v="credit" class="${f.pay !== 'cash' ? 'on' : ''}">💳 Credit card</button>
       <button data-flow="pay" data-v="cash" class="${f.pay === 'cash' ? 'on' : ''}">💵 Debit / cash</button></div>` : '';
+    const exToggle = c.type === 'expense' && c.useAvg ? `<label class="exrow"><input type="checkbox" id="f-ex" ${f.exAvg ? 'checked' : ''}> Exclude from the ${esc(c.name)} average <span class="muted">(unusual trip)</span></label>` : '';
     body = `<div class="q">Add a description</div>
       <div class="summary"><div class="emoji" style="background:var(--card)">${c.emoji}</div><div><b>${money(amtNum)}</b><div class="muted">${esc(c.name)}</div></div></div>
       <input class="sheet-input" id="f-note" type="text" placeholder="${ph}" value="${esc(f.note)}" autocomplete="off">
       <input class="sheet-input" id="f-date" type="date" value="${f.date}" max="${today()}">
       ${payToggle}
+      ${exToggle}
       <div class="twobtn"><button class="btn block" data-flow="again">+ Add another</button><button class="btn primary block" data-flow="save">Save</button></div>
       ${f.count ? `<p class="note" style="text-align:center;margin-bottom:0">${f.count} added under ${esc(c.name)} so far</p>` : `<p class="note" style="text-align:center;margin-bottom:0">“Add another” keeps ${esc(c.name)} selected for the next item.</p>`}`;
   }
@@ -422,8 +424,9 @@ function flowCommit() {
   const note = $('#f-note') ? $('#f-note').value.trim() : f.note;
   const date = $('#f-date') ? ($('#f-date').value || today()) : f.date;
   f.date = date;
+  if ($('#f-ex')) f.exAvg = $('#f-ex').checked;
   const tx = { type: c.type, amount: round(parseFloat(f.amt)), category: c.type === 'income' ? 'income' : c.id, note, date };
-  if (c.type === 'expense') tx.pay = f.pay === 'cash' ? 'cash' : 'credit';
+  if (c.type === 'expense') { tx.pay = f.pay === 'cash' ? 'cash' : 'credit'; if (c.useAvg && f.exAvg) tx.exAvg = true; }
   addTx(tx);
   ui.month = date.slice(0, 7);
   if (ui.tab === 'settings') ui.tab = 'home';
@@ -441,10 +444,10 @@ function flowClick(btn) {
       else if (!(f.amt.includes('.') && f.amt.split('.')[1].length >= 2) && f.amt.replace('.', '').length < 8) f.amt = f.amt === '0' ? v : f.amt + v;
       return drawFlow();
     case 'next': if (parseFloat(f.amt) > 0) { f.step = 3; drawFlow(); } return;
-    case 'pay': { if ($('#f-note')) f.note = $('#f-note').value; if ($('#f-date')) f.date = $('#f-date').value || f.date; f.pay = v; return drawFlow(); }
+    case 'pay': { if ($('#f-note')) f.note = $('#f-note').value; if ($('#f-date')) f.date = $('#f-date').value || f.date; if ($('#f-ex')) f.exAvg = $('#f-ex').checked; f.pay = v; return drawFlow(); }
     case 'back': f.step -= 1; if (f.step < 1) f.step = 1; return drawFlow();
     case 'save': { if (!(parseFloat(f.amt) > 0)) return; const tx = flowCommit(); closeSheet(); render(); toast(savedMsg(tx)); return; }
-    case 'again': { if (!(parseFloat(f.amt) > 0)) return; const tx = flowCommit(); f.count += 1; f.amt = ''; f.note = ''; f.step = 2; drawFlow(); render(); toast(savedMsg(tx)); return; }
+    case 'again': { if (!(parseFloat(f.amt) > 0)) return; const tx = flowCommit(); f.count += 1; f.amt = ''; f.note = ''; f.exAvg = false; f.step = 2; drawFlow(); render(); toast(savedMsg(tx)); return; }
   }
 }
 
@@ -468,6 +471,7 @@ function syncEditInputs() {
   if (a) edit.amount = parseFloat(a.value) || 0;
   if (n) edit.note = n.value;
   if (d) edit.date = d.value || edit.date;
+  const ex = $('#e-ex'); if (ex) edit.exAvg = ex.checked;
 }
 function drawEdit() {
   const e = edit, el = $('#sheet');
@@ -486,6 +490,7 @@ function drawEdit() {
     ${e.type === 'expense' ? `<label class="editlbl">Paid with</label><div class="seg paytoggle">
       <button data-edit="pay" data-v="credit" class="${(e.pay || 'credit') !== 'cash' ? 'on' : ''}">💳 Credit card</button>
       <button data-edit="pay" data-v="cash" class="${e.pay === 'cash' ? 'on' : ''}">💵 Debit / cash</button></div>` : ''}
+    ${e.type === 'expense' && cat(e.category)?.useAvg ? `<label class="exrow"><input type="checkbox" id="e-ex" ${e.exAvg ? 'checked' : ''}> Exclude from the ${esc(cat(e.category).name)} average <span class="muted">(unusual trip)</span></label>` : ''}
     <button class="btn primary block" data-edit="save">Save changes</button>
     <button class="btn danger block" data-edit="delete">Delete</button></div>`;
 }
@@ -500,7 +505,7 @@ function editClick(btn) {
       syncEditInputs();
       if (!(e.amount > 0)) return toast('Enter an amount');
       const patch = { type: e.type, amount: round(e.amount), category: e.type === 'income' ? 'income' : e.category, note: (e.note || '').trim(), date: e.date };
-      if (e.type === 'expense') patch.pay = e.pay === 'cash' ? 'cash' : 'credit';
+      if (e.type === 'expense') { patch.pay = e.pay === 'cash' ? 'cash' : 'credit'; patch.exAvg = !!e.exAvg; }
       updateTx(e.id, patch);
       ui.month = e.date.slice(0, 7);
       closeSheet(); render(); toast('Changes saved');

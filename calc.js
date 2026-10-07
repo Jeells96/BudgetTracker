@@ -28,7 +28,7 @@ export const firstTotal = (s) => sum(s.bills.filter((b) => b.day === 1).map(bill
 export function categoryAvg(txs, id, now = new Date()) {
   const cur = ymd(now).slice(0, 7);
   const by = {};
-  txs.filter((t) => t.type === 'expense' && t.category === id).forEach((t) => { const m = t.date.slice(0, 7); by[m] = (by[m] || 0) + t.amount; });
+  txs.filter((t) => t.type === 'expense' && t.category === id && !t.exAvg).forEach((t) => { const m = t.date.slice(0, 7); by[m] = (by[m] || 0) + t.amount; });
   const months = Object.keys(by).filter((m) => m < cur).sort().slice(-12);
   return months.length ? round(months.reduce((a, m) => a + by[m], 0) / months.length) : 0;
 }

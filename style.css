@@ -265,3 +265,7 @@ select[data-set]:focus { outline:2px solid var(--brand); }
 .field input:disabled { opacity:.6; }
 .field input[type=month] { flex:1; background:var(--bg); border:1px solid transparent; border-radius:10px; padding:9px 10px; color:inherit; }
 .field input[type=month]:focus { outline:2px solid var(--brand); }
+
+/* v20: exclude-from-average toggle + tag */
+.exrow { display:flex; align-items:center; gap:10px; margin:12px 2px 2px; font-size:.92rem; }
+.ex-tag { font-size:.6rem; text-transform:uppercase; letter-spacing:.03em; background:var(--track); color:var(--muted); padding:2px 6px; border-radius:99px; font-weight:700; vertical-align:middle; }
