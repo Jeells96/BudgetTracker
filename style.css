@@ -158,3 +158,30 @@ nav#tabs button.on { color:var(--brand); font-weight:700; } nav#tabs button.on s
 .btn.danger { background:color-mix(in srgb,var(--bad) 12%,var(--card)); color:var(--bad); }
 .editlbl { display:block; font-size:.78rem; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin:6px 4px 6px; font-weight:600; }
 .cats.edit button.on { background:var(--brand); color:#fff; }
+
+/* v5 additions */
+.hero.tappable { display:block; width:100%; text-align:left; border:0; cursor:pointer; }
+.hero.tappable:active { transform:scale(.995); }
+.hero .label .hint { float:right; font-size:.72rem; font-weight:600; opacity:.7; }
+.rollover { background:color-mix(in srgb,var(--warn) 16%,var(--card)); border-radius:14px; padding:11px 14px; margin-top:10px; font-size:.88rem; line-height:1.45; }
+.link { color:var(--brand); font-weight:700; text-decoration:underline; }
+.cat { width:100%; text-align:left; background:none; border:0; border-top:1px solid var(--line); cursor:pointer; }
+.cat:first-child { border-top:0; }
+.cat .chev { color:var(--muted); font-size:1.3rem; opacity:.5; align-self:center; }
+/* week breakdown */
+.sheet-page { max-height:92vh; overflow:auto; }
+.wk-cat { display:flex; align-items:center; gap:12px; padding:12px 0; border-top:1px solid var(--line); }
+.wk-cat:first-child { border-top:0; }
+.wk-cat .body { flex:1; display:flex; align-items:center; gap:8px; } .wk-cat .body .n { font-weight:600; }
+.wk-cat .tag { font-size:.68rem; text-transform:uppercase; letter-spacing:.04em; background:var(--track); color:var(--muted); padding:2px 7px; border-radius:99px; font-weight:700; }
+.wk-nums { display:flex; gap:16px; text-align:right; }
+.wk-nums b { display:block; font-size:.98rem; } .wk-nums span { font-size:.68rem; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; }
+/* trends */
+.tiles { display:flex; gap:8px; }
+.tile { flex:1; background:var(--card); border-radius:16px; padding:14px 12px; box-shadow:var(--shadow); text-align:center; }
+.tile b { display:block; font-size:1.15rem; } .tile span { font-size:.72rem; color:var(--muted); }
+.tr-month { padding:12px 0; border-top:1px solid var(--line); } .tr-month:first-child { border-top:0; }
+.tr-top { display:flex; justify-content:space-between; margin-bottom:6px; } .tr-top b { font-weight:700; }
+.tr-sub { font-size:.8rem; color:var(--muted); margin-top:6px; }
+select[data-set] { background:var(--bg); border:1px solid transparent; border-radius:10px; padding:9px 10px; font:inherit; color:inherit; }
+select[data-set]:focus { outline:2px solid var(--brand); }

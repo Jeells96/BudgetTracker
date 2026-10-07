@@ -4,7 +4,9 @@ const sum = (a) => round(a.reduce((s, x) => s + x, 0));
 const pad = (n) => String(n).padStart(2, '0');
 export const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 export const parseYmd = (s) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
-export const weekStart = (d) => { const x = new Date(d); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return ymd(x); }; // Monday
+export const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+// Start of the week that `d` falls in, for a configurable first-day (0=Sun … 6=Sat; default Friday).
+export const weekStart = (d, startDay = 5) => { const x = new Date(d); x.setDate(x.getDate() - ((x.getDay() - startDay + 7) % 7)); return ymd(x); };
 
 export const weeklyPay = (s) => s.weeklyPay;
 export const monthlyIncome = (s) => round(s.weeklyPay * 4);
@@ -67,10 +69,19 @@ export function monthStats(s, txs, month, now = new Date()) {
 }
 
 export function weekStats(s, txs, now = new Date()) {
-  const ws = weekStart(now);
+  const startDay = s.weekStartDay ?? 5;
+  const ws = weekStart(now, startDay);
+  const end = ymd(addDays(parseYmd(ws), 7));
   const ids = s.categories.filter((c) => c.weekly).map((c) => c.id);
-  const spent = sum(txs.filter((t) => t.type === 'expense' && t.date >= ws && ids.includes(t.category)).map((t) => t.amount));
-  return { start: ws, ids, spent, budget: s.weeklyBudget, left: round(s.weeklyBudget - spent) };
+  const spentBetween = (from, to) => sum(txs.filter((t) => t.type === 'expense' && t.date >= from && t.date < to && ids.includes(t.category)).map((t) => t.amount));
+  const spent = spentBetween(ws, end);
+  // Roll a previous over-spend into this week (reduces the budget) unless this week was reset.
+  const prevStart = weekStart(addDays(parseYmd(ws), -1), startDay);
+  const prevLeft = round(s.weeklyBudget - spentBetween(prevStart, ws));
+  const reset = s.weekResetAt === ws;
+  const carryover = !reset && prevLeft < 0 ? prevLeft : 0;
+  const budget = round(s.weeklyBudget + carryover);
+  return { start: ws, end, ids, spent, baseBudget: s.weeklyBudget, carryover, budget, left: round(budget - spent), reset };
 }
 
 // ---- credit card payoff ----
@@ -103,103 +114,49 @@ export function cardPlan(s, txs, now = new Date()) {
   };
 }
 
-// Average of the most recent paychecks, to catch a pay shortage/overage.
-export function recentPay(txs) {
-  const checks = txs.filter((t) => t.type === 'income' && t.amount >= 300).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 4);
-  return checks.length >= 2 ? { avg: round(sum(checks.map((t) => t.amount)) / checks.length), n: checks.length } : null;
-}
-
-// Standard week (your plan) vs Recommended week (adjusts for recent pay,
-// bills still owed this month, and paying the credit card off by month end).
+// Standard week (your plan from Settings) vs Recommended week (same pay, but
+// adjusts the bills line to catch up what's still owed, and routes the extra
+// money to the credit card when there's a balance).
 export function weekPlan(s, txs, now = new Date()) {
   const sw = standardWeek(s);
   const ms = monthStats(s, txs, ymd(now).slice(0, 7), now);
   const cp = cardPlan(s, txs, now);
-  const rp = recentPay(txs);
-  const usedRecent = rp && Math.abs(rp.avg - sw.pay) >= 1;
 
-  const pay = usedRecent ? rp.avg : sw.pay;
+  const pay = sw.pay;                                                // always your settings income
   const bills = ms.isCurrent ? Math.max(0, round(ms.billsLeft / ms.weeksLeft)) : sw.bills;
   const groceries = sw.groceries;
   const everyday = sw.everyday;
   const savings = sw.savings;
-  const extra = cp.balance > 0 ? cp.perWeek : sw.extra;
-  const leftover = round(pay - bills - groceries - everyday - savings - extra);
+  const pool = round(pay - bills - groceries - everyday - savings); // money for card / extra
+  // With a balance, the Extra line is the suggested card payment and anything
+  // left over after it becomes Leftover. With no balance, it's just extra money.
+  const extra = cp.balance > 0 ? cp.perWeek : pool;
+  const leftover = cp.balance > 0 ? round(pool - cp.perWeek) : 0;
 
   return {
     standard: sw,
     rec: { pay, bills, groceries, everyday, savings, extra, leftover },
-    usedRecent, recentPay: rp ? rp.avg : null,
-    cardBalance: cp.balance, weeksLeft: ms.weeksLeft, billsLeft: ms.billsLeft, isCurrent: ms.isCurrent
+    cardBalance: cp.balance, cardPerWeek: cp.perWeek, weeksLeft: ms.weeksLeft, billsLeft: ms.billsLeft, isCurrent: ms.isCurrent
   };
 }
 
-// ---- the coach ----
-export function coach(s, txs, now = new Date()) {
-  const tips = [];
-  const month = ymd(now).slice(0, 7);
-  const ms = monthStats(s, txs, month, now), ws = weekStats(s, txs, now), cp = cardPlan(s, txs, now), b = baseline(s);
-  const mname = now.toLocaleDateString('en-US', { month: 'long' });
-  const nm = (id) => s.categories.find((c) => c.id === id)?.name || id;
-
-  // 1. Bills account
-  if (ms.billsLeft > 0) {
-    const wk = round(ms.billsLeft / ms.weeksLeft);
-    let body = `You still need ${money(ms.billsLeft)} in the bills account to cover all of ${mname}'s ${money(ms.billsTotal)}. Spread over the ${ms.weeksLeft} paycheck${ms.weeksLeft > 1 ? 's' : ''} left, that's ${money(wk)} each.`;
-    if (ms.firstLeft > 0) body += ` The 1st-of-month bills (${money(ms.firstTotal)}) are the priority — ${money(ms.firstLeft)} still to go.`;
-    tips.push({ icon: '🏦', tone: ms.firstLeft > 0 && ms.day >= 20 ? 'warn' : 'info', title: `Move ${money(wk)} to bills this payday`, body });
-  } else {
-    tips.push({ icon: '✅', tone: 'good', title: 'Bills are fully funded', body: `You've moved ${money(ms.billsIn)} into the bills account — that covers all ${money(ms.billsTotal)} for ${mname}.` });
+// Month-by-month totals for the Trends view, plus averages across months with data.
+export function trends(s, txs) {
+  const by = {};
+  for (const t of txs) {
+    const m = t.date.slice(0, 7);
+    const b = (by[m] ||= { month: m, spent: 0, savings: 0, income: 0, bills: 0, card: 0 });
+    if (t.type === 'expense') b.spent += t.amount;
+    else if (t.type === 'income') b.income += t.amount;
+    else if (t.category === 'savings') b.savings += t.amount;
+    else if (t.category === 'bills') b.bills += t.amount;
+    else if (t.category === 'card') b.card += t.amount;
   }
-
-  // 2. Everyday spending this week
-  if (ws.left < 0) tips.push({ icon: '🚨', tone: 'bad', title: `${money(-ws.left)} over this week`, body: `You've spent ${money(ws.spent)} of your ${money(ws.budget)} everyday budget (${ws.ids.map(nm).join(', ')}). Pausing eating out and "other" for the rest of the week gets you back on track.` });
-  else if (ws.spent > ws.budget * 0.8) tips.push({ icon: '⚠️', tone: 'warn', title: `Only ${money(ws.left)} left this week`, body: `You've used ${Math.round((ws.spent / ws.budget) * 100)}% of the everyday budget already.` });
-  else tips.push({ icon: '👍', tone: 'good', title: `${money(ws.left)} left for everyday spending`, body: `You're at ${money(ws.spent)} of ${money(ws.budget)} this week. Nice and steady.` });
-
-  // 3. Categories over / near budget
-  s.categories.filter((c) => c.budget > 0).forEach((c) => {
-    const sp = ms.byCat[c.id];
-    if (sp > c.budget) tips.push({ icon: '🔴', tone: 'bad', title: `${c.name} is ${money(sp - c.budget)} over`, body: `${money(sp)} spent against a ${money(c.budget)} budget for ${mname}.` });
-    else if (ms.isCurrent && ms.day >= 5) {
-      const proj = round((sp / ms.day) * ms.dim);
-      if (proj > c.budget * 1.1) tips.push({ icon: '📈', tone: 'warn', title: `${c.name} is on pace to hit ${money(proj)}`, body: `At this rate you'll land ${money(proj - c.budget)} above your ${money(c.budget)} budget by month end. Try about ${money(round((c.budget - sp) / Math.max(1, ms.daysLeft) * 7))} a week from here.` });
-    }
-  });
-
-  // 4. Credit card
-  if (cp.balance > 0) {
-    const o = cp.options;
-    let body = `To clear ${money(cp.balance)} by the end of ${mname}, put ${money(cp.perWeek)} a week toward it (${cp.weeks} paycheck${cp.weeks > 1 ? 's' : ''} left).`;
-    if (cp.need <= 0) body += ` Your leftover ${money(cp.extra)} a week covers that without cutting anything.`;
-    else if (o.spend.short <= 0) body += ` Easiest path: spend ${money(o.spend.cut)} less a week (${money(o.spend.newSpend)} instead of ${money(s.weeklyBudget)}).`;
-    else body += ` That's tight — see the plan on the Bills tab for ways to split it, or stretch it over ${cp.stretch.weeks} weeks for ${money(cp.stretch.perWeek)} a week.`;
-    tips.push({ icon: '💳', tone: cp.need > 0 ? 'warn' : 'info', title: `Card payoff: ${money(cp.perWeek)} a week`, body });
-  } else if (s.cc.balance > 0) tips.push({ icon: '🎉', tone: 'good', title: 'Credit card is paid off', body: 'Balance is at $0 — that money can go back to savings.' });
-
-  // 5. Savings
-  if (ms.isCurrent && ms.day >= 7) {
-    const target = round((s.weeklySavings * ms.day) / 7);
-    if (ms.savingsIn < target * 0.75) tips.push({ icon: '🐷', tone: 'info', title: 'Savings is running behind', body: `${money(ms.savingsIn)} moved to savings so far; a steady ${money(s.weeklySavings)}/week would be about ${money(target)} by now. Log transfers with Log → Transfer → Savings.` });
-  }
-
-  // 6. Paycheck reality check (last 4 paychecks over $500)
-  const checks = txs.filter((t) => t.type === 'income' && t.amount >= 500).sort((a, c) => c.date.localeCompare(a.date)).slice(0, 4);
-  if (checks.length === 4) {
-    const avg = round(sum(checks.map((t) => t.amount)) / 4);
-    if (Math.abs(avg - s.weeklyPay) / s.weeklyPay > 0.05)
-      tips.push({ icon: '💵', tone: 'info', title: `Recent paychecks average ${money(avg)}`, body: `That's ${money(Math.abs(avg - s.weeklyPay))} ${avg < s.weeklyPay ? 'below' : 'above'} the ${money(s.weeklyPay)} weekly pay in Settings. Update it if this is the new normal.` });
-  }
-
-  // 7. The biggest leak: average over the last 3 months that actually have data
-  const prev = [1, 2, 3, 4, 5, 6].map((k) => ymd(new Date(now.getFullYear(), now.getMonth() - k, 1)).slice(0, 7))
-    .filter((m) => txs.some((t) => t.date.startsWith(m))).slice(0, 3);
-  if (prev.length) {
-    const avgs = s.categories.map((c) => ({ c, avg: round(sum(prev.map((m) => sum(txs.filter((t) => t.type === 'expense' && t.category === c.id && t.date.startsWith(m)).map((t) => t.amount)))) / prev.length) }))
-      .filter((x) => x.avg >= 150 && x.c.budget < x.avg * 0.5).sort((x, y) => y.avg - x.avg);
-    if (avgs[0]) { const { c, avg } = avgs[0];
-      tips.push({ icon: '🔍', tone: 'info', title: `${c.name} averages ${money(avg)} a month`, body: `Over your last ${prev.length} months of data — about ${money(round(avg / 4.3))} a week${c.budget ? ` against a ${money(c.budget)} budget` : ' with no budget set'}. It's the best place to find extra money for the card or savings.` }); }
-  }
-
-  return { tips, ms, ws, cp, b };
+  const months = Object.values(by).map((b) => ({
+    month: b.month, spent: round(b.spent), savings: round(b.savings), income: round(b.income), bills: round(b.bills), card: round(b.card)
+  })).sort((a, b) => b.month.localeCompare(a.month));
+  const n = months.length || 1;
+  const avg = (k) => round(months.reduce((a, m) => a + m[k], 0) / n);
+  return { months, avg: { spent: avg('spent'), savings: avg('savings'), income: avg('income'), bills: avg('bills'), card: avg('card') }, count: months.length };
 }
+

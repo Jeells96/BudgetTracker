@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=4';
-import { TRANSFERS } from './defaults.js?v=4';
-import { round, ymd, parseYmd, monthStats, weekStats, standardWeek, billsTotal, firstTotal, cardBalance, cardPlan, weekPlan, monthlyIncome } from './calc.js?v=4';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=5';
+import { TRANSFERS } from './defaults.js?v=5';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, standardWeek, billsTotal, firstTotal, cardBalance, cardPlan, weekPlan, monthlyIncome, trends } from './calc.js?v=5';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -56,16 +56,16 @@ function home() {
     const stat3 = bal > 0
       ? `<div><b>${money(bal)}</b><span>Card balance</span></div>`
       : `<div><b>${money(s.weeklySavings)}</b><span>Weekly savings</span></div>`;
-    hero = `<div class="card hero">
-      <div class="label">Left to spend this week</div>
+    hero = `<button class="card hero tappable" data-act="week">
+      <div class="label">Left to spend this week <span class="hint">tap for breakdown ›</span></div>
       <div class="big ${ws.left < 0 ? 'neg' : ''}">${money(ws.left)}</div>
       <div class="bar ${barClass(ws.spent, ws.budget)}"><i style="width:${pct(ws.spent, ws.budget)}%"></i></div>
-      <div class="note" style="margin:8px 0 0">${money(ws.spent)} of ${money(ws.budget)} · ${ws.ids.map((i) => esc(cat(i)?.name)).join(', ')}</div>
+      <div class="note" style="margin:8px 0 0">${money(ws.spent)} of ${money(ws.budget)}${ws.carryover < 0 ? ` <span class="negtext">(incl. ${money(ws.carryover)} rolled over)</span>` : ''} · ${ws.ids.map((i) => esc(cat(i)?.name)).join(', ')}</div>
       <div class="stats">
         <div><b>${money(ws.spent)}</b><span>Spent this week</span></div>
         <div><b>${money(ms.billsLeft)}</b><span>Still to bills</span></div>
         ${stat3}
-      </div></div>`;
+      </div></button>`;
   } else {
     const n = ms.list.filter((t) => t.type === 'expense').length;
     hero = `<div class="card hero">
@@ -73,21 +73,30 @@ function home() {
       <div class="big">${money(ms.spent)}</div>
       <div class="note" style="margin:8px 0 0">${n} purchase${n === 1 ? '' : 's'}${ms.income ? ` · ${money(ms.income)} income` : ''}</div></div>`;
   }
+  const rollover = weekly && ws.carryover < 0
+    ? `<div class="rollover">You went ${money(-ws.carryover)} over last week, so this week is trimmed to ${money(ws.budget)}. <button class="link" data-act="week-reset">Reset to ${money(ws.baseBudget)}</button></div>`
+    : '';
 
-  const catRows = s.categories.map((c) => {
-    const sp = ms.byCat[c.id];
-    const inner = c.budget > 0
-      ? `<div class="row"><span class="n">${esc(c.name)}</span><span class="a">${money(sp)} / ${money(c.budget)}</span></div>
-         <div class="bar ${barClass(sp, c.budget)}"><i style="width:${pct(sp, c.budget)}%"></i></div>`
-      : `<div class="row"><span class="n">${esc(c.name)}</span><span class="a">${money(sp)} spent</span></div>`;
-    return `<div class="cat"><div class="emoji">${c.emoji}</div><div class="body">${inner}</div></div>`;
-  }).join('');
+  const estIncome = monthlyIncome(s);
+  const moneyRow = (emoji, name, spent, total, act, id, hasBudget) => {
+    const inner = hasBudget
+      ? `<div class="row"><span class="n">${esc(name)}</span><span class="a">${money(spent)} / ${money(total)}</span></div>
+         <div class="bar ${act === 'goto' || name === 'Income' ? '' : barClass(spent, total)}"><i style="width:${pct(spent, total)}%"></i></div>`
+      : `<div class="row"><span class="n">${esc(name)}</span><span class="a">${money(spent)} spent</span></div>`;
+    return `<button class="cat" data-act="${act}" data-id="${esc(id)}"><div class="emoji">${emoji}</div><div class="body">${inner}</div><span class="chev">›</span></button>`;
+  };
+  const list = [
+    moneyRow('💰', 'Income', ms.income, estIncome, 'cat-filter', 'income', true),
+    ...s.categories.map((c) => moneyRow(c.emoji, c.name, ms.byCat[c.id], c.budget, 'cat-filter', c.id, c.budget > 0)),
+    moneyRow('🏦', 'Bills account', ms.billsIn, ms.billsTotal, 'goto', 'bills', true)
+  ].join('');
   const recent = monthTxs().slice(0, 5);
 
   return `${header('Budget')}
     ${hero}
+    ${rollover}
     <button class="log-btn" data-act="log"><span class="plus">+</span> Log a purchase</button>
-    <h2>Categories</h2><div class="card">${catRows}</div>
+    <h2>This month</h2><div class="card">${list}</div>
     <h2>Recent</h2><div class="card">${recent.length ? recent.map(txRow).join('') : '<div class="empty">Nothing logged yet this month.<br>Tap the big button to add your first purchase.</div>'}</div>`;
 }
 
@@ -161,12 +170,12 @@ function planTab() {
   const st = wp.standard, rc = wp.rec;
   const row = (label, a, b, cls = '') => `<div class="trow ${cls}"><span>${label}</span><span class="b">${money(a)}</span><span class="n">${money(b)}</span></div>`;
   const notes = [];
-  if (wp.usedRecent) notes.push(`<b>Paycheck</b> uses your recent average of ${money(wp.recentPay)} (not the ${money(st.pay)} standard).`);
   if (wp.isCurrent && wp.billsLeft > 0) notes.push(`<b>Bills</b> is ${money(rc.bills)} to catch up the ${money(wp.billsLeft)} still owed this month.`);
-  if (wp.cardBalance > 0) notes.push(`<b>Extra</b> goes to clearing the ${money(wp.cardBalance)} card balance by month end.`);
+  if (wp.cardBalance > 0) notes.push(`<b>Extra / credit card</b> is the ${money(wp.cardPerWeek)} suggested to clear the ${money(wp.cardBalance)} card balance by month end; anything left after it drops to Leftover.`);
+  else notes.push(`<b>Extra / credit card</b> is spare money — there's no card balance to pay down.`);
 
   return `${header('Plan', false)}
-    <p class="lead"><b>Standard week</b> is your plan from Settings. <b>Recommended</b> adjusts it for what's actually happening — your recent pay, bills still owed, and the credit card.</p>
+    <p class="lead"><b>Standard week</b> is your plan from Settings. <b>Recommended</b> keeps your pay the same but catches up bills still owed and routes the extra to the credit card.</p>
     <div class="card plan-table">
       <div class="trow head"><span></span><span class="b">Standard week</span><span class="n">Recommended</span></div>
       ${row('Paycheck', st.pay, rc.pay)}
@@ -205,7 +214,8 @@ function activity() {
     .map(([id, l]) => `<button class="chip ${ui.filter === id ? 'on' : ''}" data-act="filter" data-id="${esc(id)}">${esc(l)}</button>`).join('');
   return `${header('Activity', !ui.all)}
     <div class="searchrow"><input id="q" class="sheet-input" type="search" placeholder="Search purchases…" value="${esc(ui.q)}" autocomplete="off">
-    <button class="chip ${ui.all ? 'on' : ''}" data-act="all">Whole history</button></div>
+    <button class="chip" data-act="trends">📈 Trends</button>
+    <button class="chip ${ui.all ? 'on' : ''}" data-act="all">All</button></div>
     <div class="chips">${chips}</div><div id="actlist">${activityList()}</div>`;
 }
 
@@ -225,6 +235,10 @@ function settings() {
       <div class="prow"><span>💳 Extra spending <span class="muted">(auto)</span></span><b id="extra-amt" class="${sw.extra < 0 ? 'negtext' : ''}">${money(sw.extra)}</b></div>
       ${poolBase < 0 ? `<div class="err">Your pay doesn't cover bills + groceries + everyday spending — nothing left to save.</div>` : ''}
       <div class="note">Drag to move money between savings and extra spending. This sets the “standard week” on the Plan tab.</div></div>
+    <h2>Week</h2><div class="card">
+      <div class="field"><label>Week starts on<br><span class="muted" style="font-size:.8rem">When the weekly budget resets</span></label>
+        <select data-set="weekStartDay">${['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map((d, i) => `<option value="${i}" ${(+s.weekStartDay) === i ? 'selected' : ''}>${d}</option>`).join('')}</select></div>
+      <div class="note">Going over one week trims the next week's budget to compensate. You can reset it from the home screen any time.</div></div>
     <h2>Category budgets (monthly)</h2><div class="card">${s.categories.map((c, i) => `
       <div class="field weekly"><span class="emoji" style="width:36px;height:36px">${c.emoji}</span><label>${esc(c.name)}</label>
         <input type="number" inputmode="decimal" value="${c.budget}" data-cat="${i}" data-field="budget">
@@ -376,6 +390,56 @@ function toast(msg) {
   clearTimeout(toast.h); toast.h = setTimeout(() => (t.hidden = true), 3500);
 }
 
+// ----- this week's breakdown -----
+function openWeek() {
+  const s = S(), now = new Date();
+  const ws = weekStats(s, store.txs, now);
+  const ms = monthStats(s, store.txs, ymd(now).slice(0, 7), now);
+  const inWeek = store.txs.filter((t) => t.date >= ws.start && t.date < ws.end).sort(sortTx);
+  const weekByCat = {};
+  s.categories.forEach((c) => { weekByCat[c.id] = round(inWeek.filter((t) => t.type === 'expense' && t.category === c.id).reduce((a, t) => a + t.amount, 0)); });
+  const range = `${parseYmd(ws.start).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} – ${addDays(parseYmd(ws.start), 6).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}`;
+
+  const catRows = s.categories.map((c) => `
+    <div class="wk-cat"><div class="emoji">${c.emoji}</div>
+      <div class="body"><span class="n">${esc(c.name)}</span>${c.weekly ? '<span class="tag">weekly</span>' : ''}</div>
+      <div class="wk-nums"><div><b>${money(weekByCat[c.id])}</b><span>week</span></div><div><b class="muted">${money(ms.byCat[c.id])}${c.budget ? ` / ${money(c.budget)}` : ''}</b><span>month</span></div></div></div>`).join('');
+
+  const log = inWeek.length ? inWeek.map(txRow).join('') : '<div class="empty">Nothing logged this week yet.</div>';
+
+  $('#sheet').innerHTML = `<div class="panel sheet-page"><div class="head">
+    <span style="width:40px"></span><span class="step">This week · ${range}</span><button data-act="sheet-close" aria-label="Close">✕</button></div>
+    <div class="card hero" style="box-shadow:none;padding:0 0 4px">
+      <div class="label">Left this week</div>
+      <div class="big ${ws.left < 0 ? 'neg' : ''}">${money(ws.left)}</div>
+      <div class="bar ${barClass(ws.spent, ws.budget)}"><i style="width:${pct(ws.spent, ws.budget)}%"></i></div>
+      <div class="note" style="margin:8px 0 0">${money(ws.spent)} of ${money(ws.budget)} everyday budget${ws.carryover < 0 ? ` <span class="negtext">(incl. ${money(ws.carryover)} rolled over from last week)</span>` : ''}</div></div>
+    <h2>Every category</h2><div class="card">${catRows}</div>
+    <h2>This week's activity</h2><div class="card" style="padding:6px 18px">${log}</div></div>`;
+  $('#sheet').hidden = false;
+}
+
+// ----- monthly trends -----
+function openTrends() {
+  const t = trends(S(), store.txs);
+  const max = Math.max(1, ...t.months.map((m) => m.spent));
+  const tile = (label, val) => `<div class="tile"><b>${money(val)}</b><span>${label}</span></div>`;
+  const rows = t.months.map((m) => {
+    const label = parseYmd(m.month + '-01').toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+    const sub = [`Saved ${money(m.savings)}`, `Income ${money(m.income)}`, `Bills ${money(m.bills)}`].concat(m.card ? [`Card ${money(m.card)}`] : []).join(' · ');
+    return `<div class="tr-month"><div class="tr-top"><span>${label}</span><b>${money(m.spent)} spent</b></div>
+      <div class="bar"><i style="width:${pct(m.spent, max)}%"></i></div>
+      <div class="tr-sub">${sub}</div></div>`;
+  }).join('');
+  $('#sheet').innerHTML = `<div class="panel sheet-page"><div class="head">
+    <span style="width:40px"></span><span class="step">Monthly trends</span><button data-act="sheet-close" aria-label="Close">✕</button></div>
+    <p class="lead">Averages across ${t.count} month${t.count === 1 ? '' : 's'} of data.</p>
+    <div class="tiles">${tile('Avg spent / mo', t.avg.spent)}${tile('Avg saved / mo', t.avg.savings)}${tile('Avg income / mo', t.avg.income)}</div>
+    <div class="tiles" style="margin-top:8px">${tile('Avg to bills / mo', t.avg.bills)}${tile('Avg card paid / mo', t.avg.card)}</div>
+    <h2>By month</h2><div class="card">${rows || '<div class="empty">No data yet.</div>'}</div></div>`;
+  $('#sheet').hidden = false;
+}
+
 // ---------- live savings slider (no full re-render while dragging) ----------
 function slideSavings(val) {
   const s = S(), sw = standardWeek(s);
@@ -400,6 +464,12 @@ document.addEventListener('click', (e) => {
   switch (b.dataset.act) {
     case 'log': return openFlow();
     case 'log-xfer': return openFlow({ type: 'transfer', category: id, preset: true });
+    case 'week': return openWeek();
+    case 'week-reset': { S().weekResetAt = weekStats(S(), store.txs).start; saveSettings(); return render(); }
+    case 'trends': return openTrends();
+    case 'sheet-close': return closeSheet();
+    case 'goto': ui.tab = id; scrollTo(0, 0); return render();
+    case 'cat-filter': ui.filter = id; ui.all = false; ui.tab = 'activity'; scrollTo(0, 0); return render();
     case 'prev': case 'next': { const d = parseYmd(ui.month + '-01'); d.setMonth(d.getMonth() + (b.dataset.act === 'next' ? 1 : -1)); ui.month = monthKey(d); return render(); }
     case 'filter': ui.filter = id; return render();
     case 'all': ui.all = !ui.all; return render();
