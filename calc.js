@@ -10,8 +10,18 @@ export const weekStart = (d, startDay = 5) => { const x = new Date(d); x.setDate
 
 export const weeklyPay = (s) => s.weeklyPay;
 export const monthlyIncome = (s) => round(s.weeklyPay * 4);
-export const billsTotal = (s) => sum(s.bills.map((b) => b.amount));
-export const firstTotal = (s) => sum(s.bills.filter((b) => b.day === 1).map((b) => b.amount));
+// A bill's effective monthly cost: the 12-month average of logged amounts when
+// "use average" is on and there's history, otherwise its fixed amount.
+export function billAmount(b) {
+  const h = Array.isArray(b.history) ? b.history.filter((x) => x && x.month) : [];
+  if (b.useAvg && h.length) {
+    const vals = [...h].sort((a, c) => a.month.localeCompare(c.month)).slice(-12).map((x) => +x.amount || 0);
+    return round(vals.reduce((a, v) => a + v, 0) / vals.length);
+  }
+  return b.amount || 0;
+}
+export const billsTotal = (s) => sum(s.bills.map(billAmount));
+export const firstTotal = (s) => sum(s.bills.filter((b) => b.day === 1).map(billAmount));
 export const budgetTotal = (s) => sum(s.categories.map((c) => c.budget));
 const money = (n) => (n < 0 ? '-' : '') + '$' + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: Math.abs(n) % 1 ? 2 : 0, maximumFractionDigits: 2 });
 

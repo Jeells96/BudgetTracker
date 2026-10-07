@@ -257,3 +257,11 @@ select[data-set]:focus { outline:2px solid var(--brand); }
 .ccinput { width:92px; text-align:right; background:var(--card); border:1.5px solid var(--line); border-radius:8px; padding:5px 8px; font-weight:600; color:var(--ink); -moz-appearance:textfield; }
 .ccinput:focus { outline:2px solid var(--brand); border-color:transparent; }
 .ccbreak small { font-size:.68rem; color:var(--brand); }
+
+/* v17: cc dot on purchases, bill edit button */
+.cc-dot { font-size:.68rem; opacity:.85; margin-left:3px; }
+.btn.mini { width:34px; height:34px; padding:0; border-radius:10px; font-size:1rem; flex:none; display:grid; place-items:center; }
+.btn.mini.on { background:color-mix(in srgb,var(--brand) 20%,var(--card)); }
+.field input:disabled { opacity:.6; }
+.field input[type=month] { flex:1; background:var(--bg); border:1px solid transparent; border-radius:10px; padding:9px 10px; color:inherit; }
+.field input[type=month]:focus { outline:2px solid var(--brand); }

@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=16';
-import { TRANSFERS } from './defaults.js?v=16';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, standardWeek, billsTotal, firstTotal, cardBalance, cardDetail, cycleWindow, rollCardBaseline, cardPlan, weekPlan, monthlyIncome, trends } from './calc.js?v=16';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=17';
+import { TRANSFERS } from './defaults.js?v=17';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, standardWeek, billsTotal, firstTotal, billAmount, cardBalance, cardDetail, cycleWindow, rollCardBaseline, cardPlan, weekPlan, monthlyIncome, trends } from './calc.js?v=17';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -109,8 +109,9 @@ function txRow(t) {
   if (t.type === 'income') { icon = '💰'; label = t.note || 'Paycheck'; sub = 'Income'; amt = `<div class="amt in">+${money(t.amount)}</div>`; }
   else if (t.type === 'transfer') { const x = tfer(t.category); icon = x?.emoji || '🔁'; label = t.note || 'Transfer'; sub = 'To ' + (x?.name || t.category).toLowerCase(); amt = `<div class="amt xfer">${money(t.amount)}</div>`; }
   else { const c = cat(t.category); icon = c ? c.emoji : '🧾'; label = t.note || (c ? c.name : 'Purchase'); sub = c ? c.name : t.category; amt = `<div class="amt">${money(t.amount)}</div>`; }
+  const ccDot = t.type === 'expense' && t.pay === 'credit' ? ' <span class="cc-dot" title="Credit card">💳</span>' : '';
   return `<button class="tx" data-act="tx" data-id="${esc(t.id)}"><div class="emoji">${icon}</div>
-    <div class="body"><div class="t">${esc(label)}</div><div class="s">${esc(sub)} · ${parseYmd(t.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div></div>${amt}<span class="chev">›</span></button>`;
+    <div class="body"><div class="t">${esc(label)}${ccDot}</div><div class="s">${esc(sub)} · ${parseYmd(t.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div></div>${amt}<span class="chev">›</span></button>`;
 }
 
 function bills() {
@@ -118,9 +119,9 @@ function bills() {
   const T = ms.billsTotal, F = ms.billsIn;
   const byDay = [...s.bills].sort((a, b) => a.day - b.day || a.name.localeCompare(b.name));
   const first = byDay.filter((x) => x.day === 1), later = byDay.filter((x) => x.day !== 1);
-  const tot = (l) => round(l.reduce((a, x) => a + x.amount, 0));
+  const tot = (l) => round(l.reduce((a, x) => a + billAmount(x), 0));
   const wk = ms.isCurrent && ms.billsLeft > 0 ? round(ms.billsLeft / ms.weeksLeft) : 0;
-  const billRow = (x) => `<div class="bill"><div class="d-badge">${x.day}</div><div class="body"><div class="n">${esc(x.name)}</div><div class="d">Auto-pays the ${ordinal(x.day)}</div></div><div class="amt">${money(x.amount)}</div></div>`;
+  const billRow = (x) => `<div class="bill"><div class="d-badge">${x.day}</div><div class="body"><div class="n">${esc(x.name)}</div><div class="d">Auto-pays the ${ordinal(x.day)}${x.useAvg && x.history && x.history.length ? ' · 12-mo avg' : ''}</div></div><div class="amt">${money(billAmount(x))}</div></div>`;
 
   const milestone = (label, goal, sub) => {
     const need = Math.max(0, round(goal - F));
@@ -309,14 +310,15 @@ function settings() {
         <label class="muted" style="flex-basis:100%;font-size:.8rem;padding-left:46px"><input type="checkbox" ${c.weekly ? 'checked' : ''} data-cat="${i}" data-field="weekly"> counts toward weekly everyday budget</label></div>`).join('')}
       <button class="btn block" data-act="addcat">+ Add category</button></div>
     <h2>Bills &amp; due days</h2><div class="card">
-      <div class="field bill-head"><span style="flex:1">Bill</span><span style="width:84px;text-align:right">Amount</span><span style="width:52px;text-align:center">Day</span><span style="width:32px"></span></div>
+      <div class="field bill-head"><span style="flex:1">Bill</span><span style="width:84px;text-align:right">Amount</span><span style="width:46px;text-align:center">Day</span><span style="width:64px"></span></div>
       ${s.bills.map((b, i) => `
       <div class="field"><input class="name" type="text" value="${esc(b.name)}" data-bill="${i}" data-field="name">
-        <input type="number" inputmode="decimal" value="${b.amount}" data-bill="${i}" data-field="amount" style="width:84px">
-        <input type="number" inputmode="numeric" min="1" max="31" value="${b.day}" data-bill="${i}" data-field="day" style="width:52px;text-align:center">
+        <input type="number" inputmode="decimal" value="${b.useAvg ? billAmount(b) : b.amount}" ${b.useAvg ? 'disabled title="Using 12-month average"' : ''} data-bill="${i}" data-field="amount" style="width:84px">
+        <input type="number" inputmode="numeric" min="1" max="31" value="${b.day}" data-bill="${i}" data-field="day" style="width:46px;text-align:center">
+        <button class="btn mini ${b.useAvg ? 'on' : ''}" data-act="billedit" data-i="${i}" aria-label="Edit history">📝</button>
         <button class="x" data-act="delbill" data-i="${i}" aria-label="Delete">✕</button></div>`).join('')}
       <button class="btn block" data-act="addbill">+ Add bill</button>
-      <div class="note">Day = the day of the month the bill auto-pays. Bills on day 1 make up your “ready for the 1st” goal (${money(firstTotal(s))}). Total: ${money(billsTotal(s))}.</div></div>
+      <div class="note">Tap 📝 to log past months and use a 12-month average. Bills on day 1 make up your “ready for the 1st” goal (${money(firstTotal(s))}). Total: ${money(billsTotal(s))}.</div></div>
     <h2>Sync &amp; data</h2><div class="card"><div class="field"><label>${syncText}</label></div>
       ${store.syncError ? `<div class="err">${esc(store.syncError)}</div>` : ''}
       <button class="btn block" data-act="reimport">Re-import spreadsheet history</button></div>
@@ -324,8 +326,33 @@ function settings() {
 }
 
 // ---------- the sheet (add flow + edit) ----------
-let flow = null, edit = null;
-function closeSheet() { const el = $('#sheet'); el.hidden = true; el.className = 'sheet'; el.innerHTML = ''; flow = null; edit = null; }
+let flow = null, edit = null, billEdit = null;
+function closeSheet() { const el = $('#sheet'); el.hidden = true; el.className = 'sheet'; el.innerHTML = ''; flow = null; edit = null; billEdit = null; }
+
+// ----- edit a bill: fixed amount, past-month history, 12-month average -----
+const monthLabelShort = (ym) => parseYmd(ym + '-01').toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+const prevYm = (ym) => { const d = parseYmd(ym + '-01'); d.setMonth(d.getMonth() - 1); return ymd(d).slice(0, 7); };
+function openBillEdit(i) { billEdit = i; drawBillEdit(); $('#sheet').hidden = false; }
+function drawBillEdit() {
+  const b = S().bills[billEdit];
+  if (!b) return closeSheet();
+  const hist = (b.history || []).slice().sort((a, c) => c.month.localeCompare(a.month));
+  const avg = billAmount({ ...b, useAvg: true });
+  const rows = hist.map((h) => `<div class="field">
+    <input type="month" data-bh="${esc(h.id)}" data-f="month" value="${esc(h.month)}" max="${today().slice(0, 7)}">
+    <input type="number" inputmode="decimal" data-bh="${esc(h.id)}" data-f="amount" value="${h.amount}" style="width:100px" placeholder="0">
+    <button class="x" data-act="bh-del" data-id="${esc(h.id)}" aria-label="Remove">✕</button></div>`).join('') || '<div class="empty" style="padding:14px">No months logged yet.</div>';
+  $('#sheet').innerHTML = `<div class="panel"><div class="head">
+      <span style="width:40px"></span><span class="step">Edit ${esc(b.name)}</span><button data-act="bill-done" aria-label="Done">✕</button></div>
+    <label class="editlbl">Fixed amount</label>
+    <input class="sheet-input" type="number" inputmode="decimal" value="${b.amount}" data-billfix="amount" ${b.useAvg ? 'disabled' : ''}>
+    <label class="paytoggle" style="display:flex;align-items:center;gap:10px;margin:12px 2px 4px"><input type="checkbox" data-billavg ${b.useAvg ? 'checked' : ''}> Use 12-month average${b.history && b.history.length ? ` <b style="margin-left:auto">${money(avg)}</b>` : ''}</label>
+    <div class="note" style="margin:2px 2px 10px">${b.useAvg ? `Using the average of the last ${Math.min(12, hist.length)} month${hist.length === 1 ? '' : 's'}.` : 'Turn on to use the average of the months below instead of the fixed amount.'}</div>
+    <label class="editlbl">Past months</label>
+    ${rows}
+    <button class="btn block" data-act="bh-add">+ Add a month</button>
+    <button class="btn primary block" data-act="bill-done">Done</button></div>`;
+}
 
 // Categories you can log into: your spending categories, then Income + money moves.
 const SPECIAL_CATS = [
@@ -608,8 +635,18 @@ document.addEventListener('click', (e) => {
     case 'tx': { const t = store.txs.find((x) => x.id === id); if (t) openEdit(t); return; }
     case 'addcat': { const name = prompt('Category name?'); if (name?.trim()) { S().categories.push({ id: uid(), name: name.trim(), emoji: '🏷️', budget: 0, weekly: false }); saveSettings(); } return; }
     case 'delcat': if (confirm(`Delete "${S().categories[i].name}"? Existing transactions are kept.`)) { S().categories.splice(i, 1); saveSettings(); } return;
-    case 'addbill': { const name = prompt('Bill name?'); if (name?.trim()) { S().bills.push({ id: uid(), name: name.trim(), amount: 0, day: 1 }); saveSettings(); } return; }
+    case 'addbill': { const name = prompt('Bill name?'); if (name?.trim()) { S().bills.push({ id: uid(), name: name.trim(), amount: 0, day: 1, history: [], useAvg: false }); saveSettings(); } return; }
     case 'delbill': if (confirm(`Delete "${S().bills[i].name}"?`)) { S().bills.splice(i, 1); saveSettings(); } return;
+    case 'billedit': return openBillEdit(i);
+    case 'bill-done': closeSheet(); return render();
+    case 'bh-add': {
+      const b = S().bills[billEdit]; b.history = b.history || [];
+      const months = b.history.map((h) => h.month).sort();
+      const def = months.length ? prevYm(months[0]) : today().slice(0, 7);
+      b.history.push({ id: uid(), month: def, amount: 0 });
+      saveSettings(); return drawBillEdit();
+    }
+    case 'bh-del': { const b = S().bills[billEdit]; b.history = (b.history || []).filter((h) => h.id !== id); saveSettings(); return drawBillEdit(); }
     case 'reimport': { const n = reimportHistory(); toast(n ? `Restored ${n} line items` : 'Everything is already imported'); return; }
   }
 });
@@ -627,6 +664,9 @@ document.addEventListener('change', (e) => {
   else if (t.dataset.cc === 'start') { S().cc = { ...S().cc, start: num(), asOf: today() }; saveSettings(); }
   else if (t.dataset.cc === 'manual') { S().cc = { ...S().cc, manual: num() }; saveSettings(); }
   else if (t.dataset.cc === 'charges') { const raw = cardDetail(S(), store.txs).rawCredit; S().cc = { ...S().cc, chargesAdj: round(num() - raw) }; saveSettings(); }
+  else if (t.dataset.billfix) { S().bills[billEdit].amount = num(); saveSettings(); drawBillEdit(); return; }
+  else if (t.hasAttribute('data-billavg')) { S().bills[billEdit].useAvg = t.checked; saveSettings(); drawBillEdit(); render(); return; }
+  else if (t.dataset.bh) { const h = (S().bills[billEdit].history || []).find((x) => x.id === t.dataset.bh); if (h) { h[t.dataset.f] = t.dataset.f === 'amount' ? num() : (t.value || h.month); saveSettings(); drawBillEdit(); } return; }
   else if (t.dataset.cat) { const c = S().categories[+t.dataset.cat]; c[t.dataset.field] = t.type === 'checkbox' ? t.checked : num(); saveSettings(); }
   else if (t.dataset.bill) {
     const b = S().bills[+t.dataset.bill], f = t.dataset.field;
