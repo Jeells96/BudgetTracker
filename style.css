@@ -240,3 +240,14 @@ select[data-set]:focus { outline:2px solid var(--brand); }
 .twobtn .btn.block { margin-top:0; flex:1; }
 .catpill { display:flex; align-items:center; justify-content:center; gap:8px; background:var(--bg); border-radius:99px; padding:8px 14px; font-weight:600; width:max-content; max-width:100%; margin:0 auto 12px; }
 .catpill .e { font-size:1.2rem; }
+
+/* v14: credit card tracking */
+.ccbreak { background:var(--bg); border-radius:14px; padding:2px 14px; margin:6px 0 10px; }
+.ccbreak > div { display:flex; justify-content:space-between; gap:10px; padding:9px 0; border-top:1px solid var(--line); font-size:.9rem; }
+.ccbreak > div:first-child { border-top:0; }
+.ccbreak span { color:var(--muted); }
+.ccbreak b { font-weight:600; white-space:nowrap; }
+.ccbreak .tot { border-top:2px solid var(--line); font-weight:700; }
+.ccbreak .tot span { color:var(--ink); } .ccbreak .tot b { font-size:1.05rem; }
+.paytoggle { margin:8px 0 2px; }
+.paytoggle button { font-size:.9rem; }

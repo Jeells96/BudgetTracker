@@ -1,6 +1,6 @@
-import { firebaseConfig } from './firebase-config.js?v=13';
-import { DEFAULT_SETTINGS } from './defaults.js?v=13';
-import { HISTORY } from './history.js?v=13';
+import { firebaseConfig } from './firebase-config.js?v=14';
+import { DEFAULT_SETTINGS } from './defaults.js?v=14';
+import { HISTORY } from './history.js?v=14';
 
 const LS_KEY = 'budget-tracker-v2';
 const CDN = 'https://www.gstatic.com/firebasejs/11.0.2/';
@@ -23,7 +23,14 @@ function normalize(s) {
   const out = { ...clone(DEFAULT_SETTINGS), ...s };
   if (s && s.weeklyPay == null && s.income) out.weeklyPay = round2(s.income / 4);
   out.bills = out.bills.map((b) => ({ ...b, day: b.day || 1 }));
-  out.cc = { balance: 0, asOf: null, strategy: 'extra', ...(s && s.cc) };
+  const cc = (s && s.cc) || {};
+  out.cc = {
+    start: cc.start ?? cc.balance ?? 0,
+    asOf: cc.asOf ?? null,
+    mode: cc.mode || 'auto',
+    manual: cc.manual ?? cc.balance ?? 0,
+    strategy: cc.strategy || 'extra'
+  };
   return out;
 }
 const round2 = (n) => Math.round(n * 100) / 100;

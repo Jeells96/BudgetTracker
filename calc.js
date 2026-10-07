@@ -98,12 +98,39 @@ export function weekStats(s, txs, now = new Date()) {
   return { start: ws, end, ids, spent, baseBudget: base, planBudget: s.weeklyBudget, trimmedByCard, carryover, budget, left: round(budget - spent), reset };
 }
 
-// ---- credit card payoff ----
+// ---- credit card ----
+// Statement closes on the 15th (30-day months) or 16th (31-day months).
+const daysIn = (y, m) => new Date(y, m + 1, 0).getDate();
+const closeDay = (y, m) => (daysIn(y, m) >= 31 ? 16 : 15);
+export function cycleWindow(now = new Date()) {
+  const y = now.getFullYear(), m = now.getMonth(), d = now.getDate();
+  const thisClose = closeDay(y, m);
+  let startD, endD;
+  if (d <= thisClose) {
+    const pm = m - 1 < 0 ? { y: y - 1, m: 11 } : { y, m: m - 1 };
+    startD = new Date(pm.y, pm.m, closeDay(pm.y, pm.m) + 1);
+    endD = new Date(y, m, thisClose);
+  } else {
+    startD = new Date(y, m, thisClose + 1);
+    const nm = m + 1 > 11 ? { y: y + 1, m: 0 } : { y, m: m + 1 };
+    endD = new Date(nm.y, nm.m, closeDay(nm.y, nm.m));
+  }
+  return { start: ymd(startD), end: ymd(endD), endDay: endD.getDate() };
+}
+
+// What the app computes the balance to be: starting balance + credit-card
+// purchases logged since the baseline date − card payments since then.
+export function cardDetail(s, txs) {
+  const start = s.cc.start || 0, asOf = s.cc.asOf;
+  const credit = asOf ? sum(txs.filter((t) => t.type === 'expense' && t.pay !== 'cash' && t.date >= asOf).map((t) => t.amount)) : 0;
+  const paid = asOf ? sum(txs.filter((t) => t.type === 'transfer' && t.category === 'card' && t.date >= asOf).map((t) => t.amount)) : 0;
+  return { start, asOf, credit, paid, computed: Math.max(0, round(start + credit - paid)) };
+}
+export const cardComputed = (s, txs) => cardDetail(s, txs).computed;
+
+// The balance the rest of the app uses: computed in auto mode, your typed number in manual.
 export function cardBalance(s, txs) {
-  const { balance, asOf } = s.cc;
-  if (!balance) return 0;
-  const paid = sum(txs.filter((t) => t.type === 'transfer' && t.category === 'card' && (!asOf || t.date >= asOf)).map((t) => t.amount));
-  return Math.max(0, round(balance - paid));
+  return s.cc.mode === 'manual' ? Math.max(0, round(s.cc.manual || 0)) : cardComputed(s, txs);
 }
 
 export function cardPlan(s, txs, now = new Date()) {

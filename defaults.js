@@ -29,7 +29,11 @@ export const DEFAULT_SETTINGS = {
     { id: 'church',   name: 'Church Dues', amount: 70,     day: 15 },
     { id: 'union',    name: 'Union Dues',  amount: 65,     day: 15 }
   ],
-  cc: { balance: 0, asOf: null, strategy: 'extra' },  // balance, the date you typed it, and the chosen payoff strategy
+  // Credit card tracking:
+  //  start  = balance when you last baselined it; asOf = the date that applies from
+  //  mode   = 'auto' (app computes balance from logged credit charges) or 'manual'
+  //  manual = your typed current balance (used when mode = manual)
+  cc: { start: 0, asOf: null, mode: 'auto', manual: 0, strategy: 'extra' },
   weekStartDay: 5,                  // day the weekly budget resets (0=Sun … 6=Sat); default Friday
   weekResetAt: null,                // week-start (YYYY-MM-DD) the user cleared the rollover for
   seeded: false                     // spreadsheet history imported?

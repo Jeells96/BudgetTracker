@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=13';
-import { TRANSFERS } from './defaults.js?v=13';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, standardWeek, billsTotal, firstTotal, cardBalance, cardPlan, weekPlan, monthlyIncome, trends } from './calc.js?v=13';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=14';
+import { TRANSFERS } from './defaults.js?v=14';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, standardWeek, billsTotal, firstTotal, cardBalance, cardDetail, cycleWindow, cardPlan, weekPlan, monthlyIncome, trends } from './calc.js?v=14';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -165,9 +165,35 @@ function cardSection(cp) {
       ${opt('stretch', 'Take 2 months', `${money(cp.stretch.perWeek)}/wk over ${cp.stretch.weeks} weeks — easiest, slower`)}
       <div class="note" style="margin:8px 0 0">Your pick shows as the <b>Recommended</b> column on the Plan tab.</div></div>`;
   }
+  const cc = s.cc, auto = cc.mode !== 'manual';
+  const det = cardDetail(s, store.txs);
+  const cyc = cycleWindow(now);
+  const diff = round((cc.manual || 0) - det.computed);
+  const modeToggle = `<div class="seg">
+    <button data-act="cc-mode" data-id="auto" class="${auto ? 'on' : ''}">Auto-track</button>
+    <button data-act="cc-mode" data-id="manual" class="${!auto ? 'on' : ''}">Manual</button></div>`;
+
+  let setup;
+  if (auto) {
+    setup = `
+      <div class="field"><label>Starting balance<br><span class="muted" style="font-size:.8rem">${det.asOf ? 'as of ' + shortDate(parseYmd(det.asOf)) : 'set this to start tracking'}</span></label>
+        <input type="number" inputmode="decimal" value="${cc.start || ''}" placeholder="0" data-cc="start"></div>
+      <div class="ccbreak">
+        <div><span>Starting balance</span><b>${money(det.start)}</b></div>
+        <div><span>+ credit-card purchases since</span><b>${money(det.credit)}</b></div>
+        <div><span>− card payments since</span><b>${money(det.paid)}</b></div>
+        <div class="tot"><span>Current balance</span><b>${money(det.computed)}</b></div></div>`;
+  } else {
+    setup = `
+      <div class="field"><label>Your current balance</label><input type="number" inputmode="decimal" value="${cc.manual || ''}" placeholder="0" data-cc="manual"></div>
+      <div class="ccbreak"><div class="tot"><span>App estimate</span><b>${money(det.computed)}</b></div>
+        <div><span>Difference</span><b class="${diff ? 'negtext' : ''}">${diff === 0 ? 'matches' : (diff > 0 ? '+' : '−') + money(Math.abs(diff)).replace('-', '')}</b></div></div>`;
+  }
+
   return `<h2>Credit card</h2><div class="card">
-    <div class="field"><label>Current balance<br><span class="muted" style="font-size:.8rem">Type your balance, then log payments below</span></label>
-      <input type="number" inputmode="decimal" value="${cp.balance || ''}" placeholder="0" data-cc="balance"></div>
+    ${modeToggle}
+    ${setup}
+    <div class="note">Statement closes the ${ordinal(cyc.endDay)} · this cycle ${shortDate(parseYmd(cyc.start))} – ${shortDate(parseYmd(cyc.end))}. New purchases default to credit card when you log them.</div>
     ${plan}
     <button class="btn block" data-act="log-xfer" data-id="card">+ Log a card payment</button></div>`;
 }
@@ -312,7 +338,7 @@ const logCat = (id) => logCats().find((c) => c.id === id);
 
 // ----- add entries (category first, then amount → description; Save or Add another) -----
 function openFlow(opts = {}) {
-  flow = { step: opts.category ? 2 : 1, category: opts.category || null, amt: '', note: '', date: today(), count: 0 };
+  flow = { step: opts.category ? 2 : 1, category: opts.category || null, amt: '', note: '', date: today(), pay: 'credit', count: 0 };
   drawFlow(); $('#sheet').hidden = false;
 }
 
@@ -335,10 +361,14 @@ function drawFlow() {
   } else {
     title = 'Step 3 of 3';
     const ph = c.type === 'income' ? 'Paycheck, refund…' : c.type === 'transfer' ? 'Note (optional)' : 'What was it? (e.g. Wingstop)';
+    const payToggle = c.type === 'expense' ? `<div class="seg paytoggle">
+      <button data-flow="pay" data-v="credit" class="${f.pay !== 'cash' ? 'on' : ''}">💳 Credit card</button>
+      <button data-flow="pay" data-v="cash" class="${f.pay === 'cash' ? 'on' : ''}">💵 Debit / cash</button></div>` : '';
     body = `<div class="q">Add a description</div>
       <div class="summary"><div class="emoji" style="background:var(--card)">${c.emoji}</div><div><b>${money(amtNum)}</b><div class="muted">${esc(c.name)}</div></div></div>
       <input class="sheet-input" id="f-note" type="text" placeholder="${ph}" value="${esc(f.note)}" autocomplete="off">
       <input class="sheet-input" id="f-date" type="date" value="${f.date}" max="${today()}">
+      ${payToggle}
       <div class="twobtn"><button class="btn block" data-flow="again">+ Add another</button><button class="btn primary block" data-flow="save">Save</button></div>
       ${f.count ? `<p class="note" style="text-align:center;margin-bottom:0">${f.count} added under ${esc(c.name)} so far</p>` : `<p class="note" style="text-align:center;margin-bottom:0">“Add another” keeps ${esc(c.name)} selected for the next item.</p>`}`;
   }
@@ -355,6 +385,7 @@ function flowCommit() {
   const date = $('#f-date') ? ($('#f-date').value || today()) : f.date;
   f.date = date;
   const tx = { type: c.type, amount: round(parseFloat(f.amt)), category: c.type === 'income' ? 'income' : c.id, note, date };
+  if (c.type === 'expense') tx.pay = f.pay === 'cash' ? 'cash' : 'credit';
   addTx(tx);
   ui.month = date.slice(0, 7);
   if (ui.tab === 'settings') ui.tab = 'home';
@@ -372,6 +403,7 @@ function flowClick(btn) {
       else if (!(f.amt.includes('.') && f.amt.split('.')[1].length >= 2) && f.amt.replace('.', '').length < 8) f.amt = f.amt === '0' ? v : f.amt + v;
       return drawFlow();
     case 'next': if (parseFloat(f.amt) > 0) { f.step = 3; drawFlow(); } return;
+    case 'pay': { if ($('#f-note')) f.note = $('#f-note').value; if ($('#f-date')) f.date = $('#f-date').value || f.date; f.pay = v; return drawFlow(); }
     case 'back': f.step -= 1; if (f.step < 1) f.step = 1; return drawFlow();
     case 'save': { const tx = flowCommit(); closeSheet(); render(); toast(savedMsg(tx)); return; }
     case 'again': { const tx = flowCommit(); f.count += 1; f.amt = ''; f.note = ''; f.step = 2; drawFlow(); render(); toast(savedMsg(tx)); return; }
@@ -413,6 +445,9 @@ function drawEdit() {
     <input class="sheet-input" id="e-note" type="text" value="${esc(e.note || '')}" placeholder="Note" autocomplete="off">
     <label class="editlbl">Date</label>
     <input class="sheet-input" id="e-date" type="date" value="${e.date}" max="${today()}">
+    ${e.type === 'expense' ? `<label class="editlbl">Paid with</label><div class="seg paytoggle">
+      <button data-edit="pay" data-v="credit" class="${(e.pay || 'credit') !== 'cash' ? 'on' : ''}">💳 Credit card</button>
+      <button data-edit="pay" data-v="cash" class="${e.pay === 'cash' ? 'on' : ''}">💵 Debit / cash</button></div>` : ''}
     <button class="btn primary block" data-edit="save">Save changes</button>
     <button class="btn danger block" data-edit="delete">Delete</button></div>`;
 }
@@ -422,10 +457,12 @@ function editClick(btn) {
     case 'close': return closeSheet();
     case 'type': syncEditInputs(); e.type = v; e.category = v === 'income' ? 'income' : v === 'transfer' ? 'bills' : (cat(e.category) ? e.category : S().categories[0].id); return drawEdit();
     case 'cat': syncEditInputs(); e.category = v; return drawEdit();
+    case 'pay': syncEditInputs(); e.pay = v; return drawEdit();
     case 'save': {
       syncEditInputs();
       if (!(e.amount > 0)) return toast('Enter an amount');
       const patch = { type: e.type, amount: round(e.amount), category: e.type === 'income' ? 'income' : e.category, note: (e.note || '').trim(), date: e.date };
+      if (e.type === 'expense') patch.pay = e.pay === 'cash' ? 'cash' : 'credit';
       updateTx(e.id, patch);
       ui.month = e.date.slice(0, 7);
       closeSheet(); render(); toast('Changes saved');
@@ -546,6 +583,7 @@ document.addEventListener('click', (e) => {
     case 'week': return openWeek();
     case 'week-reset': { S().weekResetAt = weekStats(S(), store.txs).start; saveSettings(); return render(); }
     case 'cc-strategy': { S().cc = { ...S().cc, strategy: id }; saveSettings(); return render(); }
+    case 'cc-mode': { S().cc = { ...S().cc, mode: id }; saveSettings(); return render(); }
     case 'plan-reset': ui.planDraft = null; return render();
     case 'trends': return openTrends();
     case 'sheet-close': return closeSheet();
@@ -573,7 +611,8 @@ document.addEventListener('change', (e) => {
   const t = e.target, num = () => parseFloat(t.value) || 0;
   if (t.id === 'sav-slider') { slideSavings(+t.value); saveSettings(); return; }
   if (t.dataset.set) { S()[t.dataset.set] = num(); saveSettings(); }
-  else if (t.dataset.cc) { S().cc = { ...S().cc, balance: num(), asOf: today() }; saveSettings(); }
+  else if (t.dataset.cc === 'start') { S().cc = { ...S().cc, start: num(), asOf: today() }; saveSettings(); }
+  else if (t.dataset.cc === 'manual') { S().cc = { ...S().cc, manual: num() }; saveSettings(); }
   else if (t.dataset.cat) { const c = S().categories[+t.dataset.cat]; c[t.dataset.field] = t.type === 'checkbox' ? t.checked : num(); saveSettings(); }
   else if (t.dataset.bill) {
     const b = S().bills[+t.dataset.bill], f = t.dataset.field;
