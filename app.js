@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js';
-import { TRANSFERS } from './defaults.js';
-import { round, ymd, parseYmd, monthStats, weekStats, baseline, billsTotal, firstTotal, cardBalance, cardPlan, weekPlan, coach, monthlyIncome } from './calc.js';
+import { store, loadLocal, saveSettings, addTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=3';
+import { TRANSFERS } from './defaults.js?v=3';
+import { round, ymd, parseYmd, monthStats, weekStats, baseline, billsTotal, firstTotal, cardBalance, cardPlan, weekPlan, coach, monthlyIncome } from './calc.js?v=3';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
