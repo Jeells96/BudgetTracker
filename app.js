@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=21';
-import { TRANSFERS } from './defaults.js?v=21';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, standardWeek, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, cardPlan, weekPlan, monthlyIncome, trends } from './calc.js?v=21';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=22';
+import { TRANSFERS } from './defaults.js?v=22';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, standardWeek, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, cardPlan, weekPlan, monthlyIncome, trends } from './calc.js?v=22';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -305,7 +305,7 @@ function settings() {
         <select data-set="weekStartDay">${['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map((d, i) => `<option value="${i}" ${(+s.weekStartDay) === i ? 'selected' : ''}>${d}</option>`).join('')}</select></div>
       <div class="note">Going over one week trims the next week's budget to compensate. You can reset it from the home screen any time.</div></div>
     <h2>Category budgets (monthly)</h2><div class="card">${s.categories.map((c, i) => {
-      const avgRow = c.id === 'gas' ? `<label class="muted" style="flex-basis:100%;font-size:.8rem;padding-left:46px"><input type="checkbox" ${c.useAvg ? 'checked' : ''} data-catavg="${i}"> use 12-month average${c.useAvg ? ` (${money(categoryAvg(store.txs, c.id))})` : ''}</label>` : '';
+      const avgRow = c.id === 'gas' ? `<label class="muted avgline" style="flex-basis:100%;font-size:.8rem;padding-left:46px"><input type="checkbox" ${c.useAvg ? 'checked' : ''} data-catavg="${i}"> use 12-month average${c.useAvg ? ` (${money(categoryAvg(store.txs, c.id))}) <button class="link" data-act="catavg-view" data-id="${esc(c.id)}">see breakdown ›</button>` : ''}</label>` : '';
       return `<div class="field weekly"><span class="emoji" style="width:36px;height:36px">${c.emoji}</span><label>${esc(c.name)}</label>
         <input type="number" inputmode="decimal" value="${c.useAvg ? categoryAvg(store.txs, c.id) : c.budget}" ${c.useAvg ? 'disabled title="Using 12-month average"' : ''} data-cat="${i}" data-field="budget">
         <button class="x" data-act="delcat" data-i="${i}" aria-label="Delete">✕</button>
@@ -577,6 +577,41 @@ function openWeek() {
   $('#sheet').hidden = false;
 }
 
+// ----- the purchases behind a category's 12-month average -----
+function openCatAvg(id) {
+  const c = cat(id); if (!c) return;
+  const now = new Date(), cur = ymd(now).slice(0, 7);
+  const gas = store.txs.filter((t) => t.type === 'expense' && t.category === id).sort(sortTx);
+  // counted monthly totals (non-excluded, completed months), to find the 12 months used
+  const by = {};
+  gas.filter((t) => !t.exAvg && t.date.slice(0, 7) < cur).forEach((t) => { const m = t.date.slice(0, 7); by[m] = round((by[m] || 0) + t.amount); });
+  const used = new Set(Object.keys(by).sort().slice(-12));
+  const avg = used.size ? round([...used].reduce((a, m) => a + by[m], 0) / used.size) : 0;
+
+  // group all gas purchases by month, newest first
+  const months = [...new Set(gas.map((t) => t.date.slice(0, 7)))].sort((a, b) => b.localeCompare(a));
+  const sections = months.map((m) => {
+    const inAvg = used.has(m);
+    const label = parseYmd(m + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    const tag = inAvg ? `<span class="mtag in">in average · ${money(by[m])}</span>` : m === cur ? '<span class="mtag">this month · not counted yet</span>' : '<span class="mtag">not counted</span>';
+    const rows = gas.filter((t) => t.date.slice(0, 7) === m).map((t) => `<div class="avg-tx ${t.exAvg ? 'skip' : ''}">
+      <span class="d">${parseYmd(t.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}${t.note ? ' · ' + esc(t.note) : ''}</span>
+      <span class="a">${money(t.amount)}${t.exAvg ? ' <span class="ex-tag">excluded</span>' : ''}</span></div>`).join('');
+    return `<div class="avg-month"><div class="avg-mhead"><b>${label}</b>${tag}</div>${rows}</div>`;
+  }).join('');
+
+  const range = used.size ? ` from ${parseYmd([...used].sort()[0] + '-01').toLocaleDateString('en-US', { month: 'short', year: '2-digit' })}–${parseYmd([...used].sort().slice(-1)[0] + '-01').toLocaleDateString('en-US', { month: 'short', year: '2-digit' })}` : '';
+  $('#sheet').innerHTML = `<div class="panel sheet-page"><div class="head">
+      <button class="backbtn" data-act="sheet-close" aria-label="Back">←</button><span class="step">${esc(c.name)} average</span><span style="width:28px"></span></div>
+    <div class="card hero" style="box-shadow:none;padding:4px 0">
+      <div class="label">12-month average</div>
+      <div class="big">${money(avg)}</div>
+      <div class="note" style="margin:8px 0 0">Average of ${used.size} month${used.size === 1 ? '' : 's'}${range}. The current month and excluded trips aren't counted.</div></div>
+    ${sections || '<div class="card empty">No gas purchases logged yet.</div>'}</div>`;
+  $('#sheet').className = 'sheet page';
+  $('#sheet').hidden = false;
+}
+
 // ----- monthly trends -----
 function openTrends() {
   const t = trends(S(), store.txs);
@@ -639,6 +674,7 @@ document.addEventListener('click', (e) => {
     case 'cc-strategy': { S().cc = { ...S().cc, strategy: id }; saveSettings(); return render(); }
     case 'cc-mode': { S().cc = { ...S().cc, mode: id }; saveSettings(); return render(); }
     case 'cc-charges-reset': { S().cc = { ...S().cc, chargesAdj: 0 }; saveSettings(); return render(); }
+    case 'catavg-view': return openCatAvg(id);
     case 'plan-reset': ui.planDraft = null; return render();
     case 'trends': return openTrends();
     case 'sheet-close': return closeSheet();
