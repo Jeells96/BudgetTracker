@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=26';
-import { TRANSFERS } from './defaults.js?v=26';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, standardWeek, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, cardPlan, weekPlan, monthlyIncome, trends } from './calc.js?v=26';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=27';
+import { TRANSFERS } from './defaults.js?v=27';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, standardWeek, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, cardPlan, weekPlan, monthlyIncome, trends } from './calc.js?v=27';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -428,7 +428,7 @@ const logCat = (id) => logCats().find((c) => c.id === id);
 
 // ----- add entries (category first, then amount → description; Save or Add another) -----
 function openFlow(opts = {}) {
-  flow = { step: opts.category ? 2 : 1, category: opts.category || null, amt: opts.amt || '', note: '', date: today(), pay: 'credit', count: 0, pendingId: opts.pendingId || null, amtLocked: !!opts.amtLocked };
+  flow = { step: opts.category ? 2 : 1, category: opts.category || null, amt: opts.amt || '', note: '', date: today(), pay: 'credit', count: 0, pendingId: opts.pendingId || null, amtLocked: !!opts.amtLocked, splitting: false, total: '', splits: [] };
   drawFlow(); $('#sheet').hidden = false;
 }
 
@@ -441,12 +441,31 @@ function drawFlow() {
     title = 'Pick a category';
     body = `<div class="q">What's it for?</div>
       <div class="cats">${logCats().map((x) => `<button data-flow="cat" data-v="${esc(x.id)}"><span class="e">${x.emoji}</span>${esc(x.name)}</button>`).join('')}</div>`;
+  } else if (f.step === 2 && f.splitting) {
+    // Amazon-style: one order total split into the individual card charges.
+    const total = round(parseFloat(f.total) || 0);
+    const allocated = round(f.splits.reduce((a, x) => a + x, 0));
+    const remaining = round(total - allocated);
+    const subNum = parseFloat(f.amt) || 0;
+    title = 'Split into charges';
+    const chips = f.splits.map((x, j) => `<button class="splitchip" data-flow="delsplit" data-i="${j}">${money(x)} <span class="x-mini">✕</span></button>`).join('');
+    const addDis = subNum > 0 && subNum <= remaining + 0.001 ? '' : 'disabled style="opacity:.4"';
+    const nextDis = remaining === 0 && f.splits.length ? '' : 'disabled style="opacity:.4"';
+    body = `<div class="q">Split the charges</div>
+      <div class="catpill"><span class="e">${c.emoji}</span>${esc(c.name)}</div>
+      <div class="splitstat"><div><span>Order total</span><b>${money(total)}</b></div><div><span>Remaining</span><b class="${remaining < 0 ? 'negtext' : remaining === 0 ? 'goodtext' : ''}">${money(remaining)}</b></div></div>
+      ${chips ? `<div class="splitchips">${chips}</div>` : '<p class="note" style="margin:2px 2px 8px">Enter each charge from your statement — they must add up to the total.</p>'}
+      <div class="amount ${subNum ? '' : 'zero'}">$${esc(f.amt || '0')}</div>
+      <div class="pad">${['1','2','3','4','5','6','7','8','9','.','0','⌫'].map((k) => `<button data-flow="key" data-v="${k}">${k}</button>`).join('')}</div>
+      <div class="twobtn"><button class="btn block" data-flow="addsplit" ${addDis}>+ Add charge</button><button class="btn primary block" data-flow="splitnext" ${nextDis}>Continue</button></div>
+      <button class="btn block" data-flow="cancelsplit" style="margin-top:8px">Cancel split</button>`;
   } else if (f.step === 2) {
     const isExpense = c.type === 'expense';
     title = isExpense ? 'Step 2 of 3' : 'Step 2 of 2';
     const dis = amtNum ? '' : 'disabled style="opacity:.4"';
     const actions = isExpense
-      ? `<button class="btn primary block" data-flow="next" ${dis}>Continue</button>`
+      ? `<button class="btn primary block" data-flow="next" ${dis}>Continue</button>
+         <button class="btn block" data-flow="startsplit" ${dis} style="margin-top:8px">⊟ Split into charges (e.g. Amazon)</button>`
       : `<div class="twobtn"><button class="btn block" data-flow="again" ${dis}>+ Add another</button><button class="btn primary block" data-flow="save" ${dis}>Save</button></div>
          ${f.count ? `<p class="note" style="text-align:center;margin-bottom:0">${f.count} added under ${esc(c.name)} so far</p>` : ''}`;
     body = `<div class="q">How much?</div>
@@ -461,14 +480,17 @@ function drawFlow() {
       <button data-flow="pay" data-v="credit" class="${f.pay !== 'cash' ? 'on' : ''}">💳 Credit card</button>
       <button data-flow="pay" data-v="cash" class="${f.pay === 'cash' ? 'on' : ''}">💵 Debit / cash</button></div>` : '';
     const exToggle = c.type === 'expense' && c.useAvg ? `<label class="exrow"><input type="checkbox" id="f-ex" ${f.exAvg ? 'checked' : ''}> Exclude from the ${esc(c.name)} average <span class="muted">(unusual trip)</span></label>` : '';
+    const shownAmt = f.splitting ? round(parseFloat(f.total) || 0) : amtNum;
+    const splitNote = f.splitting ? `<div class="muted">${esc(c.name)} · ${f.splits.length} charges</div>` : `<div class="muted">${esc(c.name)}</div>`;
+    const single = f.pendingId || f.splitting;
     body = `<div class="q">Add a description</div>
-      <div class="summary"><div class="emoji" style="background:var(--card)">${c.emoji}</div><div><b>${money(amtNum)}</b><div class="muted">${esc(c.name)}</div></div></div>
+      <div class="summary"><div class="emoji" style="background:var(--card)">${c.emoji}</div><div><b>${money(shownAmt)}</b>${splitNote}</div></div>
       <input class="sheet-input" id="f-note" type="text" placeholder="${ph}" value="${esc(f.note)}" autocomplete="off">
       <input class="sheet-input" id="f-date" type="date" value="${f.date}" max="${today()}">
       ${payToggle}
       ${exToggle}
-      ${f.pendingId
-        ? `<button class="btn primary block" data-flow="save">Save &amp; log it</button>`
+      ${single
+        ? `<button class="btn primary block" data-flow="save">${f.splitting ? `Save ${f.splits.length} charges` : 'Save &amp; log it'}</button>`
         : `<div class="twobtn"><button class="btn block" data-flow="again">+ Add another</button><button class="btn primary block" data-flow="save">Save</button></div>
       ${f.count ? `<p class="note" style="text-align:center;margin-bottom:0">${f.count} added under ${esc(c.name)} so far</p>` : `<p class="note" style="text-align:center;margin-bottom:0">“Add another” keeps ${esc(c.name)} selected for the next item.</p>`}`}`;
   }
@@ -485,13 +507,21 @@ function flowCommit() {
   const date = $('#f-date') ? ($('#f-date').value || today()) : f.date;
   f.date = date;
   if ($('#f-ex')) f.exAvg = $('#f-ex').checked;
-  const tx = { type: c.type, amount: round(parseFloat(f.amt)), category: c.type === 'income' ? 'income' : c.id, note, date };
-  if (c.type === 'expense') { tx.pay = f.pay === 'cash' ? 'cash' : 'credit'; if (c.useAvg && f.exAvg) tx.exAvg = true; }
-  addTx(tx);
+  const decorate = (tx) => { if (c.type === 'expense') { tx.pay = f.pay === 'cash' ? 'cash' : 'credit'; if (c.useAvg && f.exAvg) tx.exAvg = true; } return tx; };
+  const mk = (amount) => decorate({ type: c.type, amount: round(amount), category: c.type === 'income' ? 'income' : c.id, note, date });
+  let result;
+  if (f.splitting && f.splits.length) {
+    // log each charge separately so they match the credit-card statement line items
+    f.splits.forEach((amt) => addTx(mk(amt)));
+    result = { ...mk(f.splits.reduce((a, x) => a + x, 0)), _count: f.splits.length };
+  } else {
+    result = mk(parseFloat(f.amt));
+    addTx(result);
+  }
   if (f.pendingId) { S().pending = (S().pending || []).filter((x) => x.id !== f.pendingId); saveSettings(); }
   ui.month = date.slice(0, 7);
   if (ui.tab === 'settings') ui.tab = 'home';
-  return tx;
+  return result;
 }
 
 // Keypad helpers — update the amount in place so the panel doesn't flash on each tap.
@@ -524,17 +554,29 @@ function flowClick(btn) {
     }
     case 'key':
       f.amt = typeAmount(f.amt, v);
-      return refreshAmount(f.amt, '[data-flow="next"],[data-flow="save"],[data-flow="again"]');  // live update, no panel rebuild
+      if (f.splitting) {  // live update + enable "Add charge" only up to the remaining amount
+        const remaining = round((parseFloat(f.total) || 0) - f.splits.reduce((a, x) => a + x, 0)), sub = parseFloat(f.amt) || 0;
+        const el = $('.amount'); if (el) { el.textContent = '$' + (f.amt || '0'); el.classList.toggle('zero', !sub); }
+        const add = $('[data-flow="addsplit"]'); if (add) { const ok = sub > 0 && sub <= remaining + 0.001; add.disabled = !ok; add.style.opacity = ok ? '' : '.4'; }
+        return;
+      }
+      return refreshAmount(f.amt, '[data-flow="next"],[data-flow="save"],[data-flow="again"],[data-flow="startsplit"]');  // live update, no panel rebuild
     case 'next': if (parseFloat(f.amt) > 0) { f.step = 3; drawFlow(); } return;
+    case 'startsplit': if (parseFloat(f.amt) > 0) { f.total = f.amt; f.splits = []; f.splitting = true; f.amt = ''; drawFlow(); } return;
+    case 'addsplit': { const remaining = round((parseFloat(f.total) || 0) - f.splits.reduce((a, x) => a + x, 0)), sub = round(parseFloat(f.amt) || 0); if (sub > 0 && sub <= remaining + 0.001) { f.splits.push(sub); f.amt = ''; drawFlow(); } return; }
+    case 'delsplit': f.splits.splice(+btn.dataset.i, 1); return drawFlow();
+    case 'splitnext': { const remaining = round((parseFloat(f.total) || 0) - f.splits.reduce((a, x) => a + x, 0)); if (remaining === 0 && f.splits.length) { f.step = 3; drawFlow(); } return; }
+    case 'cancelsplit': f.splitting = false; f.amt = f.total; f.total = ''; f.splits = []; return drawFlow();
     case 'pay': { if ($('#f-note')) f.note = $('#f-note').value; if ($('#f-date')) f.date = $('#f-date').value || f.date; if ($('#f-ex')) f.exAvg = $('#f-ex').checked; f.pay = v; return drawFlow(); }
-    case 'back': f.step = f.amtLocked && f.step === 3 ? 1 : f.step - 1; if (f.step < 1) f.step = 1; return drawFlow();
-    case 'save': { if (!(parseFloat(f.amt) > 0)) return; const tx = flowCommit(); closeSheet(); render(); toast(savedMsg(tx)); return; }
+    case 'back': f.step = (f.amtLocked && f.step === 3) ? 1 : f.step - 1; if (f.step < 1) f.step = 1; return drawFlow();
+    case 'save': { if (!f.splitting && !(parseFloat(f.amt) > 0)) return; const tx = flowCommit(); closeSheet(); render(); toast(savedMsg(tx)); return; }
     case 'again': { if (!(parseFloat(f.amt) > 0)) return; const tx = flowCommit(); f.count += 1; f.amt = ''; f.note = ''; f.exAvg = false; f.step = 2; drawFlow(); render(); toast(savedMsg(tx)); return; }
   }
 }
 
 function savedMsg(tx) {
   const ms = MS();
+  if (tx._count) return `Logged ${tx._count} charges · ${money(tx.amount)} total · ${cat(tx.category)?.name || ''}`;
   if (tx.type === 'income') return `Added ${money(tx.amount)} income`;
   if (tx.type === 'transfer') return tx.category === 'bills' ? `Moved ${money(tx.amount)} to bills · ${ms.billsLeft ? money(ms.billsLeft) + ' still needed' : 'fully funded ✓'}`
     : tx.category === 'card' ? `Paid ${money(tx.amount)} on the card · ${money(cardBalance(S(), store.txs))} left` : `Saved ${money(tx.amount)}`;

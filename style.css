@@ -287,3 +287,12 @@ select[data-set]:focus { outline:2px solid var(--brand); }
 .loose { flex:1; display:flex; align-items:center; gap:12px; width:100%; text-align:left; background:none; border:0; padding:12px 0; cursor:pointer; }
 .loose .t { font-weight:700; } .loose .s { font-size:.85rem; color:var(--muted); }
 .loose .chev { color:var(--muted); font-size:1.3rem; opacity:.5; margin-left:auto; }
+
+/* v27: split into charges */
+.splitstat { display:flex; gap:10px; margin:0 0 10px; }
+.splitstat > div { flex:1; background:var(--bg); border-radius:14px; padding:10px 12px; }
+.splitstat span { font-size:.72rem; color:var(--muted); display:block; } .splitstat b { font-size:1.15rem; }
+.goodtext { color:var(--good); }
+.splitchips { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 10px; }
+.splitchip { display:inline-flex; align-items:center; gap:6px; background:var(--bg); border:1px solid var(--line); border-radius:99px; padding:7px 12px; font-weight:700; font-size:.9rem; }
+.splitchip .x-mini { color:var(--bad); font-weight:700; }
