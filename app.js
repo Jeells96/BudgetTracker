@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=25';
-import { TRANSFERS } from './defaults.js?v=25';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, standardWeek, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, cardPlan, weekPlan, monthlyIncome, trends } from './calc.js?v=25';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=26';
+import { TRANSFERS } from './defaults.js?v=26';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, standardWeek, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, cardPlan, weekPlan, monthlyIncome, trends } from './calc.js?v=26';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -368,10 +368,8 @@ function trackClick(btn) {
   switch (btn.dataset.track) {
     case 'close': return closeSheet();
     case 'key':
-      if (v === '⌫') f.amt = f.amt.slice(0, -1);
-      else if (v === '.') { if (!f.amt.includes('.')) f.amt = (f.amt || '0') + '.'; }
-      else if (!(f.amt.includes('.') && f.amt.split('.')[1].length >= 2) && f.amt.replace('.', '').length < 8) f.amt = f.amt === '0' ? v : f.amt + v;
-      return drawTrack();
+      f.amt = typeAmount(f.amt, v);
+      return refreshAmount(f.amt, '[data-track="more"],[data-track="done"]');
     case 'more': if (parseFloat(f.amt) > 0) { addPending(f.amt); f.count += 1; f.amt = ''; drawTrack(); render(); toast('Saved to finish later'); } return;
     case 'done': if (parseFloat(f.amt) > 0) addPending(f.amt); closeSheet(); render(); if (parseFloat(f.amt) > 0 || f.count) toast('Saved to finish later'); return;
   }
@@ -496,6 +494,21 @@ function flowCommit() {
   return tx;
 }
 
+// Keypad helpers — update the amount in place so the panel doesn't flash on each tap.
+function typeAmount(amt, v) {
+  if (v === '⌫') return amt.slice(0, -1);
+  if (v === '.') return amt.includes('.') ? amt : (amt || '0') + '.';
+  if (amt.includes('.') && amt.split('.')[1].length >= 2) return amt;
+  if (amt.replace('.', '').length >= 8) return amt;
+  return amt === '0' ? v : amt + v;
+}
+function refreshAmount(amt, actionSelector) {
+  const amtNum = parseFloat(amt) || 0;
+  const el = $('.amount');
+  if (el) { el.textContent = '$' + (amt || '0'); el.classList.toggle('zero', !amtNum); }
+  document.querySelectorAll(actionSelector).forEach((btn) => { btn.disabled = !amtNum; btn.style.opacity = amtNum ? '' : '.4'; });
+}
+
 function flowClick(btn) {
   const f = flow, v = btn.dataset.v;
   switch (btn.dataset.flow) {
@@ -510,10 +523,8 @@ function flowClick(btn) {
       f.step = 2; return drawFlow();
     }
     case 'key':
-      if (v === '⌫') f.amt = f.amt.slice(0, -1);
-      else if (v === '.') { if (!f.amt.includes('.')) f.amt = (f.amt || '0') + '.'; }
-      else if (!(f.amt.includes('.') && f.amt.split('.')[1].length >= 2) && f.amt.replace('.', '').length < 8) f.amt = f.amt === '0' ? v : f.amt + v;
-      return drawFlow();
+      f.amt = typeAmount(f.amt, v);
+      return refreshAmount(f.amt, '[data-flow="next"],[data-flow="save"],[data-flow="again"]');  // live update, no panel rebuild
     case 'next': if (parseFloat(f.amt) > 0) { f.step = 3; drawFlow(); } return;
     case 'pay': { if ($('#f-note')) f.note = $('#f-note').value; if ($('#f-date')) f.date = $('#f-date').value || f.date; if ($('#f-ex')) f.exAvg = $('#f-ex').checked; f.pay = v; return drawFlow(); }
     case 'back': f.step = f.amtLocked && f.step === 3 ? 1 : f.step - 1; if (f.step < 1) f.step = 1; return drawFlow();
