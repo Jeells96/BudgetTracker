@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=28';
-import { TRANSFERS } from './defaults.js?v=28';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, standardWeek, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, cardPlan, weekPlan, monthlyIncome, trends } from './calc.js?v=28';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=29';
+import { TRANSFERS } from './defaults.js?v=29';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, standardWeek, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, cardPlan, weekPlan, monthlyIncome, trends } from './calc.js?v=29';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -19,14 +19,18 @@ const dayLabel = (s) => {
 };
 const ordinal = (n) => n + (['th', 'st', 'nd', 'rd'][(n % 100 >> 3) ^ 1 && n % 10 < 4 ? n % 10 : 0]);
 
-const ui = { tab: 'home', month: monthKey(new Date()), filter: 'all', all: false, q: '', planDraft: null };
+const ui = { tab: 'home', month: monthKey(new Date()), filter: 'all', all: false, q: '', planDraft: {} };
+try { ui.planDraft = JSON.parse(localStorage.getItem('plan-draft') || '{}') || {}; } catch { ui.planDraft = {}; }
+const savePlanDraft = () => { try { localStorage.setItem('plan-draft', JSON.stringify(ui.planDraft || {})); } catch {} };
 
 // ---------- helpers ----------
 const S = () => store.settings;
 const cat = (id) => S().categories.find((c) => c.id === id);
 const cb = (c) => categoryBudget(S(), store.txs, c);   // effective category budget (avg for gas when on)
 const tfer = (id) => TRANSFERS.find((t) => t.id === id);
-const sortTx = (a, b) => b.date.localeCompare(a.date) || (b.id > a.id ? 1 : -1);
+// Order by when it was entered (newest first), not by the purchase date.
+const entryTime = (t) => (t.at != null ? t.at : parseYmd(t.date).getTime());
+const sortTx = (a, b) => entryTime(b) - entryTime(a) || (b.id > a.id ? 1 : -1);
 const monthTxs = () => store.txs.filter((t) => t.date.startsWith(ui.month)).sort(sortTx);
 const MS = () => monthStats(S(), store.txs, ui.month);
 const barClass = (spent, budget) => (spent > budget ? 'over' : spent > budget * 0.85 ? 'warn' : '');
@@ -118,12 +122,13 @@ function home() {
 
 function txRow(t) {
   let icon, label, sub, amt;
-  if (t.type === 'income') { icon = '💰'; label = t.note || 'Paycheck'; sub = 'Income'; amt = `<div class="amt in">+${money(t.amount)}</div>`; }
-  else if (t.type === 'transfer') { const x = tfer(t.category); icon = x?.emoji || '🔁'; label = t.note || 'Transfer'; sub = 'To ' + (x?.name || t.category).toLowerCase(); amt = `<div class="amt xfer">${money(t.amount)}</div>`; }
+  if (t.type === 'income') { icon = '💰'; label = t.note || 'Income'; sub = 'Income'; amt = `<div class="amt in">+${money(t.amount)}</div>`; }
+  else if (t.type === 'transfer') { const x = tfer(t.category); const nm = x?.name || t.category; icon = x?.emoji || '🔁'; label = t.note || nm; sub = t.note ? nm : ''; amt = `<div class="amt xfer">${money(t.amount)}</div>`; }
   else { const c = cat(t.category); icon = c ? c.emoji : '🧾'; label = t.note || (c ? c.name : 'Purchase'); sub = c ? c.name : t.category; amt = `<div class="amt">${money(t.amount)}</div>`; }
   const ccDot = (t.type === 'expense' && t.pay === 'credit' ? ' <span class="cc-dot" title="Credit card">💳</span>' : '') + (t.exAvg ? ' <span class="ex-tag" title="Excluded from average">excl. avg</span>' : '');
+  const dateStr = parseYmd(t.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   return `<button class="tx" data-act="tx" data-id="${esc(t.id)}"><div class="emoji">${icon}</div>
-    <div class="body"><div class="t">${esc(label)}${ccDot}</div><div class="s">${esc(sub)} · ${parseYmd(t.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div></div>${amt}<span class="chev">›</span></button>`;
+    <div class="body"><div class="t">${esc(label)}${ccDot}</div><div class="s">${sub ? esc(sub) + ' · ' : ''}${dateStr}</div></div>${amt}<span class="chev">›</span></button>`;
 }
 
 function bills() {
@@ -277,16 +282,13 @@ function activityList() {
   if (q) list = list.filter((t) => (t.note + ' ' + (cat(t.category)?.name || t.category)).toLowerCase().includes(q) || String(t.amount).includes(q));
   const spent = round(list.filter((t) => t.type === 'expense').reduce((a, t) => a + t.amount, 0));
   if (!list.length) return '<div class="card empty">Nothing here.</div>';
-  let html = '', last = '';
-  for (const t of list) {
-    if (t.date !== last) { if (last) html += '</div>'; html += `<div class="day">${dayLabel(t.date)}</div><div class="card" style="padding:6px 18px">`; last = t.date; }
-    html += txRow(t);
-  }
-  return `<p class="note">${list.length} line item${list.length > 1 ? 's' : ''} · ${money(spent)} spent · tap any to edit</p>${html}</div>`;
+  // Flat list in the order entered (newest first), each row shows its own date.
+  return `<p class="note">${list.length} line item${list.length > 1 ? 's' : ''} · ${money(spent)} spent · tap any to edit</p>
+    <div class="card" style="padding:6px 18px">${list.map(txRow).join('')}</div>`;
 }
 
 function activity() {
-  const chips = [['all', 'All'], ...S().categories.map((c) => [c.id, c.emoji + ' ' + c.name]), ['income', '💰 Income'], ['transfer', '🔁 Transfers']]
+  const chips = [['all', 'All'], ...S().categories.map((c) => [c.id, c.emoji + ' ' + c.name]), ['income', '💰 Income'], ['transfer', '🏦 Bills/Savings/Card']]
     .map(([id, l]) => `<button class="chip ${ui.filter === id ? 'on' : ''}" data-act="filter" data-id="${esc(id)}">${esc(l)}</button>`).join('');
   return `${header('Activity', !ui.all)}
     <div class="searchrow"><input id="q" class="sheet-input" type="search" placeholder="Search purchases…" value="${esc(ui.q)}" autocomplete="off">
@@ -798,7 +800,7 @@ document.addEventListener('click', (e) => {
   const ft = e.target.closest('[data-track]'); if (ft && track) return trackClick(ft);
   if (e.target === $('#sheet')) return closeSheet();
   const tab = e.target.closest('#tabs button');
-  if (tab) { if (tab.dataset.tab !== 'plan') ui.planDraft = null; ui.tab = tab.dataset.tab; scrollTo(0, 0); return render(); }
+  if (tab) { ui.tab = tab.dataset.tab; scrollTo(0, 0); return render(); }
   const b = e.target.closest('[data-act]'); if (!b) return;
   const id = b.dataset.id, i = +b.dataset.i;
   switch (b.dataset.act) {
@@ -814,11 +816,11 @@ document.addEventListener('click', (e) => {
     case 'finish-loose': return openPending();
     case 'finish-item': { const it = (S().pending || []).find((x) => x.id === id); closeSheet(); if (it) openFlow({ amt: String(it.amount), pendingId: it.id, amtLocked: true }); return; }
     case 'pending-del': { if (confirm('Discard this loose item without logging it?')) { S().pending = (S().pending || []).filter((x) => x.id !== id); saveSettings(); render(); if ((S().pending || []).length) openPending(); else closeSheet(); } return; }
-    case 'plan-reset': ui.planDraft = null; return render();
+    case 'plan-reset': ui.planDraft = {}; savePlanDraft(); return render();
     case 'trends': return openTrends();
     case 'sheet-close': return closeSheet();
-    case 'goto': ui.planDraft = null; ui.tab = id; scrollTo(0, 0); return render();
-    case 'cat-filter': ui.planDraft = null; ui.filter = id; ui.all = false; ui.tab = 'activity'; scrollTo(0, 0); return render();
+    case 'goto': ui.tab = id; scrollTo(0, 0); return render();
+    case 'cat-filter': ui.filter = id; ui.all = false; ui.tab = 'activity'; scrollTo(0, 0); return render();
     case 'prev': case 'next': { const d = parseYmd(ui.month + '-01'); d.setMonth(d.getMonth() + (b.dataset.act === 'next' ? 1 : -1)); ui.month = monthKey(d); return render(); }
     case 'filter': ui.filter = id; return render();
     case 'all': ui.all = !ui.all; return render();
@@ -844,7 +846,7 @@ document.addEventListener('click', (e) => {
 document.addEventListener('input', (e) => {
   if (e.target.id === 'q') { ui.q = e.target.value; $('#actlist').innerHTML = activityList(); }
   else if (e.target.id === 'sav-slider') slideSavings(+e.target.value);
-  else if (e.target.dataset.plan) { (ui.planDraft ||= {})[e.target.dataset.plan] = parseFloat(e.target.value) || 0; planRecalc(); }
+  else if (e.target.dataset.plan) { (ui.planDraft ||= {})[e.target.dataset.plan] = parseFloat(e.target.value) || 0; savePlanDraft(); planRecalc(); }
 });
 
 document.addEventListener('change', (e) => {

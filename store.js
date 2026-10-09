@@ -1,6 +1,6 @@
-import { firebaseConfig } from './firebase-config.js?v=28';
-import { DEFAULT_SETTINGS } from './defaults.js?v=28';
-import { HISTORY } from './history.js?v=28';
+import { firebaseConfig } from './firebase-config.js?v=29';
+import { DEFAULT_SETTINGS } from './defaults.js?v=29';
+import { HISTORY } from './history.js?v=29';
 
 const LS_KEY = 'budget-tracker-v2';
 const CDN = 'https://www.gstatic.com/firebasejs/11.0.2/';
@@ -81,7 +81,7 @@ export function saveSettings() {
   if (fb) fb.setDoc(fb.doc(fb.db, 'budget', 'settings'), store.settings).catch(fail);
 }
 export function addTx(tx) {
-  tx.id = uid(); store.txs.push(tx); persist(); store.onChange(); cloudSet(tx); return tx;
+  tx.id = uid(); if (tx.at == null) tx.at = Date.now(); store.txs.push(tx); persist(); store.onChange(); cloudSet(tx); return tx;
 }
 export function updateTx(id, patch) {
   const t = store.txs.find((x) => x.id === id);
