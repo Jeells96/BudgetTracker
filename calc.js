@@ -182,9 +182,11 @@ export function nextPaydayAfter(now = new Date(), startDay = 5) {
   return d;
 }
 
-// Forward look at the bills account from a MANUAL balance you typed (as of a date):
-// the bills still due this month, the Fridays left to fund them, the weekly transfer
-// that would cover the gap, and how that compares to your plan's weekly amount.
+// Forward look at the bills account from a MANUAL balance you typed (as of a date).
+// The goal is to have the NEXT 1st-of-month bills funded before the 1st, so the
+// horizon runs from the as-of date through that 1st: the bills still due this month
+// PLUS next month's 1st-of-month group. The Fridays left this month are the chances
+// to fund them, so it gives the weekly transfer needed and compares it to your plan.
 export function billsProjection(s, now = new Date()) {
   const startDay = s.weekStartDay ?? 5;
   const acct = s.billsAcct || {};
@@ -192,11 +194,16 @@ export function billsProjection(s, now = new Date()) {
   const ref = hasBal ? parseYmd(acct.asOf) : now;
   const refDay = ref.getDate();
   const monthEnd = new Date(ref.getFullYear(), ref.getMonth() + 1, 0);
+  const firstDue = new Date(ref.getFullYear(), ref.getMonth() + 1, 1);   // next 1st-of-month
   const monthName = ref.toLocaleDateString('en-US', { month: 'long' });
-  // Bills whose typical pay-day hasn't passed yet this month.
-  const upList = s.bills.filter((b) => b.day > refDay).sort((a, b) => a.day - b.day);
-  const upcoming = sum(upList.map(billAmount));
-  // Fridays (paydays) left this month, counting the upcoming one.
+  const nextMonthName = firstDue.toLocaleDateString('en-US', { month: 'long' });
+  // This month's bills still to come (day not yet passed), then next month's 1st group.
+  const upList = s.bills.filter((b) => b.day > refDay).sort((a, b) => a.day - b.day)
+    .map((b) => ({ name: b.name, day: b.day, amount: round(billAmount(b)), when: 'this' }));
+  const firstBills = round(firstTotal(s));
+  if (firstBills > 0.005) upList.push({ name: `${nextMonthName} 1st bills`, day: 1, amount: firstBills, when: 'first' });
+  const upcoming = sum(upList.map((b) => b.amount));
+  // Fridays (paydays) left this month — the chances to move money in before the 1st.
   let d = nextPayday(ref, startDay), fridays = 0, guard = 0;
   while (d <= monthEnd && guard++ < 10) { fridays++; d = addDays(d, 7); }
   const bal = hasBal ? round(acct.bal) : 0;
@@ -206,8 +213,8 @@ export function billsProjection(s, now = new Date()) {
   const onTable = standardWeek(s).bills;
   const diff = round(weeklyNeeded - onTable);
   return {
-    hasBal, asOf: acct.asOf, bal, monthName, monthEnd: ymd(monthEnd), refDay,
-    upcoming: round(upcoming), upList: upList.map((b) => ({ name: b.name, day: b.day, amount: round(billAmount(b)) })),
+    hasBal, asOf: acct.asOf, bal, monthName, nextMonthName, monthEnd: ymd(monthEnd), firstDue: ymd(firstDue), refDay,
+    upcoming: round(upcoming), firstBills, upList,
     fridays, shortfall, surplus, weeklyNeeded, onTable, diff, covered: shortfall <= 0.005
   };
 }
