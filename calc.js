@@ -94,7 +94,18 @@ export function monthStats(s, txs, month, now = new Date()) {
 
 // The everyday spending budget held to each week (the card no longer trims it —
 // everyday money flows to the card, but the budget amount itself is unchanged).
-export function effectiveEveryday(s) { return s.weeklyBudget; }
+// Your everyday weekly budget after the card strategy. "Spend less" / "Split" cut
+// it to free money for the card; the cut amount is what goes to the card that week.
+export function effectiveEveryday(s, txs = [], now = new Date()) {
+  const base = s.weeklyBudget;
+  const strat = s.cc && s.cc.strategy;
+  if (strat !== 'spend' && strat !== 'split') return base;
+  const cp = cardPlan(s, txs, now);
+  if (cp.balance <= 0) return base;
+  if (strat === 'spend') return cp.options.spend.newSpend;
+  if (strat === 'split') return cp.options.split.newSpend;
+  return base;
+}
 
 export function weekStats(s, txs, now = new Date()) {
   const startDay = s.weekStartDay ?? 5;
@@ -103,12 +114,11 @@ export function weekStats(s, txs, now = new Date()) {
   const ids = s.categories.filter((c) => c.weekly).map((c) => c.id);
   const spentBetween = (from, to) => sum(txs.filter((t) => t.type === 'expense' && t.date >= from && t.date < to && ids.includes(t.category)).map((t) => t.amount));
   const spent = spentBetween(ws, end);
-  const base = effectiveEveryday(s);
-  const trimmedByCard = 0;
-  // Roll a previous over-spend into this week (measured against the plan budget,
-  // so it doesn't compound with the card trim) unless this week was reset.
+  const base = effectiveEveryday(s, txs, now);               // budget after the card trim
+  const trimmedByCard = Math.max(0, round(s.weeklyBudget - base));
+  // Roll a previous over-spend (vs the same trimmed budget) into this week unless reset.
   const prevStart = weekStart(addDays(parseYmd(ws), -1), startDay);
-  const prevLeft = round(s.weeklyBudget - spentBetween(prevStart, ws));
+  const prevLeft = round(base - spentBetween(prevStart, ws));
   const reset = s.weekResetAt === ws;
   const carryover = !reset && prevLeft < 0 ? prevLeft : 0;
   const budget = round(base + carryover);

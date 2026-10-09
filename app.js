@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=35';
-import { TRANSFERS } from './defaults.js?v=35';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, standardWeek, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends } from './calc.js?v=35';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=36';
+import { TRANSFERS } from './defaults.js?v=36';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, standardWeek, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends } from './calc.js?v=36';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -85,7 +85,9 @@ function home() {
       <div class="big">${money(ms.spent)}</div>
       <div class="note" style="margin:8px 0 0">${n} purchase${n === 1 ? '' : 's'}${ms.income ? ` · ${money(ms.income)} income` : ''}</div></div>`;
   }
-  const cardTrim = '';
+  const cardTrim = weekly && ws.trimmedByCard > 0
+    ? `<div class="rollover">Your <b>spend-less</b> card plan trims this week to ${money(ws.baseBudget)}, freeing ${money(ws.trimmedByCard)} for the card. Spending over that lands on the card and raises the balance.</div>`
+    : '';
   const rollover = weekly && ws.carryover < 0
     ? `<div class="rollover">You went ${money(-ws.carryover)} over last week, so this week is trimmed to ${money(ws.budget)}. <button class="link" data-act="week-reset">Reset to ${money(ws.baseBudget)}</button></div>`
     : '';
@@ -773,7 +775,7 @@ function openWeek() {
       <div class="label">Left to spend this week</div>
       <div class="big ${ws.left < 0 ? 'neg' : ''}">${money(ws.left)}</div>
       <div class="bar ${barClass(ws.spent, ws.budget)}"><i style="width:${pct(ws.spent, ws.budget)}%"></i></div>
-      <div class="note" style="margin:8px 0 0">${money(ws.spent)} of ${money(ws.budget)} everyday budget${ws.carryover < 0 ? ` <span class="negtext">(incl. ${money(ws.carryover)} rolled over)</span>` : ''}</div></div>
+      <div class="note" style="margin:8px 0 0">${money(ws.spent)} of ${money(ws.budget)} everyday budget${ws.trimmedByCard > 0 ? ` <span class="muted">(spend-less card plan: trimmed ${money(ws.trimmedByCard)})</span>` : ''}${ws.carryover < 0 ? ` <span class="negtext">(incl. ${money(ws.carryover)} rolled over)</span>` : ''}</div></div>
     <h2>Week by week</h2><div class="card" style="padding:4px 18px">${weekRows}</div>
     <h2>This week by category</h2><div class="card">${catRows}</div></div>`;
   $('#sheet').className = 'sheet page';
