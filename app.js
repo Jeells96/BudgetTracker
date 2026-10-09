@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=32';
-import { TRANSFERS } from './defaults.js?v=32';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, standardWeek, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsTiming, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends } from './calc.js?v=32';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=33';
+import { TRANSFERS } from './defaults.js?v=33';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, standardWeek, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsTiming, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends } from './calc.js?v=33';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -171,9 +171,9 @@ function payoffScheduleHTML(sch, weekly, srcLabel) {
   const today = ymd(new Date());
   const thisFri = ymd(nextPayday(new Date(), S().weekStartDay ?? 5));
   const rows = sch.payments.map((p) => {
-    const done = p.date < today;
+    const cls = p.paid ? 'paid' : (p.date < today ? 'done' : '');
     const label = p.date === thisFri ? 'This Fri' : parseYmd(p.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-    return `<div class="sch-row ${done ? 'done' : ''}"><span>${label}</span><b>${money(p.amount)}</b></div>`;
+    return `<div class="sch-row ${cls}"><span>${label}</span><b>${money(p.amount)}${p.paid ? ' <span class="paidtag">✓ paid</span>' : ''}</b></div>`;
   }).join('');
   const head = sch.multi
     ? `<div class="week"><span class="muted">Payoff plan · about ${money(weekly)}/Friday ${srcLabel}</span><b class="goodtext">clear by ${parseYmd(sch.payoffDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</b></div>`
@@ -858,10 +858,11 @@ document.addEventListener('click', (e) => {
     case 'week': return openWeek();
     case 'week-reset': { S().weekResetAt = weekStats(S(), store.txs).start; saveSettings(); return render(); }
     case 'cc-ask': {
-      const thisWk = weekStart(new Date(), S().weekStartDay ?? 5);
-      if (id === 'week') { S().cc = { ...S().cc, paidThrough: thisWk }; saveSettings(); }
-      else if (S().cc.paidThrough === thisWk) { S().cc = { ...S().cc, paidThrough: null }; saveSettings(); }
-      closeSheet(); render();
+      const payday = ymd(nextPayday(new Date(), S().weekStartDay ?? 5));
+      // "week" = this week's payment (auto-detect already covers it); "more" = keep
+      // this payday in the plan because another payment is coming.
+      S().cc = { ...S().cc, paidThrough: id === 'week' ? payday : 'more:' + payday };
+      saveSettings(); closeSheet(); render();
       toast(id === 'week' ? "Got it — that's this week's card payment; the rest is split over the weeks left" : "Okay — add the rest when you can");
       return;
     }

@@ -302,4 +302,7 @@ select[data-set]:focus { outline:2px solid var(--brand); }
 .sch-row { display:flex; justify-content:space-between; gap:10px; padding:9px 0; border-top:1px solid var(--line); font-size:.95rem; }
 .sch-row:first-child { border-top:0; }
 .sch-row.done { opacity:.5; text-decoration:line-through; }
+.sch-row.paid span:first-child { color:var(--muted); }
+.sch-row.paid b { color:var(--good); }
+.paidtag { font-size:.7rem; font-weight:700; color:var(--good); background:color-mix(in srgb,var(--good) 16%,transparent); padding:2px 6px; border-radius:7px; margin-left:4px; vertical-align:middle; }
 .sch-row b { font-weight:700; }

@@ -197,13 +197,25 @@ export function billsTiming(s, txs, now = new Date()) {
   return { until: ymd(until), cutoffDay, dueBy: round(dueBy), movedIn, toMove, cushion, light: movedIn < dueBy - 0.005 };
 }
 
-// The first payday the card plan still has to pay. Normally the upcoming payday,
-// but if you've already marked THIS week's payday paid (cc.paidThrough), it's the
-// next one — so an over/underpayment this week redistributes across what's left.
-export function firstUnpaidPayday(s, now = new Date(), startDay = 5) {
+// Is this week's payday already covered? True when you've made a card payment in
+// the run-up to it (the app "just knows"), unless you told it more is coming for
+// this payday. Returns { paid, payday, amount } for the upcoming payday.
+export function weekPaidState(s, txs, now = new Date(), startDay = 5) {
   const base = nextPayday(now, startDay);
-  if (s.cc && s.cc.paidThrough && s.cc.paidThrough === ymd(base)) return addDays(base, 7);
-  return base;
+  const payday = ymd(base);
+  const prevPayday = ymd(addDays(base, -7));
+  const amount = sum(txs.filter((t) => t.type === 'transfer' && t.category === 'card' && t.date > prevPayday && t.date <= payday).map((t) => t.amount));
+  const flag = s.cc && s.cc.paidThrough;
+  if (flag === 'more:' + payday) return { paid: false, payday, amount: round(amount) };   // you said more is coming
+  const paid = flag === payday || amount > 0.005;                                          // explicitly marked, or auto-detected
+  return { paid, payday, amount: round(amount) };
+}
+// The first payday the card plan still has to pay. Normally the upcoming payday,
+// but if this week's payday is already covered it's the next one — so an over/
+// underpayment this week redistributes across what's left.
+export function firstUnpaidPayday(s, txs, now = new Date(), startDay = 5) {
+  const w = weekPaidState(s, txs, now, startDay);
+  return w.paid ? addDays(parseYmd(w.payday), 7) : parseYmd(w.payday);
 }
 // Paydays (weekStartDay) remaining this month, from `from` onward.
 export function paydaysLeft(now = new Date(), startDay = 5, from = null) {
@@ -213,8 +225,8 @@ export function paydaysLeft(now = new Date(), startDay = 5, from = null) {
   return Math.max(1, n);
 }
 // Remaining UNPAID paydays this month (skips a week you've already paid for).
-export function remainingPaydays(s, now = new Date(), startDay = 5) {
-  return paydaysLeft(now, startDay, firstUnpaidPayday(s, now, startDay));
+export function remainingPaydays(s, txs, now = new Date(), startDay = 5) {
+  return paydaysLeft(now, startDay, firstUnpaidPayday(s, txs, now, startDay));
 }
 // A dated payment schedule: the balance split evenly across `weeks` paydays,
 // starting from `start` (a Date; defaults to the upcoming payday). Splitting the
@@ -241,7 +253,7 @@ export function paymentSchedule(bal, weeks, now = new Date(), startDay = 5, star
 export function cardPlan(s, txs, now = new Date()) {
   const bal = cardBalance(s, txs);
   const startDay = s.weekStartDay ?? 5;
-  const weeks = remainingPaydays(s, now, startDay);
+  const weeks = remainingPaydays(s, txs, now, startDay);
   const sw = standardWeek(s);
   const perWeek = round(bal / weeks);
   const extra = Math.max(0, sw.extra);                 // leftover after everyday spending
@@ -289,7 +301,11 @@ export function weekPlan(s, txs, now = new Date()) {
   }
   const weeklyPay = strat === 'stretch' ? cp.stretch.perWeek : cp.perWeek;
   const payWeeks = strat === 'stretch' ? cp.stretch.weeks : cp.weeks;
-  const sch = paymentSchedule(cp.balance, payWeeks, now, startDay, firstUnpaidPayday(s, now, startDay));
+  const wps = weekPaidState(s, txs, now, startDay);
+  const sch = paymentSchedule(cp.balance, payWeeks, now, startDay, firstUnpaidPayday(s, txs, now, startDay));
+  // If this payday is already covered, show it on top as a completed row (what you
+  // actually paid this week) so the plan reads "298 paid, then the rest split".
+  if (wps.paid && wps.amount > 0.005) sch.payments.unshift({ date: wps.payday, amount: wps.amount, paid: true });
 
   return {
     standard: sw,
