@@ -197,49 +197,88 @@ export function billsTiming(s, txs, now = new Date()) {
   return { until: ymd(until), cutoffDay, dueBy: round(dueBy), movedIn, toMove, cushion, light: movedIn < dueBy - 0.005 };
 }
 
-// The credit-card payoff schedule: pay the everyday-spending budget toward the
-// card each payday (since everyday money goes to the card) until it's cleared.
-// Stable per-payday amount, so the plan doesn't drift as days pass.
-export function cardSchedule(s, txs, now = new Date()) {
-  const startDay = s.weekStartDay ?? 5;
-  const bal = cardBalance(s, txs);
-  const everyday = s.weeklyBudget || 0;
+// Paydays (weekStartDay) remaining this month, from the upcoming payday onward.
+export function paydaysLeft(now = new Date(), startDay = 5) {
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  let d = nextPayday(now, startDay), n = 0, guard = 0;
+  while (d <= end && guard++ < 10) { n++; d = addDays(d, 7); }
+  return Math.max(1, n);
+}
+// A dated payment schedule: `weekly` toward the card each payday until cleared.
+export function paymentSchedule(bal, weekly, now = new Date(), startDay = 5) {
   const payments = [];
-  if (bal > 0 && everyday > 0) {
-    let rem = bal, d = nextPayday(now, startDay), guard = 0;
-    while (rem > 0.005 && guard++ < 104) {
-      const amount = round(Math.min(everyday, rem));
+  if (bal > 0 && weekly > 0) {
+    let rem = round(bal), d = nextPayday(now, startDay), guard = 0;
+    while (rem > 0.005 && guard++ < 200) {
+      const amount = round(Math.min(weekly, rem));
       payments.push({ date: ymd(d), amount });
       rem = round(rem - amount);
       d = addDays(d, 7);
     }
   }
-  return { balance: bal, everyday, payments, weeks: payments.length, thisWeek: payments[0] ? payments[0].amount : 0, multi: payments.length > 1, payoffDate: payments.length ? payments[payments.length - 1].date : null };
+  return { payments, weeks: payments.length, multi: payments.length > 1, payoffDate: payments.length ? payments[payments.length - 1].date : null };
+}
+
+// Card payoff: spread the balance across the paydays left this month. The money
+// comes from your leftover; if that's short, the strategy frees more (spend/save/
+// split) or you stretch it longer. Everyday spending is committed, NOT a source.
+export function cardPlan(s, txs, now = new Date()) {
+  const bal = cardBalance(s, txs);
+  const startDay = s.weekStartDay ?? 5;
+  const weeks = paydaysLeft(now, startDay);
+  const sw = standardWeek(s);
+  const perWeek = round(bal / weeks);
+  const extra = Math.max(0, sw.extra);                 // leftover after everyday spending
+  const need = Math.max(0, round(perWeek - extra));    // what leftover can't cover
+  const spendCut = Math.min(need, s.weeklyBudget), saveCut = Math.min(need, s.weeklySavings);
+  const half = round(need / 2);
+  const stretchWeeks = weeks + 4;
+  return {
+    balance: bal, weeks, perWeek, extra: round(extra), need,
+    options: {
+      spend: { cut: round(spendCut), newSpend: round(s.weeklyBudget - spendCut), short: round(need - spendCut) },
+      save: { cut: round(saveCut), newSave: round(s.weeklySavings - saveCut), short: round(need - saveCut) },
+      split: { newSpend: round(s.weeklyBudget - Math.min(half, s.weeklyBudget)), newSave: round(s.weeklySavings - Math.min(half, s.weeklySavings)), short: round(need - Math.min(half, s.weeklyBudget) - Math.min(half, s.weeklySavings)) }
+    },
+    stretch: { weeks: stretchWeeks, perWeek: round(bal / stretchWeeks) }
+  };
 }
 
 // Standard week (your plan from Settings) vs Recommended week:
 //  - "To bills account" = what to move this payday to stay covered to next Friday
-//  - Everyday-spending money flows to the credit card; if the card is smaller
-//    than the everyday budget it's cleared and the rest drops into leftover.
+//  - The card payment comes from your chosen strategy; everyday spending stays put
 export function weekPlan(s, txs, now = new Date()) {
   const sw = standardWeek(s);
   const bt = billsTiming(s, txs, now);
-  const sch = cardSchedule(s, txs, now);
   const ms = monthStats(s, txs, ymd(now).slice(0, 7), now);
+  const cp = cardPlan(s, txs, now);
+  const startDay = s.weekStartDay ?? 5;
 
   const pay = sw.pay;
   const bills = ms.isCurrent ? bt.toMove : sw.bills;
   const groceries = sw.groceries;
-  const savings = sw.savings;
-  const everyday = s.weeklyBudget || 0;
-  const cardPay = round(Math.min(everyday, sch.balance));   // everyday → card, capped at the balance
-  const everydaySurplus = round(everyday - cardPay);        // freed up when the card is small/zero
-  const leftover = round(pay - bills - groceries - savings - cardPay);
+  let everyday = sw.everyday, savings = sw.savings, extra, leftover;
+  const strat = cp.balance > 0 ? (s.cc.strategy || 'extra') : 'none';
+  const o = cp.options;
+
+  if (cp.balance > 0) {
+    if (strat === 'spend') everyday = o.spend.newSpend;
+    else if (strat === 'save') savings = o.save.newSave;
+    else if (strat === 'split') { everyday = o.split.newSpend; savings = o.split.newSave; }
+    extra = strat === 'stretch' ? cp.stretch.perWeek : cp.perWeek;   // the card payment this payday
+    leftover = round(pay - bills - groceries - everyday - savings - extra);
+  } else {
+    extra = round(pay - bills - groceries - everyday - savings);     // just spare money
+    leftover = 0;
+  }
+  const weeklyPay = strat === 'stretch' ? cp.stretch.perWeek : cp.perWeek;
+  const sch = paymentSchedule(cp.balance, weeklyPay, now, startDay);
 
   return {
     standard: sw,
-    rec: { pay, bills, groceries, savings, everyday, cardPay, everydaySurplus, leftover },
-    bt, sch, cardBalance: sch.balance, isCurrent: ms.isCurrent
+    rec: { pay, bills, groceries, everyday, savings, extra, leftover },
+    strategy: strat, cardBalance: cp.balance, cardPerWeek: cp.perWeek, stretchWeeks: cp.stretch.weeks,
+    bt, sch, isCurrent: ms.isCurrent
   };
 }
 
