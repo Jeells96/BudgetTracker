@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=33';
-import { TRANSFERS } from './defaults.js?v=33';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, standardWeek, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsTiming, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends } from './calc.js?v=33';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=34';
+import { TRANSFERS } from './defaults.js?v=34';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, standardWeek, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends } from './calc.js?v=34';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -129,36 +129,54 @@ function txRow(t) {
     <div class="body"><div class="t">${esc(label)}${ccDot}</div><div class="s">${sub ? esc(sub) + ' · ' : ''}${dateStr}</div></div>${amt}<span class="chev">›</span></button>`;
 }
 
-function billsTimingCard(s, now = new Date()) {
-  const bt = billsTiming(s, store.txs, now);
-  const untilLabel = parseYmd(bt.until).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-  const verdict = bt.light
-    ? `<b class="negtext">Light by ${money(bt.toMove)}</b>`
-    : `<b class="goodtext">Cushion of ${money(bt.cushion)}</b>`;
+function billsAcctCard(s, now = new Date()) {
+  const bp = billsProjection(s, now);
+  const asOfLabel = bp.hasBal ? 'as of ' + shortDate(parseYmd(bp.asOf)) : 'enter your bank balance to start';
+  const monthEndLabel = parseYmd(bp.monthEnd).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+  const verdict = !bp.hasBal ? ''
+    : bp.covered
+      ? `<b class="goodtext">Covered · ${money(bp.surplus)} to spare</b>`
+      : `<b class="negtext">Short ${money(bp.shortfall)}</b>`;
+
+  const upRows = bp.upList.length
+    ? bp.upList.map((b) => `<div><span>${esc(b.name)} · ${ordinal(b.day)}</span><b>${money(b.amount)}</b></div>`).join('')
+    : `<div><span class="muted">No more bills due this month</span><b>${money(0)}</b></div>`;
+
+  const compare = !bp.hasBal ? '' : `
+    <div class="ccbreak" style="margin-top:10px">
+      <div><span>Weekly transfer needed</span><b>${money(bp.weeklyNeeded)}</b></div>
+      <div><span>On the table (your plan)</span><b>${money(bp.onTable)}</b></div>
+      <div class="tot"><span>${bp.diff > 0.005 ? 'Transfer more' : bp.diff < -0.005 ? 'You can move less' : 'Right on plan'}</span>
+        <b class="${bp.diff > 0.005 ? 'negtext' : 'goodtext'}">${Math.abs(bp.diff) < 0.005 ? '—' : money(Math.abs(bp.diff)) + '/wk'}</b></div>
+    </div>`;
+
   return `<div class="card">
-    <div class="week"><span class="muted">Bills account · to last until ${untilLabel}</span>${verdict}</div>
+    <div class="field"><label>Bills account balance<br><span class="muted" style="font-size:.8rem">${asOfLabel}</span></label>
+      <input type="number" inputmode="decimal" value="${bp.hasBal ? bp.bal : ''}" placeholder="0" data-billsbal></div>
+    ${bp.hasBal ? `<div class="week" style="margin-top:2px"><span class="muted">${bp.fridays} Friday${bp.fridays === 1 ? '' : 's'} left in ${bp.monthName}</span>${verdict}</div>
     <div class="ccbreak" style="margin-top:8px">
-      <div><span>Bills due through ${untilLabel}</span><b>${money(bt.dueBy)}</b></div>
-      <div><span>Moved in this month</span><b>${money(bt.movedIn)}</b></div>
-      <div class="tot"><span>${bt.light ? 'Move before then' : 'Ahead by'}</span><b class="${bt.light ? 'negtext' : 'goodtext'}">${money(bt.light ? bt.toMove : bt.cushion)}</b></div>
-    </div></div>`;
+      ${upRows}
+      <div class="tot"><span>Upcoming bills (through ${monthEndLabel})</span><b>${money(bp.upcoming)}</b></div>
+    </div>
+    ${compare}
+    <div class="note" style="margin:8px 0 0">${bp.covered
+      ? `Your balance covers every bill left this month with ${money(bp.surplus)} left over.`
+      : `Spread over ${bp.fridays} Friday${bp.fridays === 1 ? '' : 's'}, you'd need ${money(bp.weeklyNeeded)} a week to cover the ${money(bp.shortfall)} gap.`}</div>`
+    : `<div class="note" style="margin:8px 0 0">Type what's actually in your bills account. It'll show the Fridays left this month, subtract the bills still coming, and tell you the weekly transfer needed.</div>`}
+  </div>`;
 }
 
 function bills() {
-  const s = S(), ms = MS();
-  const T = ms.billsTotal, F = ms.billsIn;
+  const s = S();
   const byDay = [...s.bills].sort((a, b) => a.day - b.day || a.name.localeCompare(b.name));
   const first = byDay.filter((x) => x.day === 1), later = byDay.filter((x) => x.day !== 1);
   const tot = (l) => round(l.reduce((a, x) => a + billAmount(x), 0));
   const billRow = (x) => `<div class="bill"><div class="d-badge">${x.day}</div><div class="body"><div class="n">${esc(x.name)}</div><div class="d">Auto-pays the ${ordinal(x.day)}${x.useAvg && x.history && x.history.length ? ' · 12-mo avg' : ''}</div></div><div class="amt">${money(billAmount(x))}</div></div>`;
 
   return `${header('Bills')}
-    <div class="card hero"><div class="label">Still to move into your bills account this month</div>
-      <div class="big">${money(ms.billsLeft)}</div>
-      <div class="bar"><i style="width:${pct(F, T)}%"></i></div>
-      <div class="note" style="margin:8px 0 0">${money(F)} moved this month of ${money(T)} total</div></div>
-    <h2>Right now</h2>
-    ${billsTimingCard(s)}
+    <h2>Bills account</h2>
+    ${billsAcctCard(s)}
     <button class="btn block" data-act="log-xfer" data-id="bills">+ Log a transfer to the bills account</button>
     <h2>Due on the 1st · ${money(tot(first))}</h2><div class="card">${first.map(billRow).join('') || '<div class="empty">Nothing due on the 1st.</div>'}</div>
     ${later.length ? `<h2>Later in the month · ${money(tot(later))}</h2><div class="card">${later.map(billRow).join('')}</div>` : ''}
@@ -279,10 +297,11 @@ function planTab() {
   const stdVal = { pay: st.pay, bills: st.bills, groceries: st.groceries, everyday: st.everyday, savings: st.savings, extra: st.extra };
   const erow = (label, field) => `<div class="trow"><span>${label}</span><span class="b">${money(stdVal[field])}</span><span class="n"><input class="plancell" data-plan="${field}" type="number" inputmode="decimal" value="${p[field]}"></span></div>`;
 
-  const untilLabel = parseYmd(bt.until).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-  const billsBox = `<div class="card">
-    <div class="week"><span class="muted">Bills account · cover until ${untilLabel}</span><b class="${bt.light ? 'negtext' : 'goodtext'}">${bt.light ? 'move ' + money(bt.toMove) : money(bt.cushion) + ' cushion'}</b></div>
-    <div class="note" style="margin:6px 0 0">Bills due through ${untilLabel}: ${money(bt.dueBy)} · moved in: ${money(bt.movedIn)}. ${bt.light ? `You're light — move ${money(bt.toMove)} to stay covered.` : `You've got a ${money(bt.cushion)} cushion.`} Just an FYI — it doesn't change your plan below.</div></div>`;
+  const billsBox = !bt.hasBal
+    ? `<div class="card"><div class="note" style="margin:0">Enter your bills account balance on the <b>Bills</b> tab to see the weekly transfer you need this month. (It doesn't change your plan below.)</div></div>`
+    : `<div class="card">
+        <div class="week"><span class="muted">${bt.fridays} Friday${bt.fridays === 1 ? '' : 's'} left in ${bt.monthName}</span><b class="${bt.covered ? 'goodtext' : 'negtext'}">${bt.covered ? money(bt.surplus) + ' to spare' : 'short ' + money(bt.shortfall)}</b></div>
+        <div class="note" style="margin:6px 0 0">Balance ${money(bt.bal)} vs ${money(bt.upcoming)} of bills still due. Weekly transfer needed: <b>${money(bt.weeklyNeeded)}</b> vs ${money(bt.onTable)} on the table${Math.abs(bt.diff) < 0.005 ? '' : ` (${bt.diff > 0 ? '+' : '−'}${money(Math.abs(bt.diff))}/wk)`}. FYI only — it doesn't change your plan below.</div></div>`;
 
   const stratLabel = { extra: 'from leftover', spend: 'spending less', save: 'saving less', split: 'splitting the difference', stretch: 'stretching the payoff', none: '' }[wp.strategy];
   const cardNote = sch.balance > 0
@@ -911,6 +930,7 @@ document.addEventListener('change', (e) => {
   const t = e.target, num = () => parseFloat(t.value) || 0;
   if (t.id === 'sav-slider') { slideSavings(+t.value); saveSettings(); return; }
   if (t.dataset.set) { S()[t.dataset.set] = num(); saveSettings(); }
+  else if (t.hasAttribute('data-billsbal')) { S().billsAcct = { bal: num(), asOf: today() }; saveSettings(); render(); return; }
   else if (t.dataset.cc === 'start') { S().cc = { ...S().cc, start: num(), asOf: today() }; saveSettings(); }
   else if (t.dataset.cc === 'manual') { S().cc = { ...S().cc, manual: num() }; saveSettings(); }
   else if (t.dataset.cc === 'charges') { const raw = cardDetail(S(), store.txs).rawCredit; S().cc = { ...S().cc, chargesAdj: round(num() - raw) }; saveSettings(); }

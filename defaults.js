@@ -34,6 +34,9 @@ export const DEFAULT_SETTINGS = {
   //  mode   = 'auto' (app computes balance from logged credit charges) or 'manual'
   //  manual = your typed current balance (used when mode = manual)
   cc: { start: 0, asOf: null, mode: 'auto', manual: 0, chargesAdj: 0, strategy: 'extra', paidThrough: null },
+  // Bills account: a manual balance you type from your real bank whenever you check,
+  // with the date you entered it. Not tied to logged transfers.
+  billsAcct: { bal: null, asOf: null },
   weekStartDay: 5,                  // day the weekly budget resets (0=Sun … 6=Sat); default Friday
   weekResetAt: null,                // week-start (YYYY-MM-DD) the user cleared the rollover for
   pending: [],                      // "track later" items: price only, not yet logged {id, amount, date}

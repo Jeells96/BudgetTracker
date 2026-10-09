@@ -1,6 +1,6 @@
-import { firebaseConfig } from './firebase-config.js?v=33';
-import { DEFAULT_SETTINGS } from './defaults.js?v=33';
-import { HISTORY } from './history.js?v=33';
+import { firebaseConfig } from './firebase-config.js?v=34';
+import { DEFAULT_SETTINGS } from './defaults.js?v=34';
+import { HISTORY } from './history.js?v=34';
 
 const LS_KEY = 'budget-tracker-v2';
 const CDN = 'https://www.gstatic.com/firebasejs/11.0.2/';
@@ -34,6 +34,8 @@ function normalize(s) {
     strategy: cc.strategy || 'extra',
     paidThrough: cc.paidThrough ?? null
   };
+  const ba = (s && s.billsAcct) || {};
+  out.billsAcct = { bal: ba.bal ?? null, asOf: ba.asOf ?? null };
   return out;
 }
 const round2 = (n) => Math.round(n * 100) / 100;

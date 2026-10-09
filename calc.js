@@ -182,19 +182,34 @@ export function nextPaydayAfter(now = new Date(), startDay = 5) {
   return d;
 }
 
-// How much the bills account needs so it lasts until the next payday (Friday):
-// the bills that will have come due by then, vs what you've already moved in.
-export function billsTiming(s, txs, now = new Date()) {
+// Forward look at the bills account from a MANUAL balance you typed (as of a date):
+// the bills still due this month, the Fridays left to fund them, the weekly transfer
+// that would cover the gap, and how that compares to your plan's weekly amount.
+export function billsProjection(s, now = new Date()) {
   const startDay = s.weekStartDay ?? 5;
-  const until = nextPaydayAfter(now, startDay);
-  const ms = monthStats(s, txs, ymd(now).slice(0, 7), now);
-  const sameMonth = until.getFullYear() === now.getFullYear() && until.getMonth() === now.getMonth();
-  const cutoffDay = sameMonth ? until.getDate() : daysIn(now.getFullYear(), now.getMonth());
-  const dueBy = sum(s.bills.filter((b) => b.day <= cutoffDay).map(billAmount));
-  const movedIn = round(ms.billsIn);
-  const toMove = Math.max(0, round(dueBy - movedIn));
-  const cushion = Math.max(0, round(movedIn - dueBy));
-  return { until: ymd(until), cutoffDay, dueBy: round(dueBy), movedIn, toMove, cushion, light: movedIn < dueBy - 0.005 };
+  const acct = s.billsAcct || {};
+  const hasBal = acct.bal != null && acct.asOf;
+  const ref = hasBal ? parseYmd(acct.asOf) : now;
+  const refDay = ref.getDate();
+  const monthEnd = new Date(ref.getFullYear(), ref.getMonth() + 1, 0);
+  const monthName = ref.toLocaleDateString('en-US', { month: 'long' });
+  // Bills whose typical pay-day hasn't passed yet this month.
+  const upList = s.bills.filter((b) => b.day > refDay).sort((a, b) => a.day - b.day);
+  const upcoming = sum(upList.map(billAmount));
+  // Fridays (paydays) left this month, counting the upcoming one.
+  let d = nextPayday(ref, startDay), fridays = 0, guard = 0;
+  while (d <= monthEnd && guard++ < 10) { fridays++; d = addDays(d, 7); }
+  const bal = hasBal ? round(acct.bal) : 0;
+  const shortfall = Math.max(0, round(upcoming - bal));
+  const surplus = Math.max(0, round(bal - upcoming));
+  const weeklyNeeded = fridays > 0 ? round(shortfall / fridays) : shortfall;
+  const onTable = standardWeek(s).bills;
+  const diff = round(weeklyNeeded - onTable);
+  return {
+    hasBal, asOf: acct.asOf, bal, monthName, monthEnd: ymd(monthEnd), refDay,
+    upcoming: round(upcoming), upList: upList.map((b) => ({ name: b.name, day: b.day, amount: round(billAmount(b)) })),
+    fridays, shortfall, surplus, weeklyNeeded, onTable, diff, covered: shortfall <= 0.005
+  };
 }
 
 // Is this week's payday already covered? True when you've made a card payment in
@@ -277,7 +292,7 @@ export function cardPlan(s, txs, now = new Date()) {
 //  - The card payment comes from your chosen strategy; everyday spending stays put
 export function weekPlan(s, txs, now = new Date()) {
   const sw = standardWeek(s);
-  const bt = billsTiming(s, txs, now);
+  const bt = billsProjection(s, now);
   const ms = monthStats(s, txs, ymd(now).slice(0, 7), now);
   const cp = cardPlan(s, txs, now);
   const startDay = s.weekStartDay ?? 5;
