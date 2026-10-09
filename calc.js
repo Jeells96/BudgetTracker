@@ -197,20 +197,34 @@ export function billsTiming(s, txs, now = new Date()) {
   return { until: ymd(until), cutoffDay, dueBy: round(dueBy), movedIn, toMove, cushion, light: movedIn < dueBy - 0.005 };
 }
 
-// Paydays (weekStartDay) remaining this month, from the upcoming payday onward.
-export function paydaysLeft(now = new Date(), startDay = 5) {
+// The first payday the card plan still has to pay. Normally the upcoming payday,
+// but if you've already marked THIS week's payday paid (cc.paidThrough), it's the
+// next one — so an over/underpayment this week redistributes across what's left.
+export function firstUnpaidPayday(s, now = new Date(), startDay = 5) {
+  const base = nextPayday(now, startDay);
+  if (s.cc && s.cc.paidThrough && s.cc.paidThrough === ymd(base)) return addDays(base, 7);
+  return base;
+}
+// Paydays (weekStartDay) remaining this month, from `from` onward.
+export function paydaysLeft(now = new Date(), startDay = 5, from = null) {
   const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  let d = nextPayday(now, startDay), n = 0, guard = 0;
+  let d = from || nextPayday(now, startDay), n = 0, guard = 0;
   while (d <= end && guard++ < 10) { n++; d = addDays(d, 7); }
   return Math.max(1, n);
 }
-// A dated payment schedule: `weekly` toward the card each payday until cleared.
-export function paymentSchedule(bal, weekly, now = new Date(), startDay = 5) {
+// Remaining UNPAID paydays this month (skips a week you've already paid for).
+export function remainingPaydays(s, now = new Date(), startDay = 5) {
+  return paydaysLeft(now, startDay, firstUnpaidPayday(s, now, startDay));
+}
+// A dated payment schedule: the balance split evenly across `weeks` paydays,
+// starting from `start` (a Date; defaults to the upcoming payday). Splitting the
+// remaining balance each step self-corrects rounding — no stranded penny at the end.
+export function paymentSchedule(bal, weeks, now = new Date(), startDay = 5, start = null) {
   const payments = [];
-  if (bal > 0 && weekly > 0) {
-    let rem = round(bal), d = nextPayday(now, startDay), guard = 0;
-    while (rem > 0.005 && guard++ < 200) {
-      const amount = round(Math.min(weekly, rem));
+  if (bal > 0 && weeks > 0) {
+    let rem = round(bal), d = start || nextPayday(now, startDay);
+    for (let i = 0; i < weeks && rem > 0.005; i++) {
+      const amount = round(rem / (weeks - i));
       payments.push({ date: ymd(d), amount });
       rem = round(rem - amount);
       d = addDays(d, 7);
@@ -219,13 +233,15 @@ export function paymentSchedule(bal, weekly, now = new Date(), startDay = 5) {
   return { payments, weeks: payments.length, multi: payments.length > 1, payoffDate: payments.length ? payments[payments.length - 1].date : null };
 }
 
-// Card payoff: spread the balance across the paydays left this month. The money
-// comes from your leftover; if that's short, the strategy frees more (spend/save/
-// split) or you stretch it longer. Everyday spending is committed, NOT a source.
+// Card payoff: spread the CURRENT balance across the paydays left this month. The
+// money comes from your leftover; if that's short, the strategy frees more (spend/
+// save/split) or you stretch it longer. Everyday spending is committed, NOT a source.
+// Over/underpaying one week redistributes automatically: the balance already reflects
+// the payment, and the divisor drops the week you marked paid.
 export function cardPlan(s, txs, now = new Date()) {
   const bal = cardBalance(s, txs);
   const startDay = s.weekStartDay ?? 5;
-  const weeks = paydaysLeft(now, startDay);
+  const weeks = remainingPaydays(s, now, startDay);
   const sw = standardWeek(s);
   const perWeek = round(bal / weeks);
   const extra = Math.max(0, sw.extra);                 // leftover after everyday spending
@@ -255,7 +271,7 @@ export function weekPlan(s, txs, now = new Date()) {
   const startDay = s.weekStartDay ?? 5;
 
   const pay = sw.pay;
-  const bills = ms.isCurrent ? bt.toMove : sw.bills;
+  const bills = sw.bills;   // the plan's "To bills account" stays your standard amount
   const groceries = sw.groceries;
   let everyday = sw.everyday, savings = sw.savings, extra, leftover;
   const strat = cp.balance > 0 ? (s.cc.strategy || 'extra') : 'none';
@@ -272,7 +288,8 @@ export function weekPlan(s, txs, now = new Date()) {
     leftover = 0;
   }
   const weeklyPay = strat === 'stretch' ? cp.stretch.perWeek : cp.perWeek;
-  const sch = paymentSchedule(cp.balance, weeklyPay, now, startDay);
+  const payWeeks = strat === 'stretch' ? cp.stretch.weeks : cp.weeks;
+  const sch = paymentSchedule(cp.balance, payWeeks, now, startDay, firstUnpaidPayday(s, now, startDay));
 
   return {
     standard: sw,

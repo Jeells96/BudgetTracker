@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=31';
-import { TRANSFERS } from './defaults.js?v=31';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, standardWeek, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsTiming, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends } from './calc.js?v=31';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=32';
+import { TRANSFERS } from './defaults.js?v=32';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, standardWeek, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsTiming, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends } from './calc.js?v=32';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -169,13 +169,15 @@ function bills() {
 function payoffScheduleHTML(sch, weekly, srcLabel) {
   if (!sch.payments.length) return '';
   const today = ymd(new Date());
-  const rows = sch.payments.map((p, i) => {
+  const thisFri = ymd(nextPayday(new Date(), S().weekStartDay ?? 5));
+  const rows = sch.payments.map((p) => {
     const done = p.date < today;
-    return `<div class="sch-row ${done ? 'done' : ''}"><span>${i === 0 ? 'This Fri' : parseYmd(p.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span><b>${money(p.amount)}</b></div>`;
+    const label = p.date === thisFri ? 'This Fri' : parseYmd(p.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    return `<div class="sch-row ${done ? 'done' : ''}"><span>${label}</span><b>${money(p.amount)}</b></div>`;
   }).join('');
   const head = sch.multi
-    ? `<div class="week"><span class="muted">Payoff plan · ${money(weekly)}/Friday ${srcLabel}</span><b class="goodtext">clear by ${parseYmd(sch.payoffDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</b></div>`
-    : `<div class="week"><span class="muted">Payoff plan ${srcLabel}</span><b class="goodtext">cleared this Friday</b></div>`;
+    ? `<div class="week"><span class="muted">Payoff plan · about ${money(weekly)}/Friday ${srcLabel}</span><b class="goodtext">clear by ${parseYmd(sch.payoffDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</b></div>`
+    : `<div class="week"><span class="muted">Payoff plan ${srcLabel}</span><b class="goodtext">cleared ${sch.payments[0].date === thisFri ? 'this Friday' : parseYmd(sch.payments[0].date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</b></div>`;
   return `<div class="plan">
     ${head}
     <div class="sched">${rows}</div>
@@ -280,7 +282,7 @@ function planTab() {
   const untilLabel = parseYmd(bt.until).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
   const billsBox = `<div class="card">
     <div class="week"><span class="muted">Bills account · cover until ${untilLabel}</span><b class="${bt.light ? 'negtext' : 'goodtext'}">${bt.light ? 'move ' + money(bt.toMove) : money(bt.cushion) + ' cushion'}</b></div>
-    <div class="note" style="margin:6px 0 0">Bills due through ${untilLabel}: ${money(bt.dueBy)} · moved in: ${money(bt.movedIn)}. That's the “To bills account” amount below.</div></div>`;
+    <div class="note" style="margin:6px 0 0">Bills due through ${untilLabel}: ${money(bt.dueBy)} · moved in: ${money(bt.movedIn)}. ${bt.light ? `You're light — move ${money(bt.toMove)} to stay covered.` : `You've got a ${money(bt.cushion)} cushion.`} Just an FYI — it doesn't change your plan below.</div></div>`;
 
   const stratLabel = { extra: 'from leftover', spend: 'spending less', save: 'saving less', split: 'splitting the difference', stretch: 'stretching the payoff', none: '' }[wp.strategy];
   const cardNote = sch.balance > 0
@@ -288,7 +290,7 @@ function planTab() {
     : `No card balance. The Extra line is spare money after everything else.`;
 
   return `${header('Plan', false)}
-    <p class="lead"><b>Standard week</b> is your plan from Settings. <b>Recommended</b> adjusts it for what's happening now — bills due by Friday and your card. Tap any Recommended number to try a what-if; it's saved until you reset.</p>
+    <p class="lead"><b>Standard week</b> is your plan from Settings. <b>Recommended</b> adjusts it for your card payoff this month. Tap any Recommended number to try a what-if; it's saved until you reset.</p>
     <h2>Bills account</h2>${billsBox}
     <h2>This week's plan</h2>
     <div class="card plan-table">
@@ -855,7 +857,14 @@ document.addEventListener('click', (e) => {
     case 'log-xfer': return openFlow({ category: id });
     case 'week': return openWeek();
     case 'week-reset': { S().weekResetAt = weekStats(S(), store.txs).start; saveSettings(); return render(); }
-    case 'cc-ask': { closeSheet(); render(); toast(id === 'week' ? "Got it — that's this week's card payment" : "Okay — add the rest when you can"); return; }
+    case 'cc-ask': {
+      const thisWk = weekStart(new Date(), S().weekStartDay ?? 5);
+      if (id === 'week') { S().cc = { ...S().cc, paidThrough: thisWk }; saveSettings(); }
+      else if (S().cc.paidThrough === thisWk) { S().cc = { ...S().cc, paidThrough: null }; saveSettings(); }
+      closeSheet(); render();
+      toast(id === 'week' ? "Got it — that's this week's card payment; the rest is split over the weeks left" : "Okay — add the rest when you can");
+      return;
+    }
     case 'cc-strategy': { S().cc = { ...S().cc, strategy: id }; saveSettings(); return render(); }
     case 'cc-mode': { S().cc = { ...S().cc, mode: id }; saveSettings(); return render(); }
     case 'cc-charges-reset': { S().cc = { ...S().cc, chargesAdj: 0 }; saveSettings(); return render(); }
