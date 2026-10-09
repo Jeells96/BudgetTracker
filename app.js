@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=29';
-import { TRANSFERS } from './defaults.js?v=29';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, standardWeek, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, cardPlan, weekPlan, monthlyIncome, trends } from './calc.js?v=29';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=30';
+import { TRANSFERS } from './defaults.js?v=30';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, standardWeek, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsTiming, cardSchedule, nextPayday, weekPlan, monthlyIncome, trends } from './calc.js?v=30';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -85,9 +85,7 @@ function home() {
       <div class="big">${money(ms.spent)}</div>
       <div class="note" style="margin:8px 0 0">${n} purchase${n === 1 ? '' : 's'}${ms.income ? ` · ${money(ms.income)} income` : ''}</div></div>`;
   }
-  const cardTrim = weekly && ws.trimmedByCard > 0
-    ? `<div class="rollover info">Everyday budget is ${money(ws.baseBudget)} this week — trimmed ${money(ws.trimmedByCard)} to pay off your card. <button class="link" data-act="goto" data-id="bills">Change strategy</button></div>`
-    : '';
+  const cardTrim = '';
   const rollover = weekly && ws.carryover < 0
     ? `<div class="rollover">You went ${money(-ws.carryover)} over last week, so this week is trimmed to ${money(ws.budget)}. <button class="link" data-act="week-reset">Reset to ${money(ws.baseBudget)}</button></div>`
     : '';
@@ -131,61 +129,66 @@ function txRow(t) {
     <div class="body"><div class="t">${esc(label)}${ccDot}</div><div class="s">${sub ? esc(sub) + ' · ' : ''}${dateStr}</div></div>${amt}<span class="chev">›</span></button>`;
 }
 
+function billsTimingCard(s, now = new Date()) {
+  const bt = billsTiming(s, store.txs, now);
+  const untilLabel = parseYmd(bt.until).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  const verdict = bt.light
+    ? `<b class="negtext">Light by ${money(bt.toMove)}</b>`
+    : `<b class="goodtext">Cushion of ${money(bt.cushion)}</b>`;
+  return `<div class="card">
+    <div class="week"><span class="muted">Bills account · to last until ${untilLabel}</span>${verdict}</div>
+    <div class="ccbreak" style="margin-top:8px">
+      <div><span>Bills due through ${untilLabel}</span><b>${money(bt.dueBy)}</b></div>
+      <div><span>Moved in this month</span><b>${money(bt.movedIn)}</b></div>
+      <div class="tot"><span>${bt.light ? 'Move before then' : 'Ahead by'}</span><b class="${bt.light ? 'negtext' : 'goodtext'}">${money(bt.light ? bt.toMove : bt.cushion)}</b></div>
+    </div></div>`;
+}
+
 function bills() {
-  const s = S(), ms = MS(), cp = cardPlan(s, store.txs);
+  const s = S(), ms = MS();
   const T = ms.billsTotal, F = ms.billsIn;
   const byDay = [...s.bills].sort((a, b) => a.day - b.day || a.name.localeCompare(b.name));
   const first = byDay.filter((x) => x.day === 1), later = byDay.filter((x) => x.day !== 1);
   const tot = (l) => round(l.reduce((a, x) => a + billAmount(x), 0));
-  const wk = ms.isCurrent && ms.billsLeft > 0 ? round(ms.billsLeft / ms.weeksLeft) : 0;
   const billRow = (x) => `<div class="bill"><div class="d-badge">${x.day}</div><div class="body"><div class="n">${esc(x.name)}</div><div class="d">Auto-pays the ${ordinal(x.day)}${x.useAvg && x.history && x.history.length ? ' · 12-mo avg' : ''}</div></div><div class="amt">${money(billAmount(x))}</div></div>`;
 
-  const milestone = (label, goal, sub) => {
-    const need = Math.max(0, round(goal - F));
-    return `<div class="card mile"><div class="week"><span class="muted">${label}</span><b style="${need ? '' : 'color:var(--good)'}">${need ? money(need) + ' more' : 'Funded ✓'}</b></div>
-      <div class="bar"><i style="width:${pct(F, goal)}%"></i></div>
-      <div class="note" style="margin:8px 0 0">${money(Math.min(F, goal))} of ${money(goal)} · ${sub}</div></div>`;
-  };
-
   return `${header('Bills')}
-    <div class="card hero"><div class="label">Still to move into your bills account</div>
+    <div class="card hero"><div class="label">Still to move into your bills account this month</div>
       <div class="big">${money(ms.billsLeft)}</div>
       <div class="bar"><i style="width:${pct(F, T)}%"></i></div>
-      <div class="note" style="margin:8px 0 0">${money(F)} moved this month of ${money(T)} total${wk ? ` · about <b>${money(wk)}</b> a paycheck for the ${ms.weeksLeft} left` : ''}</div></div>
-    <h2>Milestones</h2>
-    ${milestone('Ready for the 1st', ms.firstTotal, 'bills that auto-pay on the 1st')}
-    <div style="height:10px"></div>
-    ${milestone('Whole month', T, 'every bill this month')}
+      <div class="note" style="margin:8px 0 0">${money(F)} moved this month of ${money(T)} total</div></div>
+    <h2>Right now</h2>
+    ${billsTimingCard(s)}
     <button class="btn block" data-act="log-xfer" data-id="bills">+ Log a transfer to the bills account</button>
     <h2>Due on the 1st · ${money(tot(first))}</h2><div class="card">${first.map(billRow).join('') || '<div class="empty">Nothing due on the 1st.</div>'}</div>
     ${later.length ? `<h2>Later in the month · ${money(tot(later))}</h2><div class="card">${later.map(billRow).join('')}</div>` : ''}
     <p class="note">Bills pay themselves, so there's nothing to check off. Change amounts and due days in Settings.</p>
-    ${cardSection(cp)}`;
+    ${cardSection()}`;
 }
 
-function cardSection(cp) {
-  const s = S(), o = cp.options, now = new Date();
-  const strat = s.cc.strategy || 'extra';
-  const eom = new Date(now.getFullYear(), now.getMonth() + 1, 0).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  let plan = '';
-  if (cp.balance > 0) {
-    const shortNote = (sh) => (sh > 0 ? ` <span class="negtext">still ${money(sh)}/wk short</span>` : '');
-    const opt = (id, title, desc) => `<button class="strat ${strat === id ? 'on' : ''}" data-act="cc-strategy" data-id="${id}">
-      <span class="radio"></span><span class="st-body"><b>${title}</b><span>${desc}</span></span></button>`;
-    plan = `<div class="plan">
-      <div class="week"><span class="muted">${strat === 'stretch' ? 'Paid off in about 2 months' : `To clear it by ${eom}`}</span><b>${money(strat === 'stretch' ? cp.stretch.perWeek : cp.perWeek)} / week</b></div>
-      <div class="note" style="margin:0 0 10px">${cp.weeks} paycheck${cp.weeks > 1 ? 's' : ''} left this month · your ${money(cp.extra)}/wk leftover covers ${cp.need <= 0 ? 'all of it' : `part of it (${money(cp.need)}/wk short)`}.</div>
-      <div class="pickhdr">Choose how to pay it off:</div>
-      ${opt('extra', 'Use my leftover only', cp.need <= 0 ? `Your ${money(cp.extra)}/wk covers it — no cuts.` : `Put ${money(cp.extra)}/wk toward it;${shortNote(cp.need)}`)}
-      ${opt('spend', 'Spend less', `Everyday → ${money(o.spend.newSpend)}/wk (−${money(o.spend.cut)})${shortNote(o.spend.short)}`)}
-      ${opt('save', 'Save less', `Savings → ${money(o.save.newSave)}/wk (−${money(o.save.cut)})${shortNote(o.save.short)}`)}
-      ${opt('split', 'Split spending & savings', `Everyday ${money(o.split.newSpend)} + savings ${money(o.split.newSave)}/wk${shortNote(o.split.short)}`)}
-      ${opt('stretch', 'Take 2 months', `${money(cp.stretch.perWeek)}/wk over ${cp.stretch.weeks} weeks — easiest, slower`)}
-      <div class="note" style="margin:8px 0 0">Your pick shows as the <b>Recommended</b> column on the Plan tab.</div></div>`;
+function payoffScheduleHTML(sch) {
+  if (sch.balance <= 0) return '';
+  if (!sch.multi) {
+    return `<div class="plan"><div class="note" style="margin:0">Your everyday budget (${money(sch.everyday)}/wk) covers the ${money(sch.balance)} balance this payday.</div></div>`;
   }
+  const today = ymd(new Date());
+  const rows = sch.payments.map((p, i) => {
+    const done = p.date < today;
+    return `<div class="sch-row ${done ? 'done' : ''}"><span>${i === 0 ? 'This Fri' : parseYmd(p.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span><b>${money(p.amount)}</b></div>`;
+  }).join('');
+  return `<div class="plan">
+    <div class="week"><span class="muted">Payoff plan · ${money(sch.everyday)}/Friday from everyday spending</span><b class="goodtext">clear by ${parseYmd(sch.payoffDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</b></div>
+    <div class="sched">${rows}</div>
+    <div class="note" style="margin:8px 0 0">Your everyday-spending money goes to the card each Friday until it's paid off — ${sch.weeks} payments.</div></div>`;
+}
+
+function cardSection() {
+  const s = S(), now = new Date();
   const cc = s.cc, auto = cc.mode !== 'manual';
   const det = cardDetail(s, store.txs);
   const cyc = cycleWindow(now);
+  const sch = cardSchedule(s, store.txs, now);
+  const plan = payoffScheduleHTML(sch);
   const diff = round((cc.manual || 0) - det.computed);
   const modeToggle = `<div class="seg">
     <button data-act="cc-mode" data-id="auto" class="${auto ? 'on' : ''}">Auto-track</button>
@@ -217,28 +220,25 @@ function cardSection(cp) {
     <button class="btn block" data-act="log-xfer" data-id="card">+ Log a card payment</button></div>`;
 }
 
-// Merge the (ephemeral) what-if draft over the computed recommendation.
+// Merge the (persisted) what-if draft over the computed recommendation.
 function planValues() {
   const wp = weekPlan(S(), store.txs);
   const rc = wp.rec, d = ui.planDraft || {};
   const v = (f) => (d[f] !== undefined ? d[f] : rc[f]);
-  const pay = v('pay'), bills = v('bills'), groceries = v('groceries'), everyday = v('everyday'), savings = v('savings');
-  const hasCard = wp.cardBalance > 0;
-  const extra = hasCard ? v('extra') : round(pay - bills - groceries - everyday - savings);
-  const leftover = hasCard ? round(pay - bills - groceries - everyday - savings - extra) : 0;
-  return { wp, hasCard, pay, bills, groceries, everyday, savings, extra, leftover };
+  const pay = v('pay'), bills = v('bills'), groceries = v('groceries'), savings = v('savings'), cardPay = v('cardPay');
+  const leftover = round(pay - bills - groceries - savings - cardPay);
+  return { wp, pay, bills, groceries, savings, cardPay, leftover };
 }
 
 function calloutHTML(leftover) {
   return leftover < 0
-    ? `You're <b>${money(-leftover)}</b> short this week. Trim everyday spending or savings, or stretch the card payoff on the Bills tab.`
-    : `You've got <b>${money(leftover)}</b> to spare this week beyond the plan.`;
+    ? `You're <b>${money(-leftover)}</b> short this week — trim a line above or move less to the card.`
+    : `You've got <b>${money(leftover)}</b> left over this week after everything.`;
 }
 
 // Live update of the derived cells while the user edits — no save, no full re-render.
 function planRecalc() {
   const p = planValues();
-  const ex = $('#plan-extra'); if (ex) ex.textContent = money(p.extra);
   const lo = $('#plan-leftover'); if (lo) lo.textContent = money(p.leftover);
   const loRow = $('#plan-leftover-row'); if (loRow) { loRow.classList.toggle('neg', p.leftover < 0); loRow.classList.toggle('total', p.leftover >= 0); }
   const co = $('#plan-callout'); if (co) { co.className = 'callout ' + (p.leftover < 0 ? 'bad' : 'good'); co.innerHTML = calloutHTML(p.leftover); }
@@ -246,31 +246,36 @@ function planRecalc() {
 }
 
 function planTab() {
-  const s = S(), p = planValues(), wp = p.wp, st = wp.standard;
-  const stratName = { extra: 'use your leftover', spend: 'spend less', save: 'save less', split: 'split spending & savings', stretch: 'take 2 months' }[wp.strategy];
-  const edited = ui.planDraft && Object.keys(ui.planDraft).length;
-  // editable recommended cell
-  const erow = (label, field, val) => `<div class="trow"><span>${label}</span><span class="b">${money(st[field])}</span><span class="n"><input class="plancell" data-plan="${field}" type="number" inputmode="decimal" value="${val}"></span></div>`;
+  const s = S(), p = planValues(), wp = p.wp, st = wp.standard, rc = wp.rec, sch = wp.sch, bt = wp.bt;
+  const edited = Object.keys(ui.planDraft || {}).length;
+  const stdVal = { pay: st.pay, bills: st.bills, groceries: st.groceries, savings: st.savings, cardPay: st.everyday };
+  const erow = (label, field) => `<div class="trow"><span>${label}</span><span class="b">${money(stdVal[field])}</span><span class="n"><input class="plancell" data-plan="${field}" type="number" inputmode="decimal" value="${p[field]}"></span></div>`;
 
-  const extraRow = p.hasCard
-    ? erow('Extra / credit card', 'extra', p.extra)
-    : `<div class="trow"><span>Extra / credit card</span><span class="b">${money(st.extra)}</span><span class="n" id="plan-extra">${money(p.extra)}</span></div>`;
+  const untilLabel = parseYmd(bt.until).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  const billsBox = `<div class="card">
+    <div class="week"><span class="muted">Bills account · cover until ${untilLabel}</span><b class="${bt.light ? 'negtext' : 'goodtext'}">${bt.light ? 'move ' + money(bt.toMove) : money(bt.cushion) + ' cushion'}</b></div>
+    <div class="note" style="margin:6px 0 0">Bills due through ${untilLabel}: ${money(bt.dueBy)} · moved in: ${money(bt.movedIn)}. That's the “To bills account” amount below.</div></div>`;
+
+  const cardNote = sch.balance > 0
+    ? `Your everyday budget (${money(rc.everyday)}) goes to the card. Balance ${money(sch.balance)} → pay <b>${money(rc.cardPay)}</b> this Friday${rc.everydaySurplus > 0 ? `, ${money(rc.everydaySurplus)} drops to leftover` : ''}.${sch.multi ? ` Paid off by ${parseYmd(sch.payoffDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} (${sch.weeks} payments — see Bills tab).` : ''}`
+    : `No card balance, so your everyday budget (${money(rc.everyday)}) is free money this week.`;
 
   return `${header('Plan', false)}
-    <p class="lead"><b>Standard week</b> is your plan from Settings. <b>Recommended</b> keeps your pay the same, catches up bills still owed, and pays the card off your way${wp.cardBalance > 0 ? ` (${stratName})` : ''}. Tap any Recommended number to try a what-if — it resets when you leave this tab.</p>
+    <p class="lead"><b>Standard week</b> is your plan from Settings. <b>Recommended</b> adjusts it for what's happening now — bills due by Friday and your card. Tap any Recommended number to try a what-if; it's saved until you reset.</p>
+    <h2>Bills account</h2>${billsBox}
+    <h2>This week's plan</h2>
     <div class="card plan-table">
       <div class="trow head"><span></span><span class="b">Standard week</span><span class="n">Recommended</span></div>
-      ${erow('Paycheck', 'pay', p.pay)}
-      ${erow('To bills account', 'bills', p.bills)}
-      ${erow('Groceries', 'groceries', p.groceries)}
-      ${erow('Everyday spending', 'everyday', p.everyday)}
-      ${erow('Savings', 'savings', p.savings)}
-      ${extraRow}
-      <div class="trow ${p.leftover < 0 ? 'neg' : 'total'}" id="plan-leftover-row"><span>Leftover</span><span class="b">${money(0)}</span><span class="n" id="plan-leftover">${money(p.leftover)}</span></div>
+      ${erow('Paycheck', 'pay')}
+      ${erow('To bills account', 'bills')}
+      ${erow('Groceries', 'groceries')}
+      ${erow('Savings', 'savings')}
+      ${erow('Everyday → card', 'cardPay')}
+      <div class="trow ${p.leftover < 0 ? 'neg' : 'total'}" id="plan-leftover-row"><span>Leftover</span><span class="b">${money(st.extra)}</span><span class="n" id="plan-leftover">${money(p.leftover)}</span></div>
     </div>
     <div class="callout ${p.leftover < 0 ? 'bad' : 'good'}" id="plan-callout">${calloutHTML(p.leftover)}</div>
     <button class="btn block" id="plan-reset-btn" data-act="plan-reset" ${edited ? '' : 'hidden'}>↺ Reset to recommended</button>
-    <p class="note">${p.hasCard ? `Extra / credit card is your ${stratName} payment (change the strategy on the Bills tab). Edits here are just what-ifs and never save.` : `Extra / credit card is spare money — edits here are just what-ifs and never save.`}</p>`;
+    <p class="note">${cardNote} Edits here are saved locally until you reset.</p>`;
 }
 
 function activityList() {
@@ -581,9 +586,23 @@ function flowClick(btn) {
     case 'cancelsplit': f.splitting = false; f.amt = f.hasTotal ? f.total : ''; f.total = ''; f.splits = []; return drawFlow();
     case 'pay': { if ($('#f-note')) f.note = $('#f-note').value; if ($('#f-date')) f.date = $('#f-date').value || f.date; if ($('#f-ex')) f.exAvg = $('#f-ex').checked; f.pay = v; return drawFlow(); }
     case 'back': f.step = (f.amtLocked && f.step === 3) ? 1 : f.step - 1; if (f.step < 1) f.step = 1; return drawFlow();
-    case 'save': { if (!f.splitting && !(parseFloat(f.amt) > 0)) return; const tx = flowCommit(); closeSheet(); render(); toast(savedMsg(tx)); return; }
+    case 'save': { if (!f.splitting && !(parseFloat(f.amt) > 0)) return; const askCard = f.category === 'card' && cardSchedule(S(), store.txs).multi; const tx = flowCommit(); if (askCard) return openCardAsk(tx); closeSheet(); render(); toast(savedMsg(tx)); return; }
     case 'again': { if (!(parseFloat(f.amt) > 0)) return; const tx = flowCommit(); f.count += 1; f.amt = ''; f.note = ''; f.exAvg = false; f.step = 2; drawFlow(); render(); toast(savedMsg(tx)); return; }
   }
+}
+
+// After a card payment while a payoff plan is running, ask if that's the week's payment.
+function openCardAsk(tx) {
+  flow = null;
+  const bal = cardBalance(S(), store.txs);
+  const el = $('#sheet');
+  el.className = 'sheet';
+  el.innerHTML = `<div class="panel"><div class="head"><span style="width:40px"></span><span class="step">Card payment</span><button data-act="cc-ask" data-id="more" aria-label="Close">✕</button></div>
+    <div class="q">Paid ${money(tx.amount)} · ${money(bal)} left</div>
+    <p class="note" style="margin:0 0 14px">Is that your payment for this week, or will you make more?</p>
+    <button class="btn primary block" data-act="cc-ask" data-id="week">That's this week's payment</button>
+    <button class="btn block" data-act="cc-ask" data-id="more" style="margin-top:8px">I'll make more this week</button></div>`;
+  el.hidden = false;
 }
 
 function savedMsg(tx) {
@@ -808,7 +827,7 @@ document.addEventListener('click', (e) => {
     case 'log-xfer': return openFlow({ category: id });
     case 'week': return openWeek();
     case 'week-reset': { S().weekResetAt = weekStats(S(), store.txs).start; saveSettings(); return render(); }
-    case 'cc-strategy': { S().cc = { ...S().cc, strategy: id }; saveSettings(); return render(); }
+    case 'cc-ask': { closeSheet(); render(); toast(id === 'week' ? "Got it — that's this week's card payment" : "Okay — add the rest when you can"); return; }
     case 'cc-mode': { S().cc = { ...S().cc, mode: id }; saveSettings(); return render(); }
     case 'cc-charges-reset': { S().cc = { ...S().cc, chargesAdj: 0 }; saveSettings(); return render(); }
     case 'catavg-view': return openCatAvg(id);

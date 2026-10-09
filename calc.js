@@ -92,16 +92,9 @@ export function monthStats(s, txs, month, now = new Date()) {
   };
 }
 
-// The everyday budget to actually hold to this week. If the chosen card-payoff
-// strategy reduces spending (spend-less or split), that lower number is the budget.
-export function effectiveEveryday(s, txs, now = new Date()) {
-  const cp = cardPlan(s, txs, now);
-  if (cp.balance <= 0) return s.weeklyBudget;
-  const strat = s.cc.strategy || 'extra';
-  if (strat === 'spend') return cp.options.spend.newSpend;
-  if (strat === 'split') return cp.options.split.newSpend;
-  return s.weeklyBudget;
-}
+// The everyday spending budget held to each week (the card no longer trims it —
+// everyday money flows to the card, but the budget amount itself is unchanged).
+export function effectiveEveryday(s) { return s.weeklyBudget; }
 
 export function weekStats(s, txs, now = new Date()) {
   const startDay = s.weekStartDay ?? 5;
@@ -110,8 +103,8 @@ export function weekStats(s, txs, now = new Date()) {
   const ids = s.categories.filter((c) => c.weekly).map((c) => c.id);
   const spentBetween = (from, to) => sum(txs.filter((t) => t.type === 'expense' && t.date >= from && t.date < to && ids.includes(t.category)).map((t) => t.amount));
   const spent = spentBetween(ws, end);
-  const base = effectiveEveryday(s, txs, now);        // strategy-adjusted everyday budget
-  const trimmedByCard = round(s.weeklyBudget - base);  // >0 when the card strategy cut spending
+  const base = effectiveEveryday(s);
+  const trimmedByCard = 0;
   // Roll a previous over-spend into this week (measured against the plan budget,
   // so it doesn't compound with the card trim) unless this week was reset.
   const prevStart = weekStart(addDays(parseYmd(ws), -1), startDay);
@@ -174,60 +167,79 @@ export function cardBalance(s, txs) {
   return s.cc.mode === 'manual' ? Math.max(0, round(s.cc.manual || 0)) : cardComputed(s, txs);
 }
 
-export function cardPlan(s, txs, now = new Date()) {
-  const bal = cardBalance(s, txs);
-  const ms = monthStats(s, txs, ymd(now).slice(0, 7), now);
-  const weeks = ms.weeksLeft;
-  const sw = standardWeek(s);
-  const perWeek = round(bal / weeks);
-  const extra = Math.max(0, sw.extra);   // discretionary left once everyday spending is covered
-  const need = Math.max(0, round(perWeek - extra));             // what extra can't cover
-  const spendCut = Math.min(need, s.weeklyBudget), saveCut = Math.min(need, s.weeklyPay ? s.weeklySavings : 0);
-  const half = round(need / 2);
-  const stretchWeeks = weeks + 4;
-  return {
-    balance: bal, weeks, perWeek, extra: round(extra), need,
-    options: {
-      spend: { cut: round(spendCut), newSpend: round(s.weeklyBudget - spendCut), short: round(need - spendCut) },
-      save: { cut: round(saveCut), newSave: round(s.weeklySavings - saveCut), short: round(need - saveCut) },
-      split: { spendCut: Math.min(half, s.weeklyBudget), saveCut: Math.min(half, s.weeklySavings), newSpend: round(s.weeklyBudget - Math.min(half, s.weeklyBudget)), newSave: round(s.weeklySavings - Math.min(half, s.weeklySavings)), short: round(need - Math.min(half, s.weeklyBudget) - Math.min(half, s.weeklySavings)) }
-    },
-    stretch: { weeks: stretchWeeks, perWeek: round(bal / stretchWeeks) }
-  };
+// ---- paydays ----
+// The upcoming payday on-or-after today (today counts if today is a payday).
+export function nextPayday(now = new Date(), startDay = 5) {
+  const d = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  d.setDate(d.getDate() + ((startDay - d.getDay() + 7) % 7));
+  return d;
+}
+// The next payday strictly AFTER today (what this payday's funding must last until).
+export function nextPaydayAfter(now = new Date(), startDay = 5) {
+  const d = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  let off = (startDay - d.getDay() + 7) % 7; if (off === 0) off = 7;
+  d.setDate(d.getDate() + off);
+  return d;
 }
 
-// Standard week (your plan from Settings) vs Recommended week (same pay, but
-// adjusts the bills line to catch up what's still owed, and routes the extra
-// money to the credit card when there's a balance).
+// How much the bills account needs so it lasts until the next payday (Friday):
+// the bills that will have come due by then, vs what you've already moved in.
+export function billsTiming(s, txs, now = new Date()) {
+  const startDay = s.weekStartDay ?? 5;
+  const until = nextPaydayAfter(now, startDay);
+  const ms = monthStats(s, txs, ymd(now).slice(0, 7), now);
+  const sameMonth = until.getFullYear() === now.getFullYear() && until.getMonth() === now.getMonth();
+  const cutoffDay = sameMonth ? until.getDate() : daysIn(now.getFullYear(), now.getMonth());
+  const dueBy = sum(s.bills.filter((b) => b.day <= cutoffDay).map(billAmount));
+  const movedIn = round(ms.billsIn);
+  const toMove = Math.max(0, round(dueBy - movedIn));
+  const cushion = Math.max(0, round(movedIn - dueBy));
+  return { until: ymd(until), cutoffDay, dueBy: round(dueBy), movedIn, toMove, cushion, light: movedIn < dueBy - 0.005 };
+}
+
+// The credit-card payoff schedule: pay the everyday-spending budget toward the
+// card each payday (since everyday money goes to the card) until it's cleared.
+// Stable per-payday amount, so the plan doesn't drift as days pass.
+export function cardSchedule(s, txs, now = new Date()) {
+  const startDay = s.weekStartDay ?? 5;
+  const bal = cardBalance(s, txs);
+  const everyday = s.weeklyBudget || 0;
+  const payments = [];
+  if (bal > 0 && everyday > 0) {
+    let rem = bal, d = nextPayday(now, startDay), guard = 0;
+    while (rem > 0.005 && guard++ < 104) {
+      const amount = round(Math.min(everyday, rem));
+      payments.push({ date: ymd(d), amount });
+      rem = round(rem - amount);
+      d = addDays(d, 7);
+    }
+  }
+  return { balance: bal, everyday, payments, weeks: payments.length, thisWeek: payments[0] ? payments[0].amount : 0, multi: payments.length > 1, payoffDate: payments.length ? payments[payments.length - 1].date : null };
+}
+
+// Standard week (your plan from Settings) vs Recommended week:
+//  - "To bills account" = what to move this payday to stay covered to next Friday
+//  - Everyday-spending money flows to the credit card; if the card is smaller
+//    than the everyday budget it's cleared and the rest drops into leftover.
 export function weekPlan(s, txs, now = new Date()) {
   const sw = standardWeek(s);
+  const bt = billsTiming(s, txs, now);
+  const sch = cardSchedule(s, txs, now);
   const ms = monthStats(s, txs, ymd(now).slice(0, 7), now);
-  const cp = cardPlan(s, txs, now);
 
-  const pay = sw.pay;                                                // always your settings income
-  const bills = ms.isCurrent ? Math.max(0, round(ms.billsLeft / ms.weeksLeft)) : sw.bills;
+  const pay = sw.pay;
+  const bills = ms.isCurrent ? bt.toMove : sw.bills;
   const groceries = sw.groceries;
-  let everyday = sw.everyday, savings = sw.savings, extra, leftover;
-  const strat = cp.balance > 0 ? (s.cc.strategy || 'extra') : 'none';
-  const o = cp.options;
-
-  if (cp.balance > 0) {
-    // The chosen strategy decides where the card payment comes from.
-    if (strat === 'spend') everyday = o.spend.newSpend;
-    else if (strat === 'save') savings = o.save.newSave;
-    else if (strat === 'split') { everyday = o.split.newSpend; savings = o.split.newSave; }
-    extra = strat === 'stretch' ? cp.stretch.perWeek : cp.perWeek;    // Extra line = the card payment
-    leftover = round(pay - bills - groceries - everyday - savings - extra);
-  } else {
-    extra = round(pay - bills - groceries - everyday - savings);      // just spare money
-    leftover = 0;
-  }
+  const savings = sw.savings;
+  const everyday = s.weeklyBudget || 0;
+  const cardPay = round(Math.min(everyday, sch.balance));   // everyday → card, capped at the balance
+  const everydaySurplus = round(everyday - cardPay);        // freed up when the card is small/zero
+  const leftover = round(pay - bills - groceries - savings - cardPay);
 
   return {
     standard: sw,
-    rec: { pay, bills, groceries, everyday, savings, extra, leftover },
-    strategy: strat, cardBalance: cp.balance, cardPerWeek: cp.perWeek, stretchPerWeek: cp.stretch.perWeek,
-    stretchWeeks: cp.stretch.weeks, weeksLeft: ms.weeksLeft, billsLeft: ms.billsLeft, isCurrent: ms.isCurrent
+    rec: { pay, bills, groceries, savings, everyday, cardPay, everydaySurplus, leftover },
+    bt, sch, cardBalance: sch.balance, isCurrent: ms.isCurrent
   };
 }
 

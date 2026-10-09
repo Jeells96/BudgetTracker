@@ -296,3 +296,10 @@ select[data-set]:focus { outline:2px solid var(--brand); }
 .splitchips { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 10px; }
 .splitchip { display:inline-flex; align-items:center; gap:6px; background:var(--bg); border:1px solid var(--line); border-radius:99px; padding:7px 12px; font-weight:700; font-size:.9rem; }
 .splitchip .x-mini { color:var(--bad); font-weight:700; }
+
+/* v30: card payoff schedule */
+.sched { margin:6px 0 2px; }
+.sch-row { display:flex; justify-content:space-between; gap:10px; padding:9px 0; border-top:1px solid var(--line); font-size:.95rem; }
+.sch-row:first-child { border-top:0; }
+.sch-row.done { opacity:.5; text-decoration:line-through; }
+.sch-row b { font-weight:700; }
