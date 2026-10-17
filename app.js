@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=53';
-import { TRANSFERS } from './defaults.js?v=53';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends } from './calc.js?v=53';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=54';
+import { TRANSFERS } from './defaults.js?v=54';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends } from './calc.js?v=54';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -344,15 +344,14 @@ function cardSection() {
 }
 
 // Merge the (persisted) what-if draft over the computed recommendation.
-// Spending is "live": its recommended value is what you've actually spent this week
-// (so a reset snaps it to reality, freeing the rest of the budget to leftover).
+// Spending in the plan stays budgeted even when live purchases are logged.
 function planValues() {
   const wp = weekPlan(S(), store.txs);
   const rc = wp.rec, d = ui.planDraft || {};
   const hasCard = wp.cardBalance > 0;
   const liveSpend = round(weekStats(S(), store.txs).spent);
   const live = ui.planLive !== false;
-  const rec = live ? { ...rc, everyday: liveSpend } : rc;   // live = actual spent; off = budgeted
+  const rec = rc; // Purchases change spending progress, NEVER the payment allocation.
   const v = (f) => (d[f] !== undefined ? d[f] : rec[f]);
   const pay = v('pay'), bills = v('bills'), groceries = v('groceries'), everyday = v('everyday'), savings = v('savings'), extra = v('extra');
   const leftover = round(pay - bills - groceries - everyday - savings - extra);
@@ -401,7 +400,7 @@ function planTab() {
 
   const stratLabel = { extra: 'from leftover', spend: 'spending less', save: 'saving less', split: 'splitting the difference', stretch: 'stretching the payoff', none: '' }[wp.strategy];
   const cardNote = sch.balance > 0
-    ? `Card balance ${money(sch.balance)} → paying <b>${money(rc.extra)}</b> this Friday (${stratLabel}).${sch.multi ? ` Paid off by ${parseYmd(sch.payoffDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} (${sch.weeks} payments — see Bills tab to change the strategy).` : ' Cleared this payday.'} Your everyday spending stays at ${money(rc.everyday)} and doesn't touch the balance as long as you're at or under it.`
+    ? `Planned card balance ${money(sch.balance)} → paying <b>${money(rc.extra)}</b> this Friday (${stratLabel}).${sch.multi ? ` Paid off by ${parseYmd(sch.payoffDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} (${sch.weeks} payments — see Bills tab to change the strategy).` : ' Cleared this payday.'} Your spending budget stays at ${money(rc.everyday)}. Everyday purchases affect the payment plan only after a completed week exceeds its limit.`
     : `No card balance. The Extra line is spare money after everything else.`;
 
   // Indented editable sub-row (used inside the merged Spending + card group).
@@ -410,7 +409,7 @@ function planTab() {
 
   // Live toggle: Spending shows what you've actually spent this week (live) or your
   // planned budget. Tapping flips between the two; the Recommended/reset follows it.
-  const liveChip = `<div class="rowact"><button class="chipbtn ${p.live ? 'on' : ''}" data-act="plan-live">${p.live ? `⚡ Live · ${money(p.liveSpend)} spent — tap for budget` : `📋 Budget · ${money(p.budgetSpend)} — tap for live`}</button></div>`;
+  const liveChip = `<div class="rowact"><span class="muted">${money(p.liveSpend)} spent this week of ${money(p.budgetSpend)} planned · purchases do not change this week’s payment plan</span></div>`;
 
   // Spending + credit card: one pool, with the spend and card-paydown pieces inside it.
   // A perfect standard week stays within the spending budget and carries no card
@@ -423,7 +422,7 @@ function planTab() {
     : `${erow('Everyday spending', 'everyday', liveChip)}${erow('Extra', 'extra')}`;
 
   return `${header('Plan', false)}
-    <p class="lead"><b>Spending</b> can show your <b>live</b> actual spent this week or your planned <b>budget</b> — tap the chip under it to switch. Tap any amount to try a what-if; the pool and leftover update with no math.</p>
+    <p class="lead"><b>Spending</b> uses your weekly budget, not purchases logged so far. Only last week’s overspending can affect this week’s card payment. Tap an amount to try a what-if.</p>
     <h2>Bills account</h2>${billsBox}
     <div class="card plan-table">
       <div class="trow head"><span></span><span class="b">Standard week</span><span class="n">Recommended</span></div>
