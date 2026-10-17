@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=50';
-import { TRANSFERS } from './defaults.js?v=50';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends } from './calc.js?v=50';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=51';
+import { TRANSFERS } from './defaults.js?v=51';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends } from './calc.js?v=51';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -151,11 +151,29 @@ function home() {
     ? moneyRow('🧾', 'Other', otherSpent, otherBudget, 'cat-toggle', '__other', true, ui.openCat === '__other') + (ui.openCat === '__other' ? otherDrop() : '')
     : '';
 
+  // Credit card obligation, shown as its own slider so spending room isn't mistaken
+  // for free money while a balance is owed. Bar = how far the balance is paid off.
+  const cardDrop = () => {
+    const pays = monthList.filter((t) => t.type === 'transfer' && t.category === 'card').sort(sortTx);
+    const cp = cardPlan(s, store.txs);
+    const line = cp.perWeek > 0 ? `<div class="du-note bad">${money(bal)} owed · about ${money(cp.perWeek)}/Friday${cp.weeks > 1 ? ` for ${cp.weeks} weeks` : ''}</div>` : `<div class="du-note bad">${money(bal)} owed</div>`;
+    return `<div class="catdrop">${line}${pays.length ? pays.map(txRow).join('') : '<div class="empty">No card payments logged this month yet.</div>'}</div>`;
+  };
+  const cardRow = () => {
+    if (!(bal > 0)) return '';
+    const paid = round(ms.cardPaid), start = Math.max(bal, round(bal + paid)), open = ui.openCat === '__card';
+    const inner = `<div class="row"><span class="n">Credit card</span><span class="a"><b class="negtext">${money(bal)} owed</b></span></div>
+      <div class="bar warn"><i style="width:${pct(paid, start)}%"></i></div>
+      <div class="row" style="margin-top:4px"><span class="n" style="color:var(--muted);font-weight:500;font-size:.82rem">${money(paid)} paid this month · tap for plan</span><span class="a"></span></div>`;
+    return `<button class="cat ${open ? 'open' : ''}" data-act="cat-toggle" data-id="__card"><div class="emoji">💳</div><div class="body">${inner}</div><span class="chev">›</span></button>${open ? cardDrop() : ''}`;
+  };
+
   const savingsTarget = round(s.weeklySavings * paychecks);
   const list = [
     exRow('💰', 'Income', ms.income, estIncome, 'income', true, true),
     ...s.categories.filter((c) => !rolledIds.has(c.id)).map((c) => { const bud = cb(c); return exRow(c.emoji, c.name, ms.byCat[c.id], bud, c.id, bud > 0); }),
     otherRow,
+    cardRow(),
     exRow('🐷', 'Savings', ms.savingsIn, savingsTarget, 'savings', savingsTarget > 0, true),
     moneyRow('🏦', 'Bills account', ms.billsIn, ms.billsTotal, 'goto', 'bills', true)
   ].join('');
