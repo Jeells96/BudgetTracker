@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=43';
-import { TRANSFERS } from './defaults.js?v=43';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends } from './calc.js?v=43';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=44';
+import { TRANSFERS } from './defaults.js?v=44';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends } from './calc.js?v=44';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -277,14 +277,18 @@ function cardSection() {
 }
 
 // Merge the (persisted) what-if draft over the computed recommendation.
+// Spending is "live": its recommended value is what you've actually spent this week
+// (so a reset snaps it to reality, freeing the rest of the budget to leftover).
 function planValues() {
   const wp = weekPlan(S(), store.txs);
   const rc = wp.rec, d = ui.planDraft || {};
   const hasCard = wp.cardBalance > 0;
-  const v = (f) => (d[f] !== undefined ? d[f] : rc[f]);
+  const liveSpend = round(weekStats(S(), store.txs).spent);
+  const rec = { ...rc, everyday: liveSpend };
+  const v = (f) => (d[f] !== undefined ? d[f] : rec[f]);
   const pay = v('pay'), bills = v('bills'), groceries = v('groceries'), everyday = v('everyday'), savings = v('savings'), extra = v('extra');
   const leftover = round(pay - bills - groceries - everyday - savings - extra);
-  return { wp, hasCard, pay, bills, groceries, everyday, savings, extra, leftover };
+  return { wp, hasCard, liveSpend, budgetSpend: rc.everyday, pay, bills, groceries, everyday, savings, extra, leftover };
 }
 
 function calloutHTML(leftover) {
@@ -336,40 +340,24 @@ function planTab() {
   // `std` lets us override the Standard-week value (a perfect standard week has no card debt).
   const subrow = (label, field, std = stdVal[field]) => `<div class="trow sub"><span>↳ ${label}</span><span class="b">${money(std)}</span><span class="n"><input class="plancell" data-plan="${field}" type="number" inputmode="decimal" placeholder="0" value="${p[field] || ''}">${resetBtn(field)}<button class="cellx" data-act="plan-clear" data-id="${field}" title="Clear">✕</button></span></div>`;
 
+  // "Live" chip: spending tracks what you've actually spent this week. Tapping it
+  // snaps the Spending cell back to the live actual (the rest of the budget frees up).
+  const liveOn = ui.planDraft.everyday === undefined;   // no what-if = showing live
+  const liveChip = `<div class="rowact"><button class="chipbtn ${liveOn ? 'on' : ''}" data-act="plan-live">⚡ Live · ${money(p.liveSpend)} spent of ${money(p.budgetSpend)}</button></div>`;
+
   // Spending + credit card: one pool, with the spend and card-paydown pieces inside it.
   // A perfect standard week stays within the spending budget and carries no card
   // balance, so the card-paydown Standard column is 0 (the spare shows up in Leftover).
   const spendCardGroup = p.hasCard
     ? `<div class="trow grouphdr"><span>Spending + credit card</span><span class="b">${money(st.everyday)}</span><span class="n" id="plan-combined">${money(p.everyday + p.extra)}</span></div>
        ${subrow('Spending', 'everyday')}
+       ${liveChip}
        ${subrow('Card paydown', 'extra', 0)}`
-    : `${erow('Everyday spending', 'everyday')}${erow('Extra', 'extra')}`;
+    : `${erow('Everyday spending', 'everyday', liveChip)}${erow('Extra', 'extra')}`;
 
-  const viewToggle = `<div class="seg" style="margin:0 0 12px">
-    <button data-act="plan-view" data-id="plan" class="${ui.planView !== 'week' ? 'on' : ''}">Projected</button>
-    <button data-act="plan-view" data-id="week" class="${ui.planView === 'week' ? 'on' : ''}">This week so far</button></div>`;
-
-  // ---- This week so far: actual spending vs plan, over/under, where it goes ----
-  const ws = weekStats(s, store.txs), wps = weekPaidState(s, store.txs);
-  const aSpend = ws.spent, aCard = wps.amount;
-  const spendUnder = round(rc.everyday - aSpend), cardUnder = round(rc.extra - aCard);
-  const row = (label, planned, actual) => { const d = round(planned - actual); return `<div class="trow"><span>${label}</span><span class="b">${money(planned)}</span><span class="n ${d < -0.005 ? 'negtext' : ''}">${money(actual)}</span></div>`; };
-  const weekRecap = `
-    <h2>This week so far</h2>
-    <div class="card plan-table">
-      <div class="trow head"><span></span><span class="b">Planned</span><span class="n">Actual</span></div>
-      ${row('Spending', rc.everyday, aSpend)}
-      ${p.hasCard ? row('Card paydown', rc.extra, aCard) : ''}
-    </div>
-    ${spendUnder > 0.005
-      ? `<div class="callout good">You're <b>${money(spendUnder)}</b> under on spending — it's free money.${p.hasCard ? ` <button class="link" data-act="under-to-card" data-id="${spendUnder}">Put it toward the card →</button>` : ' It drops to your Extra.'}</div>`
-      : spendUnder < -0.005
-        ? `<div class="callout bad">You're <b>${money(-spendUnder)}</b> over on spending — that came out of checking (debit) or went onto your card balance (credit) as you logged it.</div>`
-        : `<div class="callout good">Right on your spending budget this week.</div>`}
-    ${p.hasCard && cardUnder > 0.005 ? `<p class="note"><b>${money(cardUnder)}</b> of this week's ${money(rc.extra)} card payment is still to pay.</p>` : ''}
-    <p class="note">Numbers update as you log purchases. Switch to <b>Projected</b> to plan the split.</p>`;
-
-  const planView = `
+  return `${header('Plan', false)}
+    <p class="lead"><b>Spending</b> is live — it shows what you've actually spent this week, so the rest of your budget stays free to move. Tap any amount to try a what-if; the pool and leftover update with no math.</p>
+    <h2>Bills account</h2>${billsBox}
     <div class="card plan-table">
       <div class="trow head"><span></span><span class="b">Standard week</span><span class="n">Recommended</span></div>
       ${erow('Paycheck', 'pay')}
@@ -381,13 +369,7 @@ function planTab() {
     </div>
     <div class="callout ${p.leftover < 0 ? 'bad' : 'good'}" id="plan-callout">${calloutHTML(p.leftover)}</div>
     <button class="btn block" id="plan-reset-btn" data-act="plan-reset" ${edited ? '' : 'hidden'}>↺ Reset to recommended</button>
-    <p class="note">${cardNote} Tap any amount to try a what-if — the pool and leftover update automatically. Edits are saved until you reset.</p>`;
-
-  return `${header('Plan', false)}
-    <p class="lead">Your <b>spending</b> and <b>card paydown</b> share one pool — spend less and more goes to the card, with no math. <b>Projected</b> plans the week; <b>This week so far</b> checks what you actually did.</p>
-    <h2>Bills account</h2>${billsBox}
-    ${viewToggle}
-    ${ui.planView === 'week' ? weekRecap : planView}`;
+    <p class="note">${cardNote} Edits are saved until you reset.</p>`;
 }
 
 function activityList() {
@@ -1028,8 +1010,7 @@ document.addEventListener('click', (e) => {
     case 'plan-reset': ui.planDraft = {}; savePlanDraft(); return render();
     case 'plan-reset-field': { if (ui.planDraft) delete ui.planDraft[id]; savePlanDraft(); return render(); }
     case 'plan-bills-needed': { (ui.planDraft ||= {}).bills = round(parseFloat(id) || 0); savePlanDraft(); return render(); }
-    case 'plan-view': ui.planView = id; return render();
-    case 'under-to-card': { const amt = round(parseFloat(id) || 0); if (amt > 0) openFlow({ category: 'card', amt: String(amt) }); return; }
+    case 'plan-live': { if (ui.planDraft) delete ui.planDraft.everyday; savePlanDraft(); return render(); }
     case 'trends': return openTrends();
     case 'sheet-close': return closeSheet();
     case 'goto': ui.tab = id; scrollTo(0, 0); return render();

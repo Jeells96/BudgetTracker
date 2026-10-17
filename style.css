@@ -237,6 +237,7 @@ select[data-set]:focus { outline:2px solid var(--brand); }
 .rowact:empty { display:none; }
 .chipbtn { font-size:.74rem; font-weight:600; color:var(--brand); background:color-mix(in srgb,var(--brand) 12%,var(--card)); border:1px solid color-mix(in srgb,var(--brand) 30%,transparent); border-radius:999px; padding:5px 10px; cursor:pointer; }
 .chipbtn:active { background:color-mix(in srgb,var(--brand) 22%,var(--card)); }
+.chipbtn.on { background:color-mix(in srgb,var(--brand) 26%,var(--card)); color:var(--ink); border-color:var(--brand); }
 .plancell { display:block; width:100%; box-sizing:border-box; text-align:right; font-weight:700; color:var(--ink);
   background:color-mix(in srgb, var(--brand) 13%, var(--card)); border:1.5px solid color-mix(in srgb, var(--brand) 34%, transparent);
   border-radius:10px; padding:8px 6px; -moz-appearance:textfield; }
