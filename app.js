@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=41';
-import { TRANSFERS } from './defaults.js?v=41';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends } from './calc.js?v=41';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=42';
+import { TRANSFERS } from './defaults.js?v=42';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends } from './calc.js?v=42';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -332,13 +332,16 @@ function planTab() {
     : `No card balance. The Extra line is spare money after everything else.`;
 
   // Indented editable sub-row (used inside the merged Spending + card group).
-  const subrow = (label, field) => `<div class="trow sub"><span>↳ ${label}</span><span class="b">${money(stdVal[field])}</span><span class="n"><input class="plancell" data-plan="${field}" type="number" inputmode="decimal" placeholder="0" value="${p[field] || ''}">${resetBtn(field)}<button class="cellx" data-act="plan-clear" data-id="${field}" title="Clear">✕</button></span></div>`;
+  // `std` lets us override the Standard-week value (a perfect standard week has no card debt).
+  const subrow = (label, field, std = stdVal[field]) => `<div class="trow sub"><span>↳ ${label}</span><span class="b">${money(std)}</span><span class="n"><input class="plancell" data-plan="${field}" type="number" inputmode="decimal" placeholder="0" value="${p[field] || ''}">${resetBtn(field)}<button class="cellx" data-act="plan-clear" data-id="${field}" title="Clear">✕</button></span></div>`;
 
   // Spending + credit card: one pool, with the spend and card-paydown pieces inside it.
+  // A perfect standard week stays within the spending budget and carries no card
+  // balance, so the card-paydown Standard column is 0 (the spare shows up in Leftover).
   const spendCardGroup = p.hasCard
-    ? `<div class="trow grouphdr"><span>Spending + credit card</span><span class="b">${money(st.everyday + st.extra)}</span><span class="n" id="plan-combined">${money(p.everyday + p.extra)}</span></div>
+    ? `<div class="trow grouphdr"><span>Spending + credit card</span><span class="b">${money(st.everyday)}</span><span class="n" id="plan-combined">${money(p.everyday + p.extra)}</span></div>
        ${subrow('Spending', 'everyday')}
-       ${subrow('Card paydown', 'extra')}`
+       ${subrow('Card paydown', 'extra', 0)}`
     : `${erow('Everyday spending', 'everyday')}${erow('Extra', 'extra')}`;
 
   const viewToggle = `<div class="seg" style="margin:0 0 12px">
@@ -373,7 +376,7 @@ function planTab() {
       ${erow('Groceries', 'groceries')}
       ${spendCardGroup}
       ${erow('Savings', 'savings')}
-      <div class="trow ${p.leftover < 0 ? 'neg' : 'total'}" id="plan-leftover-row"><span>Leftover / extra</span><span class="b">${money(p.hasCard ? 0 : st.extra)}</span><span class="n" id="plan-leftover">${money(p.leftover)}</span></div>
+      <div class="trow ${p.leftover < 0 ? 'neg' : 'total'}" id="plan-leftover-row"><span>Leftover / extra</span><span class="b">${money(p.hasCard ? st.extra : 0)}</span><span class="n" id="plan-leftover">${money(p.leftover)}</span></div>
     </div>
     <div class="callout ${p.leftover < 0 ? 'bad' : 'good'}" id="plan-callout">${calloutHTML(p.leftover)}</div>
     <button class="btn block" id="plan-reset-btn" data-act="plan-reset" ${edited ? '' : 'hidden'}>↺ Reset to recommended</button>
