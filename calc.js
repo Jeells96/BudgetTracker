@@ -197,7 +197,7 @@ export function nextPaydayAfter(now = new Date(), startDay = 5) {
 // horizon runs from the as-of date through that 1st: the bills still due this month
 // PLUS next month's 1st-of-month group. The Fridays left this month are the chances
 // to fund them, so it gives the weekly transfer needed and compares it to your plan.
-export function billsProjection(s, now = new Date()) {
+export function billsProjection(s, txs = [], now = new Date()) {
   const startDay = s.weekStartDay ?? 5;
   const acct = s.billsAcct || {};
   const hasBal = acct.bal != null && acct.asOf;
@@ -217,7 +217,12 @@ export function billsProjection(s, now = new Date()) {
   if (firstBills > 0.005) upList.push({ name: `${nextMonthName} 1st bills`, day: 1, amount: firstBills, when: 'first' });
   const upcoming = sum(upList.map((b) => b.amount));
   // Fridays (paydays) left this month — the chances to move money in before the 1st.
-  let d = nextPayday(ref, startDay), fridays = 0, guard = 0;
+  // If you've already made this week's bills transfer, don't count this Friday.
+  const base = nextPayday(ref, startDay);
+  const prevP = ymd(addDays(base, -7));
+  const movedThisWeek = sum(txs.filter((t) => t.type === 'transfer' && t.category === 'bills' && t.date > prevP && t.date <= ymd(base)).map((t) => t.amount));
+  let d = movedThisWeek > 0.005 ? addDays(base, 7) : base;
+  let fridays = 0, guard = 0;
   while (d <= monthEnd && guard++ < 10) { fridays++; d = addDays(d, 7); }
   const bal = hasBal ? round(acct.bal) : 0;
   const shortfall = Math.max(0, round(upcoming - bal));
@@ -321,7 +326,10 @@ export function cardSchedule(s, txs, now = new Date()) {
     else { const amt = autoLeft > 0 ? round(remAuto / autoLeft) : 0; payments.push({ date: dt, amount: amt }); remAuto = round(remAuto - amt); autoLeft--; }
   }
   const wps = weekPaidState(s, txs, now, startDay);
-  if (wps.paid && wps.amount > 0.005) payments.unshift({ date: wps.payday, amount: wps.amount, paid: true });
+  if (wps.paid && (wps.amount > 0.005 || edits[wps.payday] != null)) {
+    const amt = edits[wps.payday] != null ? Math.max(0, round(edits[wps.payday])) : wps.amount;
+    payments.unshift({ date: wps.payday, amount: amt, paid: true, manual: edits[wps.payday] != null });
+  }
   const upcoming = payments.filter((p) => !p.paid);
   return {
     payments, balance: bal, weeks: upcoming.length, multi: upcoming.length > 1,
@@ -360,7 +368,7 @@ export function cardPlan(s, txs, now = new Date()) {
 //  - The card payment comes from your chosen strategy; everyday spending stays put
 export function weekPlan(s, txs, now = new Date()) {
   const sw = standardWeek(s);
-  const bt = billsProjection(s, now);
+  const bt = billsProjection(s, txs, now);
   const ms = monthStats(s, txs, ymd(now).slice(0, 7), now);
   const cp = cardPlan(s, txs, now);
   const startDay = s.weekStartDay ?? 5;

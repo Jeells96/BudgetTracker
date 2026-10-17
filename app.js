@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=37';
-import { TRANSFERS } from './defaults.js?v=37';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, standardWeek, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends } from './calc.js?v=37';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=38';
+import { TRANSFERS } from './defaults.js?v=38';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, standardWeek, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends } from './calc.js?v=38';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -132,7 +132,7 @@ function txRow(t) {
 }
 
 function billsAcctCard(s, now = new Date()) {
-  const bp = billsProjection(s, now);
+  const bp = billsProjection(s, store.txs, now);
   const asOfLabel = bp.hasBal ? 'as of ' + shortDate(parseYmd(bp.asOf)) + (bp.staleDays >= 1 ? ` · ${bp.staleDays} day${bp.staleDays === 1 ? '' : 's'} ago` : '') : 'enter your bank balance to start';
   const firstLabel = parseYmd(bp.firstDue).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   const verdict = !bp.hasBal ? ''
@@ -196,9 +196,10 @@ function payoffScheduleHTML(sch) {
   const thisFri = ymd(nextPayday(new Date(), S().weekStartDay ?? 5));
   const label = (d) => d === thisFri ? 'This Fri' : parseYmd(d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
   const rows = sch.payments.map((p) => {
-    if (p.paid) return `<div class="sch-row paid"><span>${label(p.date)}</span><b>${money(p.amount)} <span class="paidtag">✓ paid</span></b></div>`;
-    return `<div class="sch-row${p.manual ? ' man' : ''}"><span>${label(p.date)}${p.manual ? ' <span class="mantag">edited</span>' : ''}</span>
-      <span class="ccedit">${p.manual ? `<button class="link" data-act="cc-pay-clear" data-id="${p.date}" title="Back to auto">↺</button>` : ''}<input class="ccinput" type="number" inputmode="decimal" value="${p.amount}" data-cc-pay="${p.date}"></span></div>`;
+    const tag = p.paid ? ' <span class="paidtag">✓ paid</span>' : (p.manual ? ' <span class="mantag">edited</span>' : '');
+    const revert = p.manual ? `<button class="link" data-act="cc-pay-clear" data-id="${p.date}" title="Back to auto">↺</button>` : '';
+    return `<div class="sch-row${p.paid ? ' paid' : ''}${p.manual ? ' man' : ''}"><span>${label(p.date)}${tag}</span>
+      <span class="ccedit">${revert}<input class="ccinput" type="number" inputmode="decimal" value="${p.amount}" data-cc-pay="${p.date}"></span></div>`;
   }).join('');
   const endD = sch.payoffDate || sch.end;
   const head = `<div class="week"><span class="muted">Payoff plan · ${sch.weeks} payment${sch.weeks === 1 ? '' : 's'}</span><b class="goodtext">clear by ${parseYmd(endD).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</b></div>`;
@@ -237,8 +238,8 @@ function cardSection() {
     <div class="week"><span class="muted">Pay off ${money(wp.cardBalance)}</span><b>${money(cp.perWeek)}/Friday</b></div>
     <div class="field" style="margin:8px 0 2px"><label>Pay off by<br><span class="muted" style="font-size:.8rem">${cc.payoffBy ? 'custom date' : 'default: end of this month'}</span></label>
       <input type="date" value="${cc.payoffBy || ''}" min="${today()}" data-cc="payoffBy"></div>
-    <div class="note" style="margin:0 0 8px">Where the extra comes from:</div>
-    ${strategyPicker(cp, strat)}
+    <details class="collapse"><summary>Where the extra comes from · <b>${{ extra: 'Use leftover', spend: 'Spend less', save: 'Save less', split: 'Split both', stretch: 'Stretch payoff' }[strat] || 'Use leftover'}</b></summary>
+      ${strategyPicker(cp, strat)}</details>
     ${payoffScheduleHTML(wp.sch)}
     ${hasEdits ? `<button class="btn block" data-act="cc-edits-reset" style="margin-top:8px">↺ Clear manual payment edits</button>` : ''}
     <hr class="sep">` : '';
@@ -307,11 +308,20 @@ function planTab() {
   const stdVal = { pay: st.pay, bills: st.bills, groceries: st.groceries, everyday: st.everyday, savings: st.savings, extra: st.extra };
   const erow = (label, field) => `<div class="trow"><span>${label}</span><span class="b">${money(stdVal[field])}</span><span class="n"><input class="plancell" data-plan="${field}" type="number" inputmode="decimal" value="${p[field]}"><button class="cellx" data-act="plan-clear" data-id="${field}" title="Clear">✕</button></span></div>`;
 
-  const billsBox = !bt.hasBal
-    ? `<div class="card"><div class="note" style="margin:0">Enter your bills account balance on the <b>Bills</b> tab to see the weekly transfer you need to have the ${bt.nextMonthName} 1st bills funded in time. (It doesn't change your plan below.)</div></div>`
-    : `<div class="card">
-        <div class="week"><span class="muted">${bt.fridays} Friday${bt.fridays === 1 ? '' : 's'} left before ${bt.nextMonthName} 1st</span><b class="${bt.covered ? 'goodtext' : 'negtext'}">${bt.covered ? money(bt.surplus) + ' to spare' : 'short ' + money(bt.shortfall)}</b></div>
-        <div class="note" style="margin:6px 0 0">Balance ${money(bt.bal)} vs ${money(bt.upcoming)} due through the 1st. Weekly transfer needed: <b>${money(bt.weeklyNeeded)}</b> vs ${money(bt.onTable)} on the table${Math.abs(bt.diff) < 0.005 ? '' : ` (${bt.diff > 0 ? '+' : '−'}${money(Math.abs(bt.diff))}/wk)`}. FYI only — it doesn't change your plan below.</div></div>`;
+  const btAsOf = bt.hasBal ? 'as of ' + shortDate(parseYmd(bt.asOf)) + (bt.staleDays >= 1 ? ` · ${bt.staleDays}d ago` : '') : 'enter it to see the weekly transfer you need';
+  const btLump = bt.overfund > 0.005 ? ` · ${money(bt.overfund)} total` : '';
+  const billsBox = `<div class="card">
+    <div class="field"><label>Bills account balance<br><span class="muted" style="font-size:.8rem">${btAsOf}</span></label>
+      <input type="number" inputmode="decimal" value="${bt.hasBal ? bt.bal : ''}" placeholder="0" data-billsbal></div>
+    ${bt.hasBal ? `<div class="week" style="margin-top:2px"><span class="muted">${bt.fridays} Friday${bt.fridays === 1 ? '' : 's'} left before ${bt.nextMonthName} 1st</span><b class="${bt.covered ? 'goodtext' : 'negtext'}">${bt.covered ? money(bt.surplus) + ' to spare' : 'short ' + money(bt.shortfall)}</b></div>
+    <div class="ccbreak" style="margin-top:8px">
+      <div><span>Weekly transfer needed</span><b>${money(bt.weeklyNeeded)}</b></div>
+      <div><span>On the table (your plan)</span><b>${money(bt.onTable)}</b></div>
+      <div class="tot"><span>${bt.diff > 0.005 ? 'Transfer more' : bt.diff < -0.005 ? 'You can move less' : 'Right on plan'}</span>
+        <b class="${bt.diff > 0.005 ? 'negtext' : 'goodtext'}">${Math.abs(bt.diff) < 0.005 ? '—' : money(Math.abs(bt.diff)) + '/wk' + btLump}</b></div>
+    </div>
+    <p class="note" style="margin:6px 0 0">Editable here or on the Bills tab — same number. FYI only; it doesn't change your plan below.</p>` : ''}
+  </div>`;
 
   const stratLabel = { extra: 'from leftover', spend: 'spending less', save: 'saving less', split: 'splitting the difference', stretch: 'stretching the payoff', none: '' }[wp.strategy];
   const cardNote = sch.balance > 0

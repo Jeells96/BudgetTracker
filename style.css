@@ -311,6 +311,12 @@ select[data-set]:focus { outline:2px solid var(--brand); }
 .sch-row.man .ccinput { border-color:var(--brand); }
 .sch-row .ccedit { display:flex; align-items:center; gap:6px; }
 hr.sep { border:0; border-top:1px solid var(--line); margin:16px 0; }
+.collapse { margin:2px 0 10px; }
+.collapse > summary { cursor:pointer; list-style:none; font-size:.9rem; color:var(--muted); padding:8px 0; }
+.collapse > summary::-webkit-details-marker { display:none; }
+.collapse > summary::after { content:' ▸'; color:var(--muted); }
+.collapse[open] > summary::after { content:' ▾'; }
+.collapse > summary b { color:var(--ink); }
 .cellx { margin-left:6px; border:0; background:none; color:var(--muted); font-size:.95rem; cursor:pointer; padding:4px; line-height:1; }
 .cellx:hover { color:var(--bad); }
 .ovrow { display:flex; align-items:center; gap:10px; padding:11px 0; border-top:1px solid var(--line); cursor:pointer; }
