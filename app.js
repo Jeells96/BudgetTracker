@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=49';
-import { TRANSFERS } from './defaults.js?v=49';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends } from './calc.js?v=49';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=50';
+import { TRANSFERS } from './defaults.js?v=50';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends } from './calc.js?v=50';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -96,7 +96,7 @@ function home() {
     ? `<div class="rollover info">Last week's ${money(ws.forgiven)} over-spend is forgiven — it isn't trimming this week. <button class="link" data-act="week-unreset">Bring the penalty back</button></div>`
     : '';
 
-  const estIncome = monthlyIncome(s);
+  const estIncome = monthlyIncome(s, ui.month);
   const neutralBar = (name, act) => act === 'goto' || name === 'Income' || name === 'Savings';
   const moneyRow = (emoji, name, spent, total, act, id, hasBudget, open = false) => {
     const inner = hasBudget
@@ -109,11 +109,12 @@ function home() {
   // card adjustment) minus the budgets of weekly categories that have their own
   // (e.g. Gas). Weekly categories WITHOUT a budget (e.g. Jaren) roll into Other as
   // sub-tiers instead of getting their own row.
+  const paychecks = paydaysInMonth(ui.month, s.weekStartDay ?? 5);    // 4 or 5 this month
   const weeklyCats = s.categories.filter((c) => c.weekly);
   const budgetedWeeklySum = round(weeklyCats.reduce((a, c) => a + (cb(c) > 0 ? cb(c) : 0), 0));
   const rolled = weeklyCats.filter((c) => cb(c) <= 0);                 // unbudgeted weekly → Other
   const rolledIds = new Set(rolled.map((c) => c.id));
-  const otherBudget = Math.max(0, round(s.weeklyBudget * 4 - budgetedWeeklySum));
+  const otherBudget = Math.max(0, round(s.weeklyBudget * paychecks - budgetedWeeklySum));
   const otherSpent = round(rolled.reduce((a, c) => a + (ms.byCat[c.id] || 0), 0));
 
   // Tapping a category expands its month's line items inline (not a jump to Activity).
@@ -150,7 +151,7 @@ function home() {
     ? moneyRow('🧾', 'Other', otherSpent, otherBudget, 'cat-toggle', '__other', true, ui.openCat === '__other') + (ui.openCat === '__other' ? otherDrop() : '')
     : '';
 
-  const savingsTarget = round(s.weeklySavings * 4);
+  const savingsTarget = round(s.weeklySavings * paychecks);
   const list = [
     exRow('💰', 'Income', ms.income, estIncome, 'income', true, true),
     ...s.categories.filter((c) => !rolledIds.has(c.id)).map((c) => { const bud = cb(c); return exRow(c.emoji, c.name, ms.byCat[c.id], bud, c.id, bud > 0); }),
@@ -166,7 +167,7 @@ function home() {
     ${rollover}
     ${forgivenNote}
     <button class="log-btn" data-act="log"><span class="plus">+</span> Log a purchase</button>
-    <h2>This month</h2><div class="card">${list}</div>
+    <h2>${monthShort(ui.month)} · ${paychecks} paychecks</h2><div class="card">${list}</div>
     <h2>Recent</h2><div class="card">${recent.length ? recent.map(txRow).join('') : '<div class="empty">Nothing logged yet this month.<br>Tap the big button to add your first purchase.</div>'}</div>
     <div class="twobtn" style="margin-top:16px">
       <button class="btn block" data-act="track-later">🕗 Track later</button>
