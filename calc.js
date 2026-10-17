@@ -114,7 +114,19 @@ export function effectiveEveryday(s, txs = [], now = new Date()) {
   const base = s.weeklyBudget;
   const strat = s.cc && s.cc.strategy;
   if (strat !== 'spend' && strat !== 'split') return base;
-  const cp = cardPlan(s, txs, now);
+
+  // Weekly spending is already accounted for by weekStats (including next-week
+  // carryover of any overspend). Don't count the same purchases again as extra
+  // card debt when calculating the weekly spending limit. Real card balances
+  // and scheduled card payments are unaffected.
+  const weeklyIds = new Set(s.categories.filter((c) => c.weekly).map((c) => c.id));
+  const payoffTxs = txs.map((t) =>
+    s.cc.mode !== 'manual' && t.type === 'expense' && !t.exBudget &&
+    t.pay !== 'cash' && weeklyIds.has(t.category)
+      ? { ...t, amount: 0 }
+      : t
+  );
+  const cp = cardPlan(s, payoffTxs, now);
   if (cp.balance <= 0) return base;
   if (strat === 'spend') return cp.options.spend.newSpend;
   if (strat === 'split') return cp.options.split.newSpend;
@@ -191,34 +203,6 @@ export function rollCardBaseline(s, txs, now = new Date()) {
 // The balance the rest of the app uses: computed in auto mode, your typed number in manual.
 export function cardBalance(s, txs) {
   return s.cc.mode === 'manual' ? Math.max(0, round(s.cc.manual || 0)) : cardComputed(s, txs);
-}
-
-// Payment-plan balance: everyday credit purchases are already funded by the
-// weekly spending allocation. They must NOT re-amortize card payments when
-// logged. Only the credit-funded portion of a COMPLETED week's overspend is
-// added to the payment plan, starting with the following week.
-// The actual card balance (cardBalance) still includes every credit purchase.
-export function paymentPlanBalance(s, txs, now = new Date()) {
-  const actual = cardBalance(s, txs);
-  if (s.cc.mode === 'manual' || !s.cc.asOf) return actual;
-  const ids = new Set(s.categories.filter(c => c.weekly).map(c => c.id));
-  const startOfCurrentWeek = weekStart(now, s.weekStartDay ?? 5);
-  const weeks = new Map();
-  for (const t of txs) {
-    if (t.type !== 'expense' || t.exBudget || !ids.has(t.category)) continue;
-    const wk = weekStart(parseYmd(t.date), s.weekStartDay ?? 5);
-    const item = weeks.get(wk) || { spent: 0, credit: 0 };
-    item.spent += t.amount;
-    if (t.pay !== 'cash' && t.date >= s.cc.asOf) item.credit += t.amount;
-    weeks.set(wk, item);
-  }
-  let protectedCharges = 0;
-  for (const [wk, item] of weeks) {
-    const excess = wk < startOfCurrentWeek
-      ? Math.max(0, round(item.spent - s.weeklyBudget)) : 0;
-    protectedCharges += Math.max(0, round(item.credit - Math.min(item.credit, excess)));
-  }
-  return Math.max(0, round(actual - protectedCharges));
 }
 
 // ---- paydays ----
@@ -357,7 +341,7 @@ export function paydayDates(s, txs, now = new Date(), startDay = 5) {
 // you've already covered this week shows on top as a completed row.
 export function cardSchedule(s, txs, now = new Date()) {
   const startDay = s.weekStartDay ?? 5;
-  const bal = paymentPlanBalance(s, txs, now);
+  const bal = cardBalance(s, txs);
   const dates = paydayDates(s, txs, now, startDay);
   const edits = (s.cc && s.cc.planEdits) || {};
   const man = {}; let manualSum = 0;
@@ -387,7 +371,7 @@ export function cardSchedule(s, txs, now = new Date()) {
 }
 
 export function cardPlan(s, txs, now = new Date()) {
-  const bal = paymentPlanBalance(s, txs, now);
+  const bal = cardBalance(s, txs);
   const sch = cardSchedule(s, txs, now);
   const sw = standardWeek(s);
   // Size everything off the actual ongoing weekly payment (balance ÷ the paydays
