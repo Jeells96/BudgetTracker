@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=47';
-import { TRANSFERS } from './defaults.js?v=47';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends } from './calc.js?v=47';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=48';
+import { TRANSFERS } from './defaults.js?v=48';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends } from './calc.js?v=48';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -460,7 +460,7 @@ function settings() {
 }
 
 // ---------- the sheet (add flow + edit) ----------
-let flow = null, edit = null, billEdit = null, track = null;
+let flow = null, edit = null, billEdit = null, track = null, avgCat = null;
 function closeSheet() { const el = $('#sheet'); el.hidden = true; el.className = 'sheet'; el.innerHTML = ''; flow = null; edit = null; billEdit = null; track = null; }
 
 // ----- "track later": capture a price only, to finish with category/description later -----
@@ -905,6 +905,7 @@ function openWeek() {
 // ----- the purchases behind a category's 12-month average -----
 function openCatAvg(id) {
   const c = cat(id); if (!c) return;
+  avgCat = id;
   const now = new Date(), cur = ymd(now).slice(0, 7);
   const gas = store.txs.filter((t) => t.type === 'expense' && t.category === id).sort(sortTx);
   // counted monthly totals (non-excluded, completed months), to find the 12 months used
@@ -919,9 +920,9 @@ function openCatAvg(id) {
     const inAvg = used.has(m);
     const label = parseYmd(m + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
     const tag = inAvg ? `<span class="mtag in">in average · ${money(by[m])}</span>` : m === cur ? '<span class="mtag">this month · not counted yet</span>' : '<span class="mtag">not counted</span>';
-    const rows = gas.filter((t) => t.date.slice(0, 7) === m).map((t) => `<div class="avg-tx ${t.exAvg ? 'skip' : ''}">
+    const rows = gas.filter((t) => t.date.slice(0, 7) === m).map((t) => `<button class="avg-tx ${t.exAvg ? 'skip' : ''}" data-act="avg-toggle" data-id="${t.id}">
       <span class="d">${parseYmd(t.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}${t.note ? ' · ' + esc(t.note) : ''}</span>
-      <span class="a">${money(t.amount)}${t.exAvg ? ' <span class="ex-tag">excluded</span>' : ''}</span></div>`).join('');
+      <span class="a">${money(t.amount)} <span class="ex-tag ${t.exAvg ? 'off' : ''}">${t.exAvg ? 'excluded · include' : 'exclude'}</span></span></button>`).join('');
     return `<div class="avg-month"><div class="avg-mhead"><b>${label}</b>${tag}</div>${rows}</div>`;
   }).join('');
 
@@ -931,7 +932,7 @@ function openCatAvg(id) {
     <div class="card hero" style="box-shadow:none;padding:4px 0">
       <div class="label">12-month average</div>
       <div class="big">${money(avg)}</div>
-      <div class="note" style="margin:8px 0 0">Average of ${used.size} month${used.size === 1 ? '' : 's'}${range}. The current month and excluded trips aren't counted.</div></div>
+      <div class="note" style="margin:8px 0 0">Average of ${used.size} month${used.size === 1 ? '' : 's'}${range}. The current month and excluded trips aren't counted. <b>Tap any purchase to exclude it</b> (or add it back) — the log and your gas spending don't change, only the average.</div></div>
     ${sections || '<div class="card empty">No gas purchases logged yet.</div>'}</div>`;
   $('#sheet').className = 'sheet page';
   $('#sheet').hidden = false;
@@ -1022,6 +1023,7 @@ document.addEventListener('click', (e) => {
     case 'cc-mode': { S().cc = { ...S().cc, mode: id }; saveSettings(); return render(); }
     case 'cc-charges-reset': { S().cc = { ...S().cc, chargesAdj: 0 }; saveSettings(); return render(); }
     case 'catavg-view': return openCatAvg(id);
+    case 'avg-toggle': { const t = store.txs.find((x) => x.id === id); if (t) updateTx(id, { exAvg: !t.exAvg }); if (avgCat) openCatAvg(avgCat); return; }
     case 'track-later': return openTrack();
     case 'finish-loose': return openPending();
     case 'finish-item': { const it = (S().pending || []).find((x) => x.id === id); closeSheet(); if (it) openFlow({ amt: String(it.amount), pendingId: it.id, amtLocked: true }); return; }
