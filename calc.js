@@ -320,8 +320,10 @@ export function cardSchedule(s, txs, now = new Date()) {
   const edits = (s.cc && s.cc.planEdits) || {};
   const man = {}; let manualSum = 0;
   for (const dt of dates) if (edits[dt] != null) { man[dt] = Math.max(0, round(edits[dt])); manualSum += man[dt]; }
+  const autoCount = dates.filter((dt) => man[dt] == null).length;       // paydays still auto-split
+  const autoPerWeek = autoCount > 0 ? round(Math.max(0, bal - manualSum) / autoCount) : 0;
   let remAuto = Math.max(0, round(bal - manualSum));
-  let autoLeft = dates.filter((dt) => man[dt] == null).length;
+  let autoLeft = autoCount;
   const payments = [];
   for (const dt of dates) {
     if (man[dt] != null) payments.push({ date: dt, amount: man[dt], manual: true });
@@ -336,6 +338,7 @@ export function cardSchedule(s, txs, now = new Date()) {
   return {
     payments, balance: bal, weeks: upcoming.length, multi: upcoming.length > 1,
     firstPay: upcoming.length ? upcoming[0].amount : 0,
+    autoWeeks: autoCount, autoPerWeek,                                  // ongoing weekly rate (skips paid/zeroed weeks)
     payoffDate: upcoming.length ? upcoming[upcoming.length - 1].date : null,
     end: ymd(payoffEnd(s, now))
   };
@@ -343,17 +346,17 @@ export function cardSchedule(s, txs, now = new Date()) {
 
 export function cardPlan(s, txs, now = new Date()) {
   const bal = cardBalance(s, txs);
-  const startDay = s.weekStartDay ?? 5;
-  const weeks = paydayDates(s, txs, now, startDay).length;          // actual timeline (payoffBy/stretch)
-  const baseWeeks = remainingPaydays(s, txs, now, startDay);        // month-end default, for stable option sizing
+  const sch = cardSchedule(s, txs, now);
   const sw = standardWeek(s);
-  const perWeek = round(bal / weeks);
-  const basePerWeek = round(bal / baseWeeks);
+  // Size everything off the actual ongoing weekly payment (balance ÷ the paydays
+  // still left to auto-pay — skips a week you've already paid or zeroed out).
+  const weeks = Math.max(1, sch.autoWeeks);
+  const perWeek = sch.autoPerWeek;
   const extra = Math.max(0, sw.extra);                 // leftover after everyday spending
-  const need = Math.max(0, round(basePerWeek - extra)); // what leftover can't cover (vs the default plan)
+  const need = Math.max(0, round(perWeek - extra));    // what leftover can't cover
   const spendCut = Math.min(need, s.weeklyBudget), saveCut = Math.min(need, s.weeklySavings);
   const half = round(need / 2);
-  const stretchWeeks = baseWeeks + 4;
+  const stretchWeeks = weeks + 4;
   return {
     balance: bal, weeks, perWeek, extra: round(extra), need,
     options: {
@@ -387,7 +390,7 @@ export function weekPlan(s, txs, now = new Date()) {
     if (strat === 'spend') everyday = o.spend.newSpend;
     else if (strat === 'save') savings = o.save.newSave;
     else if (strat === 'split') { everyday = o.split.newSpend; savings = o.split.newSave; }
-    extra = sch.firstPay;                                           // the actual card payment this payday
+    extra = sch.autoPerWeek;                                        // ongoing weekly card payment (skips a paid/zeroed week)
     leftover = round(pay - bills - groceries - everyday - savings - extra);
   } else {
     extra = round(pay - bills - groceries - everyday - savings);     // just spare money

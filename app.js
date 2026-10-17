@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=48';
-import { TRANSFERS } from './defaults.js?v=48';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends } from './calc.js?v=48';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=49';
+import { TRANSFERS } from './defaults.js?v=49';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends } from './calc.js?v=49';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -105,21 +105,57 @@ function home() {
       : `<div class="row"><span class="n">${esc(name)}</span><span class="a">${money(spent)} spent</span></div>`;
     return `<button class="cat ${open ? 'open' : ''}" data-act="${act}" data-id="${esc(id)}"><div class="emoji">${emoji}</div><div class="body">${inner}</div><span class="chev">›</span></button>`;
   };
+  // "Other" is the weekly-spending pool: the weekly budget (standard, ignoring any
+  // card adjustment) minus the budgets of weekly categories that have their own
+  // (e.g. Gas). Weekly categories WITHOUT a budget (e.g. Jaren) roll into Other as
+  // sub-tiers instead of getting their own row.
+  const weeklyCats = s.categories.filter((c) => c.weekly);
+  const budgetedWeeklySum = round(weeklyCats.reduce((a, c) => a + (cb(c) > 0 ? cb(c) : 0), 0));
+  const rolled = weeklyCats.filter((c) => cb(c) <= 0);                 // unbudgeted weekly → Other
+  const rolledIds = new Set(rolled.map((c) => c.id));
+  const otherBudget = Math.max(0, round(s.weeklyBudget * 4 - budgetedWeeklySum));
+  const otherSpent = round(rolled.reduce((a, c) => a + (ms.byCat[c.id] || 0), 0));
+
   // Tapping a category expands its month's line items inline (not a jump to Activity).
   const monthList = monthTxs();
   const txsFor = (key) => (key === 'income' ? monthList.filter((t) => t.type === 'income')
     : key === 'savings' ? monthList.filter((t) => t.type === 'transfer' && t.category === 'savings')
     : monthList.filter((t) => t.type === 'expense' && t.category === key)).sort(sortTx);
-  const dropdown = (key) => ui.openCat !== key ? '' : (() => {
-    const l = txsFor(key);
-    return `<div class="catdrop">${l.length ? l.map(txRow).join('') : '<div class="empty">Nothing this month.</div>'}</div>`;
-  })();
-  const exRow = (emoji, name, spent, total, key, hasBudget) => moneyRow(emoji, name, spent, total, 'cat-toggle', key, hasBudget, ui.openCat === key) + dropdown(key);
+  // Header shown atop a dropdown: how far under/over budget this month.
+  // goodOver = over the number is a good thing (income, savings).
+  const dropHead = (spent, total, goodOver) => {
+    if (!(total > 0)) return `<div class="du-note">${money(spent)} this month</div>`;
+    const diff = round(total - spent);
+    if (goodOver) return diff > 0.005
+      ? `<div class="du-note">${money(diff)} to go · ${money(spent)} of ${money(total)}</div>`
+      : `<div class="du-note good">${money(-diff)} over target · ${money(spent)} of ${money(total)}</div>`;
+    return diff >= -0.005
+      ? `<div class="du-note good">${money(diff)} under budget · ${money(spent)} of ${money(total)}</div>`
+      : `<div class="du-note bad">${money(-diff)} over budget · ${money(spent)} of ${money(total)}</div>`;
+  };
+  const exRow = (emoji, name, spent, total, key, hasBudget, goodOver = false) => {
+    const open = ui.openCat === key;
+    let drop = '';
+    if (open) { const l = txsFor(key); drop = `<div class="catdrop">${dropHead(spent, total, goodOver)}${l.length ? l.map(txRow).join('') : '<div class="empty">Nothing this month.</div>'}</div>`; }
+    return moneyRow(emoji, name, spent, total, 'cat-toggle', key, hasBudget, open) + drop;
+  };
+
+  // Other's dropdown: the over/under header, then the rolled-in weekly categories as sub-tiers.
+  const otherDrop = () => {
+    const groups = rolled.map((c) => ({ c, txs: monthList.filter((t) => t.type === 'expense' && t.category === c.id).sort(sortTx), total: round(ms.byCat[c.id] || 0) })).filter((g) => g.txs.length);
+    const body = groups.length ? groups.map((g) => `<div class="subtier"><span>${g.c.emoji} ${esc(g.c.name)}</span><b>${money(g.total)}</b></div>${g.txs.map(txRow).join('')}`).join('') : '<div class="empty">Nothing in other weekly spending yet.</div>';
+    return `<div class="catdrop">${dropHead(otherSpent, otherBudget, false)}${body}</div>`;
+  };
+  const otherRow = weeklyCats.length
+    ? moneyRow('🧾', 'Other', otherSpent, otherBudget, 'cat-toggle', '__other', true, ui.openCat === '__other') + (ui.openCat === '__other' ? otherDrop() : '')
+    : '';
+
   const savingsTarget = round(s.weeklySavings * 4);
   const list = [
-    exRow('💰', 'Income', ms.income, estIncome, 'income', true),
-    ...s.categories.map((c) => { const bud = cb(c); return exRow(c.emoji, c.name, ms.byCat[c.id], bud, c.id, bud > 0); }),
-    exRow('🐷', 'Savings', ms.savingsIn, savingsTarget, 'savings', savingsTarget > 0),
+    exRow('💰', 'Income', ms.income, estIncome, 'income', true, true),
+    ...s.categories.filter((c) => !rolledIds.has(c.id)).map((c) => { const bud = cb(c); return exRow(c.emoji, c.name, ms.byCat[c.id], bud, c.id, bud > 0); }),
+    otherRow,
+    exRow('🐷', 'Savings', ms.savingsIn, savingsTarget, 'savings', savingsTarget > 0, true),
     moneyRow('🏦', 'Bills account', ms.billsIn, ms.billsTotal, 'goto', 'bills', true)
   ].join('');
   const recent = monthTxs().slice(0, 5);
