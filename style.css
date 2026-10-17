@@ -224,10 +224,11 @@ select[data-set]:focus { outline:2px solid var(--brand); }
 .wk-body { padding:0 0 8px; border-top:1px dashed var(--line); }
 
 /* Plan table — readable two-column compare with inline editable cells */
-.plan-table .trow { grid-template-columns:1fr 80px 94px; gap:10px; align-items:center; font-size:.92rem; }
+.plan-table .trow { grid-template-columns:1fr 72px 108px; gap:8px; align-items:center; font-size:.92rem; }
 .plan-table .trow > span:first-child { line-height:1.2; }
 .plan-table .head .b, .plan-table .head .n { white-space:normal; line-height:1.15; font-size:.62rem; align-self:end; }
-.plan-table .trow .n { display:block; text-align:right; }
+.plan-table .trow .n { display:flex; align-items:center; justify-content:flex-end; gap:2px; }
+.plan-table .trow .n .plancell { flex:1; min-width:0; }
 .plancell { display:block; width:100%; box-sizing:border-box; text-align:right; font-weight:700; color:var(--ink);
   background:color-mix(in srgb, var(--brand) 13%, var(--card)); border:1.5px solid color-mix(in srgb, var(--brand) 34%, transparent);
   border-radius:10px; padding:8px 9px; -moz-appearance:textfield; }
@@ -305,4 +306,16 @@ select[data-set]:focus { outline:2px solid var(--brand); }
 .sch-row.paid span:first-child { color:var(--muted); }
 .sch-row.paid b { color:var(--good); }
 .paidtag { font-size:.7rem; font-weight:700; color:var(--good); background:color-mix(in srgb,var(--good) 16%,transparent); padding:2px 6px; border-radius:7px; margin-left:4px; vertical-align:middle; }
+.mantag { font-size:.68rem; font-weight:700; color:var(--brand); background:color-mix(in srgb,var(--brand) 16%,transparent); padding:2px 6px; border-radius:7px; margin-left:4px; vertical-align:middle; }
 .sch-row b { font-weight:700; }
+.sch-row.man .ccinput { border-color:var(--brand); }
+.sch-row .ccedit { display:flex; align-items:center; gap:6px; }
+hr.sep { border:0; border-top:1px solid var(--line); margin:16px 0; }
+.cellx { margin-left:6px; border:0; background:none; color:var(--muted); font-size:.95rem; cursor:pointer; padding:4px; line-height:1; }
+.cellx:hover { color:var(--bad); }
+.ovrow { display:flex; align-items:center; gap:10px; padding:11px 0; border-top:1px solid var(--line); cursor:pointer; }
+.ovrow:first-child { border-top:0; }
+.ovrow input { width:20px; height:20px; flex:none; }
+.ovbody { flex:1; min-width:0; }
+.ovrow.off .ovbody { opacity:.45; text-decoration:line-through; }
+.ovtag { font-size:.72rem; color:var(--muted); flex:none; }

@@ -33,7 +33,9 @@ export const DEFAULT_SETTINGS = {
   //  start  = balance when you last baselined it; asOf = the date that applies from
   //  mode   = 'auto' (app computes balance from logged credit charges) or 'manual'
   //  manual = your typed current balance (used when mode = manual)
-  cc: { start: 0, asOf: null, mode: 'auto', manual: 0, chargesAdj: 0, strategy: 'extra', paidThrough: null },
+  //  payoffBy = custom "pay off by" date (YYYY-MM-DD) or null for end of month
+  //  planEdits = manual per-payday payment overrides { 'YYYY-MM-DD': amount }
+  cc: { start: 0, asOf: null, mode: 'auto', manual: 0, chargesAdj: 0, strategy: 'extra', paidThrough: null, payoffBy: null, planEdits: {} },
   // Bills account: a manual balance you type from your real bank whenever you check,
   // with the date you entered it. Not tied to logged transfers.
   billsAcct: { bal: null, asOf: null },

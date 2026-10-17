@@ -112,7 +112,7 @@ export function weekStats(s, txs, now = new Date()) {
   const ws = weekStart(now, startDay);
   const end = ymd(addDays(parseYmd(ws), 7));
   const ids = s.categories.filter((c) => c.weekly).map((c) => c.id);
-  const spentBetween = (from, to) => sum(txs.filter((t) => t.type === 'expense' && t.date >= from && t.date < to && ids.includes(t.category)).map((t) => t.amount));
+  const spentBetween = (from, to) => sum(txs.filter((t) => t.type === 'expense' && !t.exBudget && t.date >= from && t.date < to && ids.includes(t.category)).map((t) => t.amount));
   const spent = spentBetween(ws, end);
   const base = effectiveEveryday(s, txs, now);               // budget after the card trim
   const trimmedByCard = Math.max(0, round(s.weeklyBudget - base));
@@ -201,8 +201,11 @@ export function billsProjection(s, now = new Date()) {
   const startDay = s.weekStartDay ?? 5;
   const acct = s.billsAcct || {};
   const hasBal = acct.bal != null && acct.asOf;
-  const ref = hasBal ? parseYmd(acct.asOf) : now;
+  // Forward-looking from TODAY (so "Fridays left" and "bills still due" are current),
+  // even if the balance you typed is a few days old. We flag that staleness instead.
+  const ref = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const refDay = ref.getDate();
+  const staleDays = hasBal ? Math.round((ref - parseYmd(acct.asOf)) / 86400000) : 0;
   const monthEnd = new Date(ref.getFullYear(), ref.getMonth() + 1, 0);
   const firstDue = new Date(ref.getFullYear(), ref.getMonth() + 1, 1);   // next 1st-of-month
   const monthName = ref.toLocaleDateString('en-US', { month: 'long' });
@@ -222,10 +225,13 @@ export function billsProjection(s, now = new Date()) {
   const weeklyNeeded = fridays > 0 ? round(shortfall / fridays) : shortfall;
   const onTable = standardWeek(s).bills;
   const diff = round(weeklyNeeded - onTable);
+  // If you stick to your plan (move onTable every Friday), where do you end up vs
+  // what's needed by the 1st? Positive = overfunded by this much (you can move less).
+  const overfund = round(bal + onTable * fridays - upcoming);
   return {
-    hasBal, asOf: acct.asOf, bal, monthName, nextMonthName, monthEnd: ymd(monthEnd), firstDue: ymd(firstDue), refDay,
+    hasBal, asOf: acct.asOf, staleDays, bal, monthName, nextMonthName, monthEnd: ymd(monthEnd), firstDue: ymd(firstDue), refDay,
     upcoming: round(upcoming), firstBills, upList,
-    fridays, shortfall, surplus, weeklyNeeded, onTable, diff, covered: shortfall <= 0.005
+    fridays, shortfall, surplus, weeklyNeeded, onTable, diff, overfund, covered: shortfall <= 0.005
   };
 }
 
@@ -282,17 +288,62 @@ export function paymentSchedule(bal, weeks, now = new Date(), startDay = 5, star
 // save/split) or you stretch it longer. Everyday spending is committed, NOT a source.
 // Over/underpaying one week redistributes automatically: the balance already reflects
 // the payment, and the divisor drops the week you marked paid.
+// When the card should be paid off by: your custom date if set, else the end of
+// this month (+4 weeks if the "stretch" strategy is picked).
+export function payoffEnd(s, now = new Date()) {
+  if (s.cc && s.cc.payoffBy) return parseYmd(s.cc.payoffBy);
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  return (s.cc && s.cc.strategy === 'stretch') ? addDays(monthEnd, 28) : monthEnd;
+}
+// Every payday from the first unpaid one through the payoff-by date (at least one).
+export function paydayDates(s, txs, now = new Date(), startDay = 5) {
+  const start = firstUnpaidPayday(s, txs, now, startDay);
+  const end = payoffEnd(s, now);
+  const dates = []; let d = new Date(start);
+  while (dates.length < 60) { dates.push(ymd(d)); const nd = addDays(d, 7); if (nd > end) break; d = nd; }
+  return dates;
+}
+// The dated payoff schedule: manual per-payday edits (cc.planEdits) are honored, and
+// the rest of the balance is split evenly over the remaining auto paydays. A payday
+// you've already covered this week shows on top as a completed row.
+export function cardSchedule(s, txs, now = new Date()) {
+  const startDay = s.weekStartDay ?? 5;
+  const bal = cardBalance(s, txs);
+  const dates = paydayDates(s, txs, now, startDay);
+  const edits = (s.cc && s.cc.planEdits) || {};
+  const man = {}; let manualSum = 0;
+  for (const dt of dates) if (edits[dt] != null) { man[dt] = Math.max(0, round(edits[dt])); manualSum += man[dt]; }
+  let remAuto = Math.max(0, round(bal - manualSum));
+  let autoLeft = dates.filter((dt) => man[dt] == null).length;
+  const payments = [];
+  for (const dt of dates) {
+    if (man[dt] != null) payments.push({ date: dt, amount: man[dt], manual: true });
+    else { const amt = autoLeft > 0 ? round(remAuto / autoLeft) : 0; payments.push({ date: dt, amount: amt }); remAuto = round(remAuto - amt); autoLeft--; }
+  }
+  const wps = weekPaidState(s, txs, now, startDay);
+  if (wps.paid && wps.amount > 0.005) payments.unshift({ date: wps.payday, amount: wps.amount, paid: true });
+  const upcoming = payments.filter((p) => !p.paid);
+  return {
+    payments, balance: bal, weeks: upcoming.length, multi: upcoming.length > 1,
+    firstPay: upcoming.length ? upcoming[0].amount : 0,
+    payoffDate: upcoming.length ? upcoming[upcoming.length - 1].date : null,
+    end: ymd(payoffEnd(s, now))
+  };
+}
+
 export function cardPlan(s, txs, now = new Date()) {
   const bal = cardBalance(s, txs);
   const startDay = s.weekStartDay ?? 5;
-  const weeks = remainingPaydays(s, txs, now, startDay);
+  const weeks = paydayDates(s, txs, now, startDay).length;          // actual timeline (payoffBy/stretch)
+  const baseWeeks = remainingPaydays(s, txs, now, startDay);        // month-end default, for stable option sizing
   const sw = standardWeek(s);
   const perWeek = round(bal / weeks);
+  const basePerWeek = round(bal / baseWeeks);
   const extra = Math.max(0, sw.extra);                 // leftover after everyday spending
-  const need = Math.max(0, round(perWeek - extra));    // what leftover can't cover
+  const need = Math.max(0, round(basePerWeek - extra)); // what leftover can't cover (vs the default plan)
   const spendCut = Math.min(need, s.weeklyBudget), saveCut = Math.min(need, s.weeklySavings);
   const half = round(need / 2);
-  const stretchWeeks = weeks + 4;
+  const stretchWeeks = baseWeeks + 4;
   return {
     balance: bal, weeks, perWeek, extra: round(extra), need,
     options: {
@@ -321,23 +372,17 @@ export function weekPlan(s, txs, now = new Date()) {
   const strat = cp.balance > 0 ? (s.cc.strategy || 'extra') : 'none';
   const o = cp.options;
 
+  const sch = cardSchedule(s, txs, now);
   if (cp.balance > 0) {
     if (strat === 'spend') everyday = o.spend.newSpend;
     else if (strat === 'save') savings = o.save.newSave;
     else if (strat === 'split') { everyday = o.split.newSpend; savings = o.split.newSave; }
-    extra = strat === 'stretch' ? cp.stretch.perWeek : cp.perWeek;   // the card payment this payday
+    extra = sch.firstPay;                                           // the actual card payment this payday
     leftover = round(pay - bills - groceries - everyday - savings - extra);
   } else {
     extra = round(pay - bills - groceries - everyday - savings);     // just spare money
     leftover = 0;
   }
-  const weeklyPay = strat === 'stretch' ? cp.stretch.perWeek : cp.perWeek;
-  const payWeeks = strat === 'stretch' ? cp.stretch.weeks : cp.weeks;
-  const wps = weekPaidState(s, txs, now, startDay);
-  const sch = paymentSchedule(cp.balance, payWeeks, now, startDay, firstUnpaidPayday(s, txs, now, startDay));
-  // If this payday is already covered, show it on top as a completed row (what you
-  // actually paid this week) so the plan reads "298 paid, then the rest split".
-  if (wps.paid && wps.amount > 0.005) sch.payments.unshift({ date: wps.payday, amount: wps.amount, paid: true });
 
   return {
     standard: sw,
