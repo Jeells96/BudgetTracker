@@ -167,7 +167,10 @@ nav#tabs button.on { color:var(--brand); font-weight:700; } nav#tabs button.on s
 .link { color:var(--brand); font-weight:700; text-decoration:underline; }
 .cat { width:100%; text-align:left; background:none; border:0; border-top:1px solid var(--line); cursor:pointer; }
 .cat:first-child { border-top:0; }
-.cat .chev { color:var(--muted); font-size:1.3rem; opacity:.5; align-self:center; }
+.cat .chev { color:var(--muted); font-size:1.3rem; opacity:.5; align-self:center; transition:transform .15s; }
+.cat.open .chev { transform:rotate(90deg); }
+.catdrop { border-top:1px dashed var(--line); background:color-mix(in srgb,var(--brand) 5%,transparent); border-radius:0 0 12px 12px; padding:2px 10px 6px; margin:0 -4px; }
+.catdrop .empty { padding:12px 8px; }
 /* week breakdown */
 .sheet-page { max-height:92vh; overflow:auto; }
 .wk-cat { display:flex; align-items:center; gap:12px; padding:12px 0; border-top:1px solid var(--line); }

@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=46';
-import { TRANSFERS } from './defaults.js?v=46';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends } from './calc.js?v=46';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=47';
+import { TRANSFERS } from './defaults.js?v=47';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends } from './calc.js?v=47';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -19,7 +19,7 @@ const dayLabel = (s) => {
 };
 const ordinal = (n) => n + (['th', 'st', 'nd', 'rd'][(n % 100 >> 3) ^ 1 && n % 10 < 4 ? n % 10 : 0]);
 
-const ui = { tab: 'home', month: monthKey(new Date()), filter: 'all', all: false, q: '', planDraft: {}, planLive: true };
+const ui = { tab: 'home', month: monthKey(new Date()), filter: 'all', all: false, q: '', planDraft: {}, planLive: true, openCat: null };
 try { ui.planDraft = JSON.parse(localStorage.getItem('plan-draft') || '{}') || {}; } catch { ui.planDraft = {}; }
 try { ui.planLive = JSON.parse(localStorage.getItem('plan-live') ?? 'true'); } catch { ui.planLive = true; }
 const savePlanDraft = () => { try { localStorage.setItem('plan-draft', JSON.stringify(ui.planDraft || {})); } catch {} };
@@ -98,18 +98,28 @@ function home() {
 
   const estIncome = monthlyIncome(s);
   const neutralBar = (name, act) => act === 'goto' || name === 'Income' || name === 'Savings';
-  const moneyRow = (emoji, name, spent, total, act, id, hasBudget) => {
+  const moneyRow = (emoji, name, spent, total, act, id, hasBudget, open = false) => {
     const inner = hasBudget
       ? `<div class="row"><span class="n">${esc(name)}</span><span class="a">${money(spent)} / ${money(total)}</span></div>
          <div class="bar ${neutralBar(name, act) ? '' : barClass(spent, total)}"><i style="width:${pct(spent, total)}%"></i></div>`
       : `<div class="row"><span class="n">${esc(name)}</span><span class="a">${money(spent)} spent</span></div>`;
-    return `<button class="cat" data-act="${act}" data-id="${esc(id)}"><div class="emoji">${emoji}</div><div class="body">${inner}</div><span class="chev">›</span></button>`;
+    return `<button class="cat ${open ? 'open' : ''}" data-act="${act}" data-id="${esc(id)}"><div class="emoji">${emoji}</div><div class="body">${inner}</div><span class="chev">›</span></button>`;
   };
+  // Tapping a category expands its month's line items inline (not a jump to Activity).
+  const monthList = monthTxs();
+  const txsFor = (key) => (key === 'income' ? monthList.filter((t) => t.type === 'income')
+    : key === 'savings' ? monthList.filter((t) => t.type === 'transfer' && t.category === 'savings')
+    : monthList.filter((t) => t.type === 'expense' && t.category === key)).sort(sortTx);
+  const dropdown = (key) => ui.openCat !== key ? '' : (() => {
+    const l = txsFor(key);
+    return `<div class="catdrop">${l.length ? l.map(txRow).join('') : '<div class="empty">Nothing this month.</div>'}</div>`;
+  })();
+  const exRow = (emoji, name, spent, total, key, hasBudget) => moneyRow(emoji, name, spent, total, 'cat-toggle', key, hasBudget, ui.openCat === key) + dropdown(key);
   const savingsTarget = round(s.weeklySavings * 4);
   const list = [
-    moneyRow('💰', 'Income', ms.income, estIncome, 'cat-filter', 'income', true),
-    ...s.categories.map((c) => { const bud = cb(c); return moneyRow(c.emoji, c.name, ms.byCat[c.id], bud, 'cat-filter', c.id, bud > 0); }),
-    moneyRow('🐷', 'Savings', ms.savingsIn, savingsTarget, 'cat-filter', 'transfer', savingsTarget > 0),
+    exRow('💰', 'Income', ms.income, estIncome, 'income', true),
+    ...s.categories.map((c) => { const bud = cb(c); return exRow(c.emoji, c.name, ms.byCat[c.id], bud, c.id, bud > 0); }),
+    exRow('🐷', 'Savings', ms.savingsIn, savingsTarget, 'savings', savingsTarget > 0),
     moneyRow('🏦', 'Bills account', ms.billsIn, ms.billsTotal, 'goto', 'bills', true)
   ].join('');
   const recent = monthTxs().slice(0, 5);
@@ -1024,6 +1034,7 @@ document.addEventListener('click', (e) => {
     case 'sheet-close': return closeSheet();
     case 'goto': ui.tab = id; scrollTo(0, 0); return render();
     case 'cat-filter': ui.filter = id; ui.all = false; ui.tab = 'activity'; scrollTo(0, 0); return render();
+    case 'cat-toggle': ui.openCat = ui.openCat === id ? null : id; return render();
     case 'prev': case 'next': { const d = parseYmd(ui.month + '-01'); d.setMonth(d.getMonth() + (b.dataset.act === 'next' ? 1 : -1)); ui.month = monthKey(d); return render(); }
     case 'filter': ui.filter = id; return render();
     case 'all': ui.all = !ui.all; return render();
