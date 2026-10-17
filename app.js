@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=51';
-import { TRANSFERS } from './defaults.js?v=51';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends } from './calc.js?v=51';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=52';
+import { TRANSFERS } from './defaults.js?v=52';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends } from './calc.js?v=52';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -141,39 +141,33 @@ function home() {
     return moneyRow(emoji, name, spent, total, 'cat-toggle', key, hasBudget, open) + drop;
   };
 
-  // Other's dropdown: the over/under header, then the rolled-in weekly categories as sub-tiers.
+  // The credit-card balance owed is committed against your weekly spending, so it
+  // counts toward "Other" used (shown with the math), not as free spending room.
+  const cardOwed = bal > 0 ? round(bal) : 0;
+  const otherUsed = round(otherSpent + cardOwed);
+
+  // Other's dropdown: the math (spending + card owed), then the weekly sub-tiers.
   const otherDrop = () => {
+    const left = round(otherBudget - otherUsed);
+    const math = cardOwed > 0
+      ? `${money(otherSpent)} spent + ${money(cardOwed)} card owed = ${money(otherUsed)} of ${money(otherBudget)}`
+      : `${money(otherSpent)} of ${money(otherBudget)}`;
+    const head = `<div class="du-note ${left < 0 ? 'bad' : 'good'}">${math} · ${left < 0 ? money(-left) + ' over' : money(left) + ' left'}</div>`;
     const groups = rolled.map((c) => ({ c, txs: monthList.filter((t) => t.type === 'expense' && t.category === c.id).sort(sortTx), total: round(ms.byCat[c.id] || 0) })).filter((g) => g.txs.length);
-    const body = groups.length ? groups.map((g) => `<div class="subtier"><span>${g.c.emoji} ${esc(g.c.name)}</span><b>${money(g.total)}</b></div>${g.txs.map(txRow).join('')}`).join('') : '<div class="empty">Nothing in other weekly spending yet.</div>';
-    return `<div class="catdrop">${dropHead(otherSpent, otherBudget, false)}${body}</div>`;
+    const subs = groups.map((g) => `<div class="subtier"><span>${g.c.emoji} ${esc(g.c.name)}</span><b>${money(g.total)}</b></div>${g.txs.map(txRow).join('')}`).join('');
+    const cardSub = cardOwed > 0 ? `<div class="subtier"><span>💳 Credit card owed</span><b class="negtext">${money(cardOwed)}</b></div>` : '';
+    const empty = (!subs && !cardSub) ? '<div class="empty">Nothing in other weekly spending yet.</div>' : '';
+    return `<div class="catdrop">${head}${subs}${cardSub}${empty}</div>`;
   };
   const otherRow = weeklyCats.length
-    ? moneyRow('🧾', 'Other', otherSpent, otherBudget, 'cat-toggle', '__other', true, ui.openCat === '__other') + (ui.openCat === '__other' ? otherDrop() : '')
+    ? moneyRow('🧾', 'Other', otherUsed, otherBudget, 'cat-toggle', '__other', true, ui.openCat === '__other') + (ui.openCat === '__other' ? otherDrop() : '')
     : '';
-
-  // Credit card obligation, shown as its own slider so spending room isn't mistaken
-  // for free money while a balance is owed. Bar = how far the balance is paid off.
-  const cardDrop = () => {
-    const pays = monthList.filter((t) => t.type === 'transfer' && t.category === 'card').sort(sortTx);
-    const cp = cardPlan(s, store.txs);
-    const line = cp.perWeek > 0 ? `<div class="du-note bad">${money(bal)} owed · about ${money(cp.perWeek)}/Friday${cp.weeks > 1 ? ` for ${cp.weeks} weeks` : ''}</div>` : `<div class="du-note bad">${money(bal)} owed</div>`;
-    return `<div class="catdrop">${line}${pays.length ? pays.map(txRow).join('') : '<div class="empty">No card payments logged this month yet.</div>'}</div>`;
-  };
-  const cardRow = () => {
-    if (!(bal > 0)) return '';
-    const paid = round(ms.cardPaid), start = Math.max(bal, round(bal + paid)), open = ui.openCat === '__card';
-    const inner = `<div class="row"><span class="n">Credit card</span><span class="a"><b class="negtext">${money(bal)} owed</b></span></div>
-      <div class="bar warn"><i style="width:${pct(paid, start)}%"></i></div>
-      <div class="row" style="margin-top:4px"><span class="n" style="color:var(--muted);font-weight:500;font-size:.82rem">${money(paid)} paid this month · tap for plan</span><span class="a"></span></div>`;
-    return `<button class="cat ${open ? 'open' : ''}" data-act="cat-toggle" data-id="__card"><div class="emoji">💳</div><div class="body">${inner}</div><span class="chev">›</span></button>${open ? cardDrop() : ''}`;
-  };
 
   const savingsTarget = round(s.weeklySavings * paychecks);
   const list = [
     exRow('💰', 'Income', ms.income, estIncome, 'income', true, true),
     ...s.categories.filter((c) => !rolledIds.has(c.id)).map((c) => { const bud = cb(c); return exRow(c.emoji, c.name, ms.byCat[c.id], bud, c.id, bud > 0); }),
     otherRow,
-    cardRow(),
     exRow('🐷', 'Savings', ms.savingsIn, savingsTarget, 'savings', savingsTarget > 0, true),
     moneyRow('🏦', 'Bills account', ms.billsIn, ms.billsTotal, 'goto', 'bills', true)
   ].join('');
