@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=39';
-import { TRANSFERS } from './defaults.js?v=39';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends } from './calc.js?v=39';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=40';
+import { TRANSFERS } from './defaults.js?v=40';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends } from './calc.js?v=40';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -307,7 +307,7 @@ function planTab() {
   const s = S(), p = planValues(), wp = p.wp, st = wp.standard, rc = wp.rec, sch = wp.sch, bt = wp.bt;
   const edited = Object.keys(ui.planDraft || {}).length;
   const stdVal = { pay: st.pay, bills: st.bills, groceries: st.groceries, everyday: st.everyday, savings: st.savings, extra: st.extra };
-  const erow = (label, field) => `<div class="trow"><span>${label}</span><span class="b">${money(stdVal[field])}</span><span class="n"><input class="plancell" data-plan="${field}" type="number" inputmode="decimal" value="${p[field]}"><button class="cellx" data-act="plan-clear" data-id="${field}" title="Clear">✕</button></span></div>`;
+  const erow = (label, field) => `<div class="trow"><span>${label}</span><span class="b">${money(stdVal[field])}</span><span class="n"><input class="plancell" data-plan="${field}" type="number" inputmode="decimal" placeholder="0" value="${p[field] || ''}"><button class="cellx" data-act="plan-clear" data-id="${field}" title="Clear">✕</button></span></div>`;
 
   const btAsOf = bt.hasBal ? 'as of ' + shortDate(parseYmd(bt.asOf)) + (bt.staleDays >= 1 ? ` · ${bt.staleDays}d ago` : '') : 'enter it to see the weekly transfer you need';
   const btLump = bt.overfund > 0.005 ? ` · ${money(bt.overfund)} total` : '';
@@ -330,7 +330,7 @@ function planTab() {
     : `No card balance. The Extra line is spare money after everything else.`;
 
   // Indented editable sub-row (used inside the merged Spending + card group).
-  const subrow = (label, field) => `<div class="trow sub"><span>↳ ${label}</span><span class="b">${money(stdVal[field])}</span><span class="n"><input class="plancell" data-plan="${field}" type="number" inputmode="decimal" value="${p[field]}"><button class="cellx" data-act="plan-clear" data-id="${field}" title="Clear">✕</button></span></div>`;
+  const subrow = (label, field) => `<div class="trow sub"><span>↳ ${label}</span><span class="b">${money(stdVal[field])}</span><span class="n"><input class="plancell" data-plan="${field}" type="number" inputmode="decimal" placeholder="0" value="${p[field] || ''}"><button class="cellx" data-act="plan-clear" data-id="${field}" title="Clear">✕</button></span></div>`;
 
   // Spending + credit card: one pool, with the spend and card-paydown pieces inside it.
   const spendCardGroup = p.hasCard
@@ -1045,6 +1045,14 @@ document.addEventListener('click', (e) => {
     }
     case 'bh-del': { const b = S().bills[billEdit]; b.history = (b.history || []).filter((h) => h.id !== id); saveSettings(); return drawBillEdit(); }
     case 'reimport': { const n = reimportHistory(); toast(n ? `Restored ${n} line items` : 'Everything is already imported'); return; }
+  }
+});
+
+// Select the whole value when a numeric field is focused, so typing replaces it
+// (no need to delete a leftover 0).
+document.addEventListener('focusin', (e) => {
+  if (e.target.matches('input.plancell, input.ccinput, input[data-billsbal], input[data-cc]')) {
+    try { e.target.select(); } catch {}
   }
 });
 
