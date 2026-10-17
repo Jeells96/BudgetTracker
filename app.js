@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=42';
-import { TRANSFERS } from './defaults.js?v=42';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends } from './calc.js?v=42';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=43';
+import { TRANSFERS } from './defaults.js?v=43';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends } from './calc.js?v=43';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -308,7 +308,8 @@ function planTab() {
   const edited = Object.keys(ui.planDraft || {}).length;
   const stdVal = { pay: st.pay, bills: st.bills, groceries: st.groceries, everyday: st.everyday, savings: st.savings, extra: st.extra };
   const edq = (field) => ui.planDraft[field] !== undefined;    // has a what-if edit?
-  const resetBtn = (field) => edq(field) ? `<button class="cellx" data-act="plan-reset-field" data-id="${field}" title="Reset to recommended">↺</button>` : '';
+  // Always show the reset-to-recommended ↺ (consistent columns + resettable even with a custom value).
+  const resetBtn = (field) => `<button class="cellx" data-act="plan-reset-field" data-id="${field}" title="Reset to recommended">↺</button>`;
   const erow = (label, field, extra = '') => `<div class="trow"><span>${label}</span><span class="b">${money(stdVal[field])}</span><span class="n"><input class="plancell" data-plan="${field}" type="number" inputmode="decimal" placeholder="0" value="${p[field] || ''}">${resetBtn(field)}<button class="cellx" data-act="plan-clear" data-id="${field}" title="Clear">✕</button></span></div>${extra}`;
 
   const btAsOf = bt.hasBal ? 'as of ' + shortDate(parseYmd(bt.asOf)) + (bt.staleDays >= 1 ? ` · ${bt.staleDays}d ago` : '') : 'enter it to see the weekly transfer you need';
@@ -372,7 +373,7 @@ function planTab() {
     <div class="card plan-table">
       <div class="trow head"><span></span><span class="b">Standard week</span><span class="n">Recommended</span></div>
       ${erow('Paycheck', 'pay')}
-      ${erow('To bills account', 'bills', `<div class="rowact">${bt.hasBal ? `<button class="chipbtn" data-act="plan-bills-needed" data-id="${bt.weeklyNeeded}">Use needed · ${money(bt.weeklyNeeded)}</button>` : ''}${edq('bills') ? `<button class="chipbtn" data-act="plan-reset-field" data-id="bills">↺ Recommended</button>` : ''}</div>`)}
+      ${erow('To bills account', 'bills', bt.hasBal ? `<div class="rowact"><button class="chipbtn" data-act="plan-bills-needed" data-id="${bt.weeklyNeeded}">Use needed · ${money(bt.weeklyNeeded)}</button></div>` : '')}
       ${erow('Groceries', 'groceries')}
       ${spendCardGroup}
       ${erow('Savings', 'savings')}
