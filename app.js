@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=38';
-import { TRANSFERS } from './defaults.js?v=38';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, standardWeek, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends } from './calc.js?v=38';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=39';
+import { TRANSFERS } from './defaults.js?v=39';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends } from './calc.js?v=39';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -19,7 +19,7 @@ const dayLabel = (s) => {
 };
 const ordinal = (n) => n + (['th', 'st', 'nd', 'rd'][(n % 100 >> 3) ^ 1 && n % 10 < 4 ? n % 10 : 0]);
 
-const ui = { tab: 'home', month: monthKey(new Date()), filter: 'all', all: false, q: '', planDraft: {} };
+const ui = { tab: 'home', month: monthKey(new Date()), filter: 'all', all: false, q: '', planDraft: {}, planView: 'plan' };
 try { ui.planDraft = JSON.parse(localStorage.getItem('plan-draft') || '{}') || {}; } catch { ui.planDraft = {}; }
 const savePlanDraft = () => { try { localStorage.setItem('plan-draft', JSON.stringify(ui.planDraft || {})); } catch {} };
 
@@ -296,6 +296,7 @@ function calloutHTML(leftover) {
 // Live update of the derived cells while the user edits — no save, no full re-render.
 function planRecalc() {
   const p = planValues();
+  const cb = $('#plan-combined'); if (cb) cb.textContent = money(round(p.everyday + p.extra));
   const lo = $('#plan-leftover'); if (lo) lo.textContent = money(p.leftover);
   const loRow = $('#plan-leftover-row'); if (loRow) { loRow.classList.toggle('neg', p.leftover < 0); loRow.classList.toggle('total', p.leftover >= 0); }
   const co = $('#plan-callout'); if (co) { co.className = 'callout ' + (p.leftover < 0 ? 'bad' : 'good'); co.innerHTML = calloutHTML(p.leftover); }
@@ -328,23 +329,59 @@ function planTab() {
     ? `Card balance ${money(sch.balance)} → paying <b>${money(rc.extra)}</b> this Friday (${stratLabel}).${sch.multi ? ` Paid off by ${parseYmd(sch.payoffDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} (${sch.weeks} payments — see Bills tab to change the strategy).` : ' Cleared this payday.'} Your everyday spending stays at ${money(rc.everyday)} and doesn't touch the balance as long as you're at or under it.`
     : `No card balance. The Extra line is spare money after everything else.`;
 
-  return `${header('Plan', false)}
-    <p class="lead"><b>Standard week</b> is your plan from Settings. <b>Recommended</b> adjusts it for your card payoff this month. Tap any Recommended number to try a what-if; it's saved until you reset.</p>
-    <h2>Bills account</h2>${billsBox}
-    <h2>This week's plan</h2>
+  // Indented editable sub-row (used inside the merged Spending + card group).
+  const subrow = (label, field) => `<div class="trow sub"><span>↳ ${label}</span><span class="b">${money(stdVal[field])}</span><span class="n"><input class="plancell" data-plan="${field}" type="number" inputmode="decimal" value="${p[field]}"><button class="cellx" data-act="plan-clear" data-id="${field}" title="Clear">✕</button></span></div>`;
+
+  // Spending + credit card: one pool, with the spend and card-paydown pieces inside it.
+  const spendCardGroup = p.hasCard
+    ? `<div class="trow grouphdr"><span>Spending + credit card</span><span class="b">${money(st.everyday + st.extra)}</span><span class="n" id="plan-combined">${money(p.everyday + p.extra)}</span></div>
+       ${subrow('Spending', 'everyday')}
+       ${subrow('Card paydown', 'extra')}`
+    : `${erow('Everyday spending', 'everyday')}${erow('Extra', 'extra')}`;
+
+  const viewToggle = `<div class="seg" style="margin:0 0 12px">
+    <button data-act="plan-view" data-id="plan" class="${ui.planView !== 'week' ? 'on' : ''}">Projected</button>
+    <button data-act="plan-view" data-id="week" class="${ui.planView === 'week' ? 'on' : ''}">This week so far</button></div>`;
+
+  // ---- This week so far: actual spending vs plan, over/under, where it goes ----
+  const ws = weekStats(s, store.txs), wps = weekPaidState(s, store.txs);
+  const aSpend = ws.spent, aCard = wps.amount;
+  const spendUnder = round(rc.everyday - aSpend), cardUnder = round(rc.extra - aCard);
+  const row = (label, planned, actual) => { const d = round(planned - actual); return `<div class="trow"><span>${label}</span><span class="b">${money(planned)}</span><span class="n ${d < -0.005 ? 'negtext' : ''}">${money(actual)}</span></div>`; };
+  const weekRecap = `
+    <h2>This week so far</h2>
+    <div class="card plan-table">
+      <div class="trow head"><span></span><span class="b">Planned</span><span class="n">Actual</span></div>
+      ${row('Spending', rc.everyday, aSpend)}
+      ${p.hasCard ? row('Card paydown', rc.extra, aCard) : ''}
+    </div>
+    ${spendUnder > 0.005
+      ? `<div class="callout good">You're <b>${money(spendUnder)}</b> under on spending — it's free money.${p.hasCard ? ` <button class="link" data-act="under-to-card" data-id="${spendUnder}">Put it toward the card →</button>` : ' It drops to your Extra.'}</div>`
+      : spendUnder < -0.005
+        ? `<div class="callout bad">You're <b>${money(-spendUnder)}</b> over on spending — that came out of checking (debit) or went onto your card balance (credit) as you logged it.</div>`
+        : `<div class="callout good">Right on your spending budget this week.</div>`}
+    ${p.hasCard && cardUnder > 0.005 ? `<p class="note"><b>${money(cardUnder)}</b> of this week's ${money(rc.extra)} card payment is still to pay.</p>` : ''}
+    <p class="note">Numbers update as you log purchases. Switch to <b>Projected</b> to plan the split.</p>`;
+
+  const planView = `
     <div class="card plan-table">
       <div class="trow head"><span></span><span class="b">Standard week</span><span class="n">Recommended</span></div>
       ${erow('Paycheck', 'pay')}
       ${erow('To bills account', 'bills')}
       ${erow('Groceries', 'groceries')}
-      ${erow('Everyday spending', 'everyday')}
+      ${spendCardGroup}
       ${erow('Savings', 'savings')}
-      ${erow(p.hasCard ? 'Credit card' : 'Extra', 'extra')}
-      <div class="trow ${p.leftover < 0 ? 'neg' : 'total'}" id="plan-leftover-row"><span>Leftover</span><span class="b">${money(st.extra)}</span><span class="n" id="plan-leftover">${money(p.leftover)}</span></div>
+      <div class="trow ${p.leftover < 0 ? 'neg' : 'total'}" id="plan-leftover-row"><span>Leftover / extra</span><span class="b">${money(p.hasCard ? 0 : st.extra)}</span><span class="n" id="plan-leftover">${money(p.leftover)}</span></div>
     </div>
     <div class="callout ${p.leftover < 0 ? 'bad' : 'good'}" id="plan-callout">${calloutHTML(p.leftover)}</div>
     <button class="btn block" id="plan-reset-btn" data-act="plan-reset" ${edited ? '' : 'hidden'}>↺ Reset to recommended</button>
-    <p class="note">${cardNote} Edits here are saved locally until you reset.</p>`;
+    <p class="note">${cardNote} Tap any amount to try a what-if — the pool and leftover update automatically. Edits are saved until you reset.</p>`;
+
+  return `${header('Plan', false)}
+    <p class="lead">Your <b>spending</b> and <b>card paydown</b> share one pool — spend less and more goes to the card, with no math. <b>Projected</b> plans the week; <b>This week so far</b> checks what you actually did.</p>
+    <h2>Bills account</h2>${billsBox}
+    ${viewToggle}
+    ${ui.planView === 'week' ? weekRecap : planView}`;
 }
 
 function activityList() {
@@ -983,6 +1020,8 @@ document.addEventListener('click', (e) => {
     case 'finish-item': { const it = (S().pending || []).find((x) => x.id === id); closeSheet(); if (it) openFlow({ amt: String(it.amount), pendingId: it.id, amtLocked: true }); return; }
     case 'pending-del': { if (confirm('Discard this loose item without logging it?')) { S().pending = (S().pending || []).filter((x) => x.id !== id); saveSettings(); render(); if ((S().pending || []).length) openPending(); else closeSheet(); } return; }
     case 'plan-reset': ui.planDraft = {}; savePlanDraft(); return render();
+    case 'plan-view': ui.planView = id; return render();
+    case 'under-to-card': { const amt = round(parseFloat(id) || 0); if (amt > 0) openFlow({ category: 'card', amt: String(amt) }); return; }
     case 'trends': return openTrends();
     case 'sheet-close': return closeSheet();
     case 'goto': ui.tab = id; scrollTo(0, 0); return render();
