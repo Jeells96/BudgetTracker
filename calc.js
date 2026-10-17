@@ -66,18 +66,19 @@ export function baseline(s) {
 
 // The settings-driven "standard week": take-home pay split into commitments and
 // a leftover pool that divides between savings and extra spending.
-// Per-paycheck plan. Monthly bills & groceries are spread over the actual number
-// of paychecks in the month (4 or 5), so each paycheck's share is accurate.
-export function standardWeek(s, month = ymd(new Date()).slice(0, 7)) {
-  const n = paydaysInMonth(month, s.weekStartDay ?? 5);
+// Per-paycheck plan on a STEADY 4-paycheck cadence (your spreadsheet model), so the
+// weekly plan and the card payoff don't change just because a month has a 5th Friday.
+// A 5th paycheck is treated as a bonus (extra money for savings), handled in the
+// monthly views — not here. Monthly bills/groceries ÷ 4 = the standing weekly set-aside.
+export function standardWeek(s) {
   const pay = s.weeklyPay;
-  const bills = round(billsTotal(s) / n);
-  const groceries = round((s.categories.find((c) => c.id === 'groceries')?.budget || 0) / n);
+  const bills = round(billsTotal(s) / 4);
+  const groceries = round((s.categories.find((c) => c.id === 'groceries')?.budget || 0) / 4);
   const everyday = s.weeklyBudget;
   const pool = round(pay - bills - groceries - everyday);          // leftover for savings + extra
   const savings = Math.max(0, Math.min(s.weeklySavings, Math.max(0, pool)));
   const extra = round(pool - savings);
-  return { pay, bills, groceries, everyday, pool, savings, extra, paychecks: n };
+  return { pay, bills, groceries, everyday, pool, savings, extra };
 }
 
 export function monthStats(s, txs, month, now = new Date()) {
@@ -243,7 +244,7 @@ export function billsProjection(s, txs = [], now = new Date()) {
   const shortfall = Math.max(0, round(upcoming - bal));
   const surplus = Math.max(0, round(bal - upcoming));
   const weeklyNeeded = fridays > 0 ? round(shortfall / fridays) : shortfall;
-  const onTable = standardWeek(s, ymd(ref).slice(0, 7)).bills;
+  const onTable = standardWeek(s).bills;
   const diff = round(weeklyNeeded - onTable);
   // If you stick to your plan (move onTable every Friday), where do you end up vs
   // what's needed by the 1st? Positive = overfunded by this much (you can move less).
@@ -360,7 +361,7 @@ export function cardSchedule(s, txs, now = new Date()) {
 export function cardPlan(s, txs, now = new Date()) {
   const bal = cardBalance(s, txs);
   const sch = cardSchedule(s, txs, now);
-  const sw = standardWeek(s, ymd(now).slice(0, 7));
+  const sw = standardWeek(s);
   // Size everything off the actual ongoing weekly payment (balance ÷ the paydays
   // still left to auto-pay — skips a week you've already paid or zeroed out).
   const weeks = Math.max(1, sch.autoWeeks);
@@ -385,7 +386,7 @@ export function cardPlan(s, txs, now = new Date()) {
 //  - "To bills account" = what to move this payday to stay covered to next Friday
 //  - The card payment comes from your chosen strategy; everyday spending stays put
 export function weekPlan(s, txs, now = new Date()) {
-  const sw = standardWeek(s, ymd(now).slice(0, 7));
+  const sw = standardWeek(s);
   const bt = billsProjection(s, txs, now);
   const ms = monthStats(s, txs, ymd(now).slice(0, 7), now);
   const cp = cardPlan(s, txs, now);
