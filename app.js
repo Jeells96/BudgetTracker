@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=40';
-import { TRANSFERS } from './defaults.js?v=40';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends } from './calc.js?v=40';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=41';
+import { TRANSFERS } from './defaults.js?v=41';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends } from './calc.js?v=41';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -307,7 +307,9 @@ function planTab() {
   const s = S(), p = planValues(), wp = p.wp, st = wp.standard, rc = wp.rec, sch = wp.sch, bt = wp.bt;
   const edited = Object.keys(ui.planDraft || {}).length;
   const stdVal = { pay: st.pay, bills: st.bills, groceries: st.groceries, everyday: st.everyday, savings: st.savings, extra: st.extra };
-  const erow = (label, field) => `<div class="trow"><span>${label}</span><span class="b">${money(stdVal[field])}</span><span class="n"><input class="plancell" data-plan="${field}" type="number" inputmode="decimal" placeholder="0" value="${p[field] || ''}"><button class="cellx" data-act="plan-clear" data-id="${field}" title="Clear">✕</button></span></div>`;
+  const edq = (field) => ui.planDraft[field] !== undefined;    // has a what-if edit?
+  const resetBtn = (field) => edq(field) ? `<button class="cellx" data-act="plan-reset-field" data-id="${field}" title="Reset to recommended">↺</button>` : '';
+  const erow = (label, field, extra = '') => `<div class="trow"><span>${label}</span><span class="b">${money(stdVal[field])}</span><span class="n"><input class="plancell" data-plan="${field}" type="number" inputmode="decimal" placeholder="0" value="${p[field] || ''}">${resetBtn(field)}<button class="cellx" data-act="plan-clear" data-id="${field}" title="Clear">✕</button></span></div>${extra}`;
 
   const btAsOf = bt.hasBal ? 'as of ' + shortDate(parseYmd(bt.asOf)) + (bt.staleDays >= 1 ? ` · ${bt.staleDays}d ago` : '') : 'enter it to see the weekly transfer you need';
   const btLump = bt.overfund > 0.005 ? ` · ${money(bt.overfund)} total` : '';
@@ -330,7 +332,7 @@ function planTab() {
     : `No card balance. The Extra line is spare money after everything else.`;
 
   // Indented editable sub-row (used inside the merged Spending + card group).
-  const subrow = (label, field) => `<div class="trow sub"><span>↳ ${label}</span><span class="b">${money(stdVal[field])}</span><span class="n"><input class="plancell" data-plan="${field}" type="number" inputmode="decimal" placeholder="0" value="${p[field] || ''}"><button class="cellx" data-act="plan-clear" data-id="${field}" title="Clear">✕</button></span></div>`;
+  const subrow = (label, field) => `<div class="trow sub"><span>↳ ${label}</span><span class="b">${money(stdVal[field])}</span><span class="n"><input class="plancell" data-plan="${field}" type="number" inputmode="decimal" placeholder="0" value="${p[field] || ''}">${resetBtn(field)}<button class="cellx" data-act="plan-clear" data-id="${field}" title="Clear">✕</button></span></div>`;
 
   // Spending + credit card: one pool, with the spend and card-paydown pieces inside it.
   const spendCardGroup = p.hasCard
@@ -367,7 +369,7 @@ function planTab() {
     <div class="card plan-table">
       <div class="trow head"><span></span><span class="b">Standard week</span><span class="n">Recommended</span></div>
       ${erow('Paycheck', 'pay')}
-      ${erow('To bills account', 'bills')}
+      ${erow('To bills account', 'bills', `<div class="rowact">${bt.hasBal ? `<button class="chipbtn" data-act="plan-bills-needed" data-id="${bt.weeklyNeeded}">Use needed · ${money(bt.weeklyNeeded)}</button>` : ''}${edq('bills') ? `<button class="chipbtn" data-act="plan-reset-field" data-id="bills">↺ Recommended</button>` : ''}</div>`)}
       ${erow('Groceries', 'groceries')}
       ${spendCardGroup}
       ${erow('Savings', 'savings')}
@@ -1020,6 +1022,8 @@ document.addEventListener('click', (e) => {
     case 'finish-item': { const it = (S().pending || []).find((x) => x.id === id); closeSheet(); if (it) openFlow({ amt: String(it.amount), pendingId: it.id, amtLocked: true }); return; }
     case 'pending-del': { if (confirm('Discard this loose item without logging it?')) { S().pending = (S().pending || []).filter((x) => x.id !== id); saveSettings(); render(); if ((S().pending || []).length) openPending(); else closeSheet(); } return; }
     case 'plan-reset': ui.planDraft = {}; savePlanDraft(); return render();
+    case 'plan-reset-field': { if (ui.planDraft) delete ui.planDraft[id]; savePlanDraft(); return render(); }
+    case 'plan-bills-needed': { (ui.planDraft ||= {}).bills = round(parseFloat(id) || 0); savePlanDraft(); return render(); }
     case 'plan-view': ui.planView = id; return render();
     case 'under-to-card': { const amt = round(parseFloat(id) || 0); if (amt > 0) openFlow({ category: 'card', amt: String(amt) }); return; }
     case 'trends': return openTrends();

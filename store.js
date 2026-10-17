@@ -1,6 +1,6 @@
-import { firebaseConfig } from './firebase-config.js?v=40';
-import { DEFAULT_SETTINGS } from './defaults.js?v=40';
-import { HISTORY } from './history.js?v=40';
+import { firebaseConfig } from './firebase-config.js?v=41';
+import { DEFAULT_SETTINGS } from './defaults.js?v=41';
+import { HISTORY } from './history.js?v=41';
 
 const LS_KEY = 'budget-tracker-v2';
 const CDN = 'https://www.gstatic.com/firebasejs/11.0.2/';
