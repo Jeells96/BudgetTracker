@@ -1,0 +1,9 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Open access — anyone with the site can read/write. Fine for a personal budget you aren't worried about.
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}
