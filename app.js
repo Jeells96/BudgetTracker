@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=45';
-import { TRANSFERS } from './defaults.js?v=45';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends } from './calc.js?v=45';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=46';
+import { TRANSFERS } from './defaults.js?v=46';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends } from './calc.js?v=46';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -77,7 +77,6 @@ function home() {
       <div class="note" style="margin:8px 0 0">${money(ws.spent)} of ${money(ws.budget)}${ws.carryover < 0 ? ` <span class="negtext">(incl. ${money(ws.carryover)} rolled over)</span>` : ''} · ${ws.ids.map((i) => esc(cat(i)?.name)).join(', ')}</div>
       <div class="stats">
         <div><b>${money(ws.spent)}</b><span>Spent this week</span></div>
-        <div><b>${money(ms.billsLeft)}</b><span>Still to bills</span></div>
         ${stat3}
       </div></button>`;
   } else {
@@ -93,18 +92,24 @@ function home() {
   const rollover = weekly && ws.carryover < 0
     ? `<div class="rollover">You went ${money(-ws.carryover)} over last week, so this week is trimmed to ${money(ws.budget)}. <button class="link" data-act="overage-view">Review overages</button> · <button class="link" data-act="week-reset">Forgive all</button></div>`
     : '';
+  const forgivenNote = weekly && ws.forgiven > 0
+    ? `<div class="rollover info">Last week's ${money(ws.forgiven)} over-spend is forgiven — it isn't trimming this week. <button class="link" data-act="week-unreset">Bring the penalty back</button></div>`
+    : '';
 
   const estIncome = monthlyIncome(s);
+  const neutralBar = (name, act) => act === 'goto' || name === 'Income' || name === 'Savings';
   const moneyRow = (emoji, name, spent, total, act, id, hasBudget) => {
     const inner = hasBudget
       ? `<div class="row"><span class="n">${esc(name)}</span><span class="a">${money(spent)} / ${money(total)}</span></div>
-         <div class="bar ${act === 'goto' || name === 'Income' ? '' : barClass(spent, total)}"><i style="width:${pct(spent, total)}%"></i></div>`
+         <div class="bar ${neutralBar(name, act) ? '' : barClass(spent, total)}"><i style="width:${pct(spent, total)}%"></i></div>`
       : `<div class="row"><span class="n">${esc(name)}</span><span class="a">${money(spent)} spent</span></div>`;
     return `<button class="cat" data-act="${act}" data-id="${esc(id)}"><div class="emoji">${emoji}</div><div class="body">${inner}</div><span class="chev">›</span></button>`;
   };
+  const savingsTarget = round(s.weeklySavings * 4);
   const list = [
     moneyRow('💰', 'Income', ms.income, estIncome, 'cat-filter', 'income', true),
     ...s.categories.map((c) => { const bud = cb(c); return moneyRow(c.emoji, c.name, ms.byCat[c.id], bud, 'cat-filter', c.id, bud > 0); }),
+    moneyRow('🐷', 'Savings', ms.savingsIn, savingsTarget, 'cat-filter', 'transfer', savingsTarget > 0),
     moneyRow('🏦', 'Bills account', ms.billsIn, ms.billsTotal, 'goto', 'bills', true)
   ].join('');
   const recent = monthTxs().slice(0, 5);
@@ -113,6 +118,7 @@ function home() {
     ${hero}
     ${cardTrim}
     ${rollover}
+    ${forgivenNote}
     <button class="log-btn" data-act="log"><span class="plus">+</span> Log a purchase</button>
     <h2>This month</h2><div class="card">${list}</div>
     <h2>Recent</h2><div class="card">${recent.length ? recent.map(txRow).join('') : '<div class="empty">Nothing logged yet this month.<br>Tap the big button to add your first purchase.</div>'}</div>
@@ -981,6 +987,7 @@ document.addEventListener('click', (e) => {
     case 'log-xfer': return openFlow({ category: id });
     case 'week': return openWeek();
     case 'week-reset': { S().weekResetAt = weekStats(S(), store.txs).start; saveSettings(); closeSheet(); return render(); }
+    case 'week-unreset': { S().weekResetAt = null; saveSettings(); closeSheet(); return render(); }
     case 'overage-view': return openOverage();
     case 'plan-clear': { (ui.planDraft ||= {})[id] = 0; savePlanDraft(); return render(); }
     case 'cc-reset': {

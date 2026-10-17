@@ -121,8 +121,10 @@ export function weekStats(s, txs, now = new Date()) {
   const prevLeft = round(base - spentBetween(prevStart, ws));
   const reset = s.weekResetAt === ws;
   const carryover = !reset && prevLeft < 0 ? prevLeft : 0;
+  const overage = prevLeft < 0 ? round(-prevLeft) : 0;        // last week's over-spend (raw)
+  const forgiven = reset && overage > 0 ? overage : 0;        // over-spend you chose to forgive
   const budget = round(base + carryover);
-  return { start: ws, end, ids, spent, baseBudget: base, planBudget: s.weeklyBudget, trimmedByCard, carryover, budget, left: round(budget - spent), reset };
+  return { start: ws, end, ids, spent, baseBudget: base, planBudget: s.weeklyBudget, trimmedByCard, carryover, overage, forgiven, budget, left: round(budget - spent), reset };
 }
 
 // ---- credit card ----
