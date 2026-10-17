@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=44';
-import { TRANSFERS } from './defaults.js?v=44';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends } from './calc.js?v=44';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=45';
+import { TRANSFERS } from './defaults.js?v=45';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends } from './calc.js?v=45';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -19,9 +19,11 @@ const dayLabel = (s) => {
 };
 const ordinal = (n) => n + (['th', 'st', 'nd', 'rd'][(n % 100 >> 3) ^ 1 && n % 10 < 4 ? n % 10 : 0]);
 
-const ui = { tab: 'home', month: monthKey(new Date()), filter: 'all', all: false, q: '', planDraft: {}, planView: 'plan' };
+const ui = { tab: 'home', month: monthKey(new Date()), filter: 'all', all: false, q: '', planDraft: {}, planLive: true };
 try { ui.planDraft = JSON.parse(localStorage.getItem('plan-draft') || '{}') || {}; } catch { ui.planDraft = {}; }
+try { ui.planLive = JSON.parse(localStorage.getItem('plan-live') ?? 'true'); } catch { ui.planLive = true; }
 const savePlanDraft = () => { try { localStorage.setItem('plan-draft', JSON.stringify(ui.planDraft || {})); } catch {} };
+const savePlanLive = () => { try { localStorage.setItem('plan-live', JSON.stringify(!!ui.planLive)); } catch {} };
 
 // ---------- helpers ----------
 const S = () => store.settings;
@@ -284,11 +286,12 @@ function planValues() {
   const rc = wp.rec, d = ui.planDraft || {};
   const hasCard = wp.cardBalance > 0;
   const liveSpend = round(weekStats(S(), store.txs).spent);
-  const rec = { ...rc, everyday: liveSpend };
+  const live = ui.planLive !== false;
+  const rec = live ? { ...rc, everyday: liveSpend } : rc;   // live = actual spent; off = budgeted
   const v = (f) => (d[f] !== undefined ? d[f] : rec[f]);
   const pay = v('pay'), bills = v('bills'), groceries = v('groceries'), everyday = v('everyday'), savings = v('savings'), extra = v('extra');
   const leftover = round(pay - bills - groceries - everyday - savings - extra);
-  return { wp, hasCard, liveSpend, budgetSpend: rc.everyday, pay, bills, groceries, everyday, savings, extra, leftover };
+  return { wp, hasCard, live, liveSpend, budgetSpend: rc.everyday, pay, bills, groceries, everyday, savings, extra, leftover };
 }
 
 function calloutHTML(leftover) {
@@ -340,10 +343,9 @@ function planTab() {
   // `std` lets us override the Standard-week value (a perfect standard week has no card debt).
   const subrow = (label, field, std = stdVal[field]) => `<div class="trow sub"><span>↳ ${label}</span><span class="b">${money(std)}</span><span class="n"><input class="plancell" data-plan="${field}" type="number" inputmode="decimal" placeholder="0" value="${p[field] || ''}">${resetBtn(field)}<button class="cellx" data-act="plan-clear" data-id="${field}" title="Clear">✕</button></span></div>`;
 
-  // "Live" chip: spending tracks what you've actually spent this week. Tapping it
-  // snaps the Spending cell back to the live actual (the rest of the budget frees up).
-  const liveOn = ui.planDraft.everyday === undefined;   // no what-if = showing live
-  const liveChip = `<div class="rowact"><button class="chipbtn ${liveOn ? 'on' : ''}" data-act="plan-live">⚡ Live · ${money(p.liveSpend)} spent of ${money(p.budgetSpend)}</button></div>`;
+  // Live toggle: Spending shows what you've actually spent this week (live) or your
+  // planned budget. Tapping flips between the two; the Recommended/reset follows it.
+  const liveChip = `<div class="rowact"><button class="chipbtn ${p.live ? 'on' : ''}" data-act="plan-live">${p.live ? `⚡ Live · ${money(p.liveSpend)} spent — tap for budget` : `📋 Budget · ${money(p.budgetSpend)} — tap for live`}</button></div>`;
 
   // Spending + credit card: one pool, with the spend and card-paydown pieces inside it.
   // A perfect standard week stays within the spending budget and carries no card
@@ -356,7 +358,7 @@ function planTab() {
     : `${erow('Everyday spending', 'everyday', liveChip)}${erow('Extra', 'extra')}`;
 
   return `${header('Plan', false)}
-    <p class="lead"><b>Spending</b> is live — it shows what you've actually spent this week, so the rest of your budget stays free to move. Tap any amount to try a what-if; the pool and leftover update with no math.</p>
+    <p class="lead"><b>Spending</b> can show your <b>live</b> actual spent this week or your planned <b>budget</b> — tap the chip under it to switch. Tap any amount to try a what-if; the pool and leftover update with no math.</p>
     <h2>Bills account</h2>${billsBox}
     <div class="card plan-table">
       <div class="trow head"><span></span><span class="b">Standard week</span><span class="n">Recommended</span></div>
@@ -1010,7 +1012,7 @@ document.addEventListener('click', (e) => {
     case 'plan-reset': ui.planDraft = {}; savePlanDraft(); return render();
     case 'plan-reset-field': { if (ui.planDraft) delete ui.planDraft[id]; savePlanDraft(); return render(); }
     case 'plan-bills-needed': { (ui.planDraft ||= {}).bills = round(parseFloat(id) || 0); savePlanDraft(); return render(); }
-    case 'plan-live': { if (ui.planDraft) delete ui.planDraft.everyday; savePlanDraft(); return render(); }
+    case 'plan-live': { ui.planLive = !ui.planLive; savePlanLive(); if (ui.planDraft) delete ui.planDraft.everyday; savePlanDraft(); return render(); }
     case 'trends': return openTrends();
     case 'sheet-close': return closeSheet();
     case 'goto': ui.tab = id; scrollTo(0, 0); return render();
