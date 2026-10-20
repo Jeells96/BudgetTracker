@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=63';
-import { TRANSFERS } from './defaults.js?v=63';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd } from './calc.js?v=63';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=65';
+import { TRANSFERS } from './defaults.js?v=65';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd } from './calc.js?v=65';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -88,8 +88,9 @@ function home() {
 
   let hero;
   if (weekly) {
+    const cardRet = round((s.returns || []).filter((r) => (r.pay || 'credit') !== 'cash').reduce((a, r) => a + Math.abs(r.amount || 0), 0));
     const stat3 = bal > 0
-      ? `<div><b>${money(bal)}</b><span>Card balance</span></div>`
+      ? `<div><b>${money(bal)}</b><span>${cardRet > 0 ? `Card · ${money(cardRet)} returning` : 'Card balance'}</span></div>`
       : `<div><b>${money(s.weeklySavings)}</b><span>Weekly savings</span></div>`;
     hero = `<button class="card hero tappable" data-act="week">
       <div class="label">Left to spend this week <span class="hint">tap for breakdown ›</span></div>
@@ -342,8 +343,18 @@ function cardSection() {
         <div><span>Difference</span><b class="${diff ? 'negtext' : ''}">${diff === 0 ? 'matches' : (diff > 0 ? '+' : '−') + money(Math.abs(diff)).replace('-', '')}</b></div></div>`;
   }
 
+  // Planned returns that will credit this card — shown right alongside the balance.
+  const cardRets = (s.returns || []).filter((r) => (r.pay || 'credit') !== 'cash');
+  const retTotal = round(cardRets.reduce((a, r) => a + Math.abs(r.amount || 0), 0));
+  const retBlock = cardRets.length ? `
+    <button class="retstrip" data-act="returns-view">
+      <span class="rs-n">${cardRets.length} planned return${cardRets.length === 1 ? '' : 's'} coming back to this card</span>
+      <b>−${money(retTotal)}</b><span class="rs-go">Review ›</span></button>
+    <div class="retlist">${cardRets.map((r) => `<div><span>${esc(r.note || cat(r.category)?.name || 'Purchase')}</span><b>−${money(Math.abs(r.amount))}</b></div>`).join('')}</div>` : '';
+
   return `<div class="card">
     ${wp.cardBalance > 0 ? planBlock : '<div class="note" style="margin:0 0 8px">No balance to pay off right now.</div>'}
+    ${retBlock}
     ${modeToggle}
     ${setup}
     <div class="note">Statement closes the ${ordinal(cyc.endDay)} · cycle ${shortDate(parseYmd(cyc.start))} – ${shortDate(parseYmd(cyc.end))}</div>

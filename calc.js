@@ -150,21 +150,24 @@ export function weekStats(s, txs, now = new Date()) {
   const ws = weekStart(now, startDay);
   const end = ymd(addDays(parseYmd(ws), 7));
   const ids = s.categories.filter((c) => c.weekly).map((c) => c.id);
-  // Planned returns on weekly categories give back spending room for the week they land in.
+  // A planned return on a weekly category is spending room coming back, so it ADDS to
+  // the week's budget rather than subtracting from what you've spent — same money
+  // either way, but "spent" stays what you actually spent instead of going negative.
   const retBetween = (from, to) => sum((s.returns || []).filter((r) => r.category && ids.includes(r.category) && (r.date || '') >= from && (r.date || '') < to).map((r) => Math.abs(r.amount) || 0));
-  const spentBetween = (from, to) => round(sum(txs.filter((t) => t.type === 'expense' && !t.exBudget && t.date >= from && t.date < to && ids.includes(t.category)).map((t) => t.amount)) - retBetween(from, to));
-  const spent = spentBetween(ws, end);
+  const spentBetween = (from, to) => sum(txs.filter((t) => t.type === 'expense' && !t.exBudget && t.date >= from && t.date < to && ids.includes(t.category)).map((t) => t.amount));
+  const spent = round(spentBetween(ws, end));
+  const returning = retBetween(ws, end);                     // credit landing this week
   const base = effectiveEveryday(s, txs, now);               // budget after the card trim
   const trimmedByCard = Math.max(0, round(s.weeklyBudget - base));
   // Roll a previous over-spend (vs the same trimmed budget) into this week unless reset.
   const prevStart = weekStart(addDays(parseYmd(ws), -1), startDay);
-  const prevLeft = round(base - spentBetween(prevStart, ws));
+  const prevLeft = round(base + retBetween(prevStart, ws) - spentBetween(prevStart, ws));
   const reset = s.weekResetAt === ws;
   const carryover = !reset && prevLeft < 0 ? prevLeft : 0;
   const overage = prevLeft < 0 ? round(-prevLeft) : 0;        // last week's over-spend (raw)
   const forgiven = reset && overage > 0 ? overage : 0;        // over-spend you chose to forgive
-  const budget = round(base + carryover);
-  return { start: ws, end, ids, spent, baseBudget: base, planBudget: s.weeklyBudget, trimmedByCard, carryover, overage, forgiven, budget, left: round(budget - spent), reset };
+  const budget = round(base + carryover + returning);
+  return { start: ws, end, ids, spent, returning, baseBudget: base, planBudget: s.weeklyBudget, trimmedByCard, carryover, overage, forgiven, budget, left: round(budget - spent), reset };
 }
 
 // ---- credit card ----
