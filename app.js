@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=55';
-import { TRANSFERS } from './defaults.js?v=55';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends } from './calc.js?v=55';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=56';
+import { TRANSFERS } from './defaults.js?v=56';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends } from './calc.js?v=56';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -24,6 +24,23 @@ try { ui.planDraft = JSON.parse(localStorage.getItem('plan-draft') || '{}') || {
 try { ui.planLive = JSON.parse(localStorage.getItem('plan-live') ?? 'true'); } catch { ui.planLive = true; }
 const savePlanDraft = () => { try { localStorage.setItem('plan-draft', JSON.stringify(ui.planDraft || {})); } catch {} };
 const savePlanLive = () => { try { localStorage.setItem('plan-live', JSON.stringify(!!ui.planLive)); } catch {} };
+
+// ---------- multi-select + live totaller ----------
+// A transient selection used in the breakdown and activity views: tap rows to add
+// them up. It never persists — leaving the view (closing the sheet or switching
+// tabs) clears it.
+const sel = { on: false, ids: new Set() };
+const selTotal = () => round([...sel.ids].reduce((a, id) => { const t = store.txs.find((x) => x.id === id); return a + (t ? t.amount : 0); }, 0));
+function renderSelBar() {
+  const el = $('#seltotal'); if (!el) return;
+  if (!sel.on || sel.ids.size === 0) { el.hidden = true; el.innerHTML = ''; return; }
+  const n = sel.ids.size;
+  el.hidden = false;
+  el.innerHTML = `<div class="selbar">
+    <span class="selcount">${n} selected</span><span class="seltot">${money(selTotal())}</span>
+    <button class="selclear" data-act="sel-done">Done</button></div>`;
+}
+function resetSel() { sel.on = false; sel.ids.clear(); renderSelBar(); }
 
 // ---------- helpers ----------
 const S = () => store.settings;
@@ -194,8 +211,11 @@ function txRow(t) {
   else { const c = cat(t.category); icon = c ? c.emoji : '🧾'; label = t.note || (c ? c.name : 'Purchase'); sub = c ? c.name : t.category; amt = `<div class="amt">${money(t.amount)}</div>`; }
   const ccDot = (t.type === 'expense' && t.pay === 'credit' ? ' <span class="cc-dot" title="Credit card">💳</span>' : '') + (t.exAvg ? ' <span class="ex-tag" title="Excluded from average">excl. avg</span>' : '');
   const dateStr = parseYmd(t.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  return `<button class="tx" data-act="tx" data-id="${esc(t.id)}"><div class="emoji">${icon}</div>
-    <div class="body"><div class="t">${esc(label)}${ccDot}</div><div class="s">${sub ? esc(sub) + ' · ' : ''}${dateStr}</div></div>${amt}<span class="chev">›</span></button>`;
+  const selOn = sel.on, picked = sel.ids.has(t.id);
+  const lead = selOn ? `<span class="selbox${picked ? ' on' : ''}"></span>` : '';
+  const tail = selOn ? '' : '<span class="chev">›</span>';
+  return `<button class="tx${selOn ? ' selectable' : ''}${picked ? ' selected' : ''}" data-act="${selOn ? 'tx-toggle' : 'tx'}" data-id="${esc(t.id)}">${lead}<div class="emoji">${icon}</div>
+    <div class="body"><div class="t">${esc(label)}${ccDot}</div><div class="s">${sub ? esc(sub) + ' · ' : ''}${dateStr}</div></div>${amt}${tail}</button>`;
 }
 
 function billsAcctCard(s, now = new Date()) {
@@ -449,7 +469,7 @@ function activityList() {
   const spent = round(list.filter((t) => t.type === 'expense').reduce((a, t) => a + t.amount, 0));
   if (!list.length) return '<div class="card empty">Nothing here.</div>';
   // Flat list in the order entered (newest first), each row shows its own date.
-  return `<p class="note">${list.length} line item${list.length > 1 ? 's' : ''} · ${money(spent)} spent · tap any to edit</p>
+  return `<p class="note">${list.length} line item${list.length > 1 ? 's' : ''} · ${money(spent)} spent · ${sel.on ? 'tap to select' : 'tap any to edit'}</p>
     <div class="card" style="padding:6px 18px">${list.map(txRow).join('')}</div>`;
 }
 
@@ -459,7 +479,8 @@ function activity() {
   return `${header('Activity', !ui.all)}
     <div class="searchrow"><input id="q" class="sheet-input" type="search" placeholder="Search purchases…" value="${esc(ui.q)}" autocomplete="off">
     <button class="chip" data-act="trends">📈 Trends</button>
-    <button class="chip ${ui.all ? 'on' : ''}" data-act="all">All</button></div>
+    <button class="chip ${ui.all ? 'on' : ''}" data-act="all">All</button>
+    <button class="chip ${sel.on ? 'on' : ''}" data-act="sel-mode">☑︎ ${sel.on ? 'Done' : 'Select'}</button></div>
     <div class="chips">${chips}</div><div id="actlist">${activityList()}</div>`;
 }
 
@@ -510,7 +531,7 @@ function settings() {
 
 // ---------- the sheet (add flow + edit) ----------
 let flow = null, edit = null, billEdit = null, track = null, avgCat = null;
-function closeSheet() { const el = $('#sheet'); el.hidden = true; el.className = 'sheet'; el.innerHTML = ''; flow = null; edit = null; billEdit = null; track = null; }
+function closeSheet() { const el = $('#sheet'); el.hidden = true; el.className = 'sheet'; el.innerHTML = ''; flow = null; edit = null; billEdit = null; track = null; resetSel(); }
 
 // ----- "track later": capture a price only, to finish with category/description later -----
 const keypad = () => `<div class="pad">${['1','2','3','4','5','6','7','8','9','.','0','⌫'].map((k) => `<button data-${track ? 'track' : 'flow'}="key" data-v="${k}">${k}</button>`).join('')}</div>`;
@@ -915,7 +936,9 @@ function openWeek() {
     const wkEnd = addDays(wkStart, 7);
     const from = ymd(wkStart < monthStart ? monthStart : wkStart);
     const to = ymd(wkEnd > nextMonth ? nextMonth : wkEnd);
-    const txsIn = store.txs.filter((t) => t.date >= from && t.date < to).sort(sortTx);
+    // Breakdown is about spending only — leave out income, bills transfers,
+    // savings transfers and card payments.
+    const txsIn = store.txs.filter((t) => t.type === 'expense' && t.date >= from && t.date < to).sort(sortTx);
     const spent = round(txsIn.filter((t) => t.type === 'expense').reduce((a, t) => a + t.amount, 0));
     const everyday = round(txsIn.filter((t) => t.type === 'expense' && ws.ids.includes(t.category)).reduce((a, t) => a + t.amount, 0));
     weeks.push({ n, startYmd: ymd(wkStart), from, to, spent, everyday, txsIn, isNow: ymd(wkStart) === ws.start });
@@ -939,7 +962,7 @@ function openWeek() {
   }).join('');
 
   $('#sheet').innerHTML = `<div class="panel sheet-page"><div class="head">
-      <button class="backbtn" data-act="sheet-close" aria-label="Back">←</button><span class="step">${monthShort(ui.month)} · weekly</span><span style="width:28px"></span></div>
+      <button class="backbtn" data-act="sheet-close" aria-label="Back">←</button><span class="step">${monthShort(ui.month)} · weekly</span><button class="hdr-sel ${sel.on ? 'on' : ''}" data-act="sel-mode">${sel.on ? 'Done' : 'Select'}</button></div>
     <div class="card hero" style="box-shadow:none;padding:4px 0">
       <div class="label">Left to spend this week</div>
       <div class="big ${ws.left < 0 ? 'neg' : ''}">${money(ws.left)}</div>
@@ -1039,13 +1062,26 @@ document.addEventListener('click', (e) => {
   const ft = e.target.closest('[data-track]'); if (ft && track) return trackClick(ft);
   if (e.target === $('#sheet')) return closeSheet();
   const tab = e.target.closest('#tabs button');
-  if (tab) { ui.tab = tab.dataset.tab; scrollTo(0, 0); return render(); }
+  if (tab) { if (sel.on) resetSel(); ui.tab = tab.dataset.tab; scrollTo(0, 0); return render(); }
   const b = e.target.closest('[data-act]'); if (!b) return;
   const id = b.dataset.id, i = +b.dataset.i;
   switch (b.dataset.act) {
     case 'log': return openFlow();
     case 'log-xfer': return openFlow({ category: id });
-    case 'week': return openWeek();
+    case 'week': resetSel(); return openWeek();
+    case 'sel-mode': {
+      sel.on = !sel.on; sel.ids.clear(); renderSelBar();
+      // The breakdown lives in the sheet; everything else is the main view.
+      if (!$('#sheet').hidden) return openWeek();
+      return render();
+    }
+    case 'sel-done': { resetSel(); if (!$('#sheet').hidden) return openWeek(); return render(); }
+    case 'tx-toggle': {
+      if (sel.ids.has(id)) sel.ids.delete(id); else sel.ids.add(id);
+      b.classList.toggle('selected', sel.ids.has(id));
+      const box = b.querySelector('.selbox'); if (box) box.classList.toggle('on', sel.ids.has(id));
+      return renderSelBar();
+    }
     case 'week-reset': { S().weekResetAt = weekStats(S(), store.txs).start; saveSettings(); closeSheet(); return render(); }
     case 'week-unreset': { S().weekResetAt = null; saveSettings(); closeSheet(); return render(); }
     case 'overage-view': return openOverage();

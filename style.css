@@ -345,3 +345,17 @@ hr.sep { border:0; border-top:1px solid var(--line); margin:16px 0; }
 .ovbody { flex:1; min-width:0; }
 .ovrow.off .ovbody { opacity:.45; text-decoration:line-through; }
 .ovtag { font-size:.72rem; color:var(--muted); flex:none; }
+
+/* v56: multi-select + live totaller */
+.hdr-sel { font-size:.95rem; font-weight:700; color:var(--brand); min-width:56px; text-align:right; background:none; }
+.hdr-sel.on { color:var(--brand); }
+.tx .selbox { width:22px; height:22px; border-radius:50%; border:2px solid var(--line); flex:none; display:grid; place-items:center; color:#fff; font-size:.82rem; font-weight:800; }
+.tx .selbox.on { background:var(--brand); border-color:var(--brand); }
+.tx .selbox.on::after { content:'✓'; }
+.tx.selected { background:color-mix(in srgb,var(--brand) 11%,transparent); border-radius:12px; }
+.seltotal { position:fixed; left:50%; bottom:calc(80px + env(safe-area-inset-bottom)); transform:translateX(-50%); z-index:40; width:max-content; max-width:92vw; animation:up .2s; }
+.seltotal[hidden] { display:none; }
+.selbar { display:flex; align-items:center; gap:14px; background:var(--ink); color:var(--bg); padding:11px 12px 11px 20px; border-radius:99px; box-shadow:0 12px 30px rgba(0,0,0,.32); }
+.selbar .selcount { font-size:.82rem; opacity:.75; white-space:nowrap; }
+.selbar .seltot { font-size:1.25rem; font-weight:800; }
+.selbar .selclear { background:color-mix(in srgb,var(--bg) 24%,transparent); color:var(--bg); border-radius:99px; padding:7px 16px; font-weight:700; font-size:.85rem; }
