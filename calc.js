@@ -133,7 +133,12 @@ export function effectiveEveryday(s, txs = [], now = new Date()) {
       ? { ...t, amount: 0 }
       : t
   );
-  const cp = cardPlan(s, payoffTxs, now);
+  // Same rule in reverse: a planned return of a budgeted purchase is already given
+  // back as weekly spending room, so it must not ALSO loosen the trim — otherwise
+  // the refund is credited twice. Only returns of out-of-budget purchases (the ones
+  // whose charges do raise the trim above) are allowed to lower it.
+  const payoffS = { ...s, returns: (s.returns || []).filter((r) => r.exBudget) };
+  const cp = cardPlan(payoffS, payoffTxs, now);
   if (cp.balance <= 0) return base;
   if (strat === 'spend') return cp.options.spend.newSpend;
   if (strat === 'split') return cp.options.split.newSpend;

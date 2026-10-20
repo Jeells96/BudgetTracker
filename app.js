@@ -1,12 +1,12 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=62';
-import { TRANSFERS } from './defaults.js?v=62';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd } from './calc.js?v=62';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=63';
+import { TRANSFERS } from './defaults.js?v=63';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd } from './calc.js?v=63';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const money = (n) => (n < 0 ? '-' : '') + '$' + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: Math.abs(n) % 1 ? 2 : 0, maximumFractionDigits: 2 });
 // Text-box number formatting: show thousands separators, parse back by stripping them.
-const fmtNum = (n) => (n == null || n === '' || isNaN(n)) ? '' : Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 });
+const fmtNum = (n) => (n == null || n === '' || isNaN(n)) ? '' : Number(n).toLocaleString('en-US', { minimumFractionDigits: Math.abs(n) % 1 ? 2 : 0, maximumFractionDigits: 2 });
 const parseNum = (v) => { const n = parseFloat(String(v).replace(/[^0-9.\-]/g, '')); return isNaN(n) ? 0 : n; };
 
 const today = () => ymd(new Date());
@@ -108,7 +108,7 @@ function home() {
       <div class="note" style="margin:8px 0 0">${n} purchase${n === 1 ? '' : 's'}${ms.income ? ` · ${money(ms.income)} income` : ''}</div></div>`;
   }
   const cardTrim = weekly && ws.trimmedByCard > 0
-    ? `<div class="rollover">Your <b>spend-less</b> card plan trims this week to ${money(ws.baseBudget)}, freeing ${money(ws.trimmedByCard)} for the card. Spending over that lands on the card and raises the balance.</div>`
+    ? `<div class="rollover">Spend-less plan · ${money(ws.baseBudget)} this week, ${money(ws.trimmedByCard)} freed for the card.</div>`
     : '';
   const rollover = weekly && ws.carryover < 0
     ? `<div class="rollover">You went ${money(-ws.carryover)} over last week, so this week is trimmed to ${money(ws.budget)}. <button class="link" data-act="overage-view">Review overages</button> · <button class="link" data-act="week-reset">Forgive all</button></div>`
@@ -245,7 +245,7 @@ function billsAcctCard(s, now = new Date()) {
     </div>`;
 
   const staleNote = bp.hasBal && bp.staleDays >= 3
-    ? `<div class="rollover" style="margin-top:8px">Your balance is ${bp.staleDays} days old — bills may have come out since. <b>Re-enter it</b> for an accurate projection.</div>`
+    ? `<div class="rollover" style="margin-top:8px">Balance is ${bp.staleDays} days old — re-enter it.</div>`
     : '';
 
   return `<div class="card">
@@ -259,9 +259,9 @@ function billsAcctCard(s, now = new Date()) {
     </div>
     ${compare}
     <div class="note" style="margin:8px 0 0">${bp.covered
-      ? `Your balance already covers everything due through ${bp.nextMonthName} 1st, with ${money(bp.surplus)} to spare.`
-      : `To have the ${bp.nextMonthName} 1st bills funded in time, move about ${money(bp.weeklyNeeded)} each of the ${bp.fridays} Friday${bp.fridays === 1 ? '' : 's'} left — that covers the ${money(bp.shortfall)} gap.`}</div>`
-    : `<div class="note" style="margin:8px 0 0">Type what's actually in your bills account. It'll count the Fridays left this month, add up the bills still coming plus next month's 1st, and tell you the weekly transfer needed to have it all funded before the 1st.</div>`}
+      ? `Covered through ${bp.nextMonthName} 1st · ${money(bp.surplus)} to spare.`
+      : `Move ${money(bp.weeklyNeeded)} each of the ${bp.fridays} Friday${bp.fridays === 1 ? '' : 's'} left to cover the ${money(bp.shortfall)} gap.`}</div>`
+    : `<div class="note" style="margin:8px 0 0">Enter your bills-account balance to see the weekly transfer needed.</div>`}
   </div>`;
 }
 
@@ -280,8 +280,7 @@ function payoffScheduleHTML(sch) {
   const head = `<div class="week"><span class="muted">Payoff plan · ${sch.weeks} payment${sch.weeks === 1 ? '' : 's'}</span><b class="goodtext">clear by ${parseYmd(endD).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</b></div>`;
   return `<div class="plan">
     ${head}
-    <div class="sched">${rows}</div>
-    <div class="note" style="margin:8px 0 0">Tap any amount to set that week manually; the other weeks re-split to still clear by your payoff date.</div></div>`;
+    <div class="sched">${rows}</div></div>`;
 }
 
 function strategyPicker(cp, strategy) {
@@ -335,8 +334,7 @@ function cardSection() {
         <div><span>− card payments since</span><b>${money(det.paid)}</b></div>
         ${det.pendRet > 0.005 ? `<div><span>− planned returns</span><b>${money(det.pendRet)}</b></div>` : ''}
         <div class="tot"><span>Current balance</span><b>${money(det.computed)}</b></div></div>
-      <button class="btn block" data-act="cc-reset" style="margin-top:8px">↺ Reset balance to actual</button>
-      <p class="note" style="margin:6px 0 0">Returns or credits throwing it off? Reset re-baselines to a number you type (stays on auto from there).</p>`;
+      <button class="btn block" data-act="cc-reset" style="margin-top:8px">↺ Reset balance to actual</button>`;
   } else {
     setup = `
       <div class="field"><label>Your current balance</label><input type="text" inputmode="decimal" value="${fmtNum(cc.manual || '')}" placeholder="0" data-cc="manual"></div>
@@ -348,7 +346,7 @@ function cardSection() {
     ${wp.cardBalance > 0 ? planBlock : '<div class="note" style="margin:0 0 8px">No balance to pay off right now.</div>'}
     ${modeToggle}
     ${setup}
-    <div class="note">Statement closes the ${ordinal(cyc.endDay)} · this cycle ${shortDate(parseYmd(cyc.start))} – ${shortDate(parseYmd(cyc.end))}. New purchases default to credit card when you log them.</div>
+    <div class="note">Statement closes the ${ordinal(cyc.endDay)} · cycle ${shortDate(parseYmd(cyc.start))} – ${shortDate(parseYmd(cyc.end))}</div>
     <button class="btn block" data-act="log-xfer" data-id="card">+ Log a card payment</button></div>`;
 }
 
@@ -360,7 +358,7 @@ function billsListHTML(s) {
   const billRow = (x) => `<div class="bill"><div class="d-badge">${x.day}</div><div class="body"><div class="n">${esc(x.name)}</div><div class="d">Auto-pays the ${ordinal(x.day)}${x.useAvg && x.history && x.history.length ? ' · 12-mo avg' : ''}</div></div><div class="amt">${money(billAmount(x))}</div></div>`;
   return `<div class="bill-sub">Due on the 1st · ${money(tot(first))}</div><div class="card">${first.map(billRow).join('') || '<div class="empty">Nothing due on the 1st.</div>'}</div>
     ${later.length ? `<div class="bill-sub">Later in the month · ${money(tot(later))}</div><div class="card">${later.map(billRow).join('')}</div>` : ''}
-    <p class="note">Bills pay themselves, so there's nothing to check off. Change amounts and due days in Settings.</p>`;
+    `;
 }
 
 // Merge the (persisted) what-if draft over the computed recommendation.
@@ -406,8 +404,8 @@ function planTab() {
 
   const stratLabel = { extra: 'from leftover', spend: 'spending less', save: 'saving less', split: 'splitting the difference', stretch: 'stretching the payoff', none: '' }[wp.strategy];
   const cardNote = sch.balance > 0
-    ? `Card balance ${money(sch.balance)} → paying <b>${money(rc.extra)}</b> this Friday (${stratLabel}).${sch.multi ? ` Paid off by ${moDay(sch.payoffDate)} (${sch.weeks} payments — open Credit card below to change the strategy).` : ' Cleared this payday.'} Your everyday spending stays at ${money(rc.everyday)} and doesn't touch the balance as long as you're at or under it.`
-    : `No card balance. The Extra line is spare money after everything else.`;
+    ? `Card ${money(sch.balance)} · <b>${money(rc.extra)}</b> this Friday${sch.multi ? ` · clear by ${moDay(sch.payoffDate)}` : ''}`
+    : '';
 
   // Indented editable sub-row (used inside the merged Spending + card group).
   // `std` lets us override the Standard-week value (a perfect standard week has no card debt).
@@ -429,7 +427,7 @@ function planTab() {
 
   const plannerBody = `
     <div class="card plan-table">
-      <div class="trow head"><span></span><span class="b">Standard week</span><span class="n">Recommended</span></div>
+      <div class="trow head"><span></span><span class="b">Standard</span><span class="n">Recommended</span></div>
       ${erow('Paycheck', 'pay')}
       ${erow('To bills account', 'bills', bt.hasBal ? `<div class="rowact"><button class="chipbtn" data-act="plan-bills-needed" data-id="${bt.weeklyNeeded}">Use needed · ${money(bt.weeklyNeeded)}</button></div>` : '')}
       ${erow('Groceries', 'groceries')}
@@ -439,7 +437,7 @@ function planTab() {
     </div>
     <div class="callout ${p.leftover < 0 ? 'bad' : 'good'}" id="plan-callout">${calloutHTML(p.leftover)}</div>
     <button class="btn block" id="plan-reset-btn" data-act="plan-reset" ${edited ? '' : 'hidden'}>↺ Reset to recommended</button>
-    <p class="note">${cardNote} Edits are saved until you reset.</p>`;
+    ${cardNote ? `<p class="note">${cardNote}</p>` : ''}`;
 
   // Each area is a collapsible section. The weekly planner is open by default; the
   // rest start collapsed. (Native <details>, so open/closed is remembered per tap.)
@@ -448,11 +446,10 @@ function planTab() {
   const baTag = bt.hasBal ? (bt.covered ? ' · covered' : ' · short ' + money(bt.shortfall)) : '';
 
   return `${header('Plan', false)}
-    <p class="lead"><b>Spending</b> can show your <b>live</b> actual spent this week or your planned <b>budget</b> — tap the chip to switch. Tap any amount to try a what-if. Tap a section header to expand it.</p>
-    ${sec("📊 This week's plan", plannerBody, true)}
-    ${sec(`💳 Credit card · ${money(wp.cardBalance)}`, cardSection())}
-    ${sec(`🏦 Bills account balance${baTag}`, billsAcctBody)}
-    ${sec(`🧾 Monthly bills · ${money(billsTotal(s))}`, billsListHTML(s))}`;
+    ${sec("This week's plan", plannerBody, true)}
+    ${sec(`Credit card · ${money(wp.cardBalance)}`, cardSection())}
+    ${sec(`Bills account${baTag}`, billsAcctBody)}
+    ${sec(`Monthly bills · ${money(billsTotal(s))}`, billsListHTML(s))}`;
 }
 
 // ---------- Finance: loan payoff planner + investment what-if ----------
@@ -471,14 +468,13 @@ function finance() {
     <div class="finhero">
       <div class="fh-label">Total debt</div>
       <div class="fh-big">${money(totalDebt)}</div>
-      <div class="fh-sub">${active.length} active loan${active.length === 1 ? '' : 's'}${paidCount ? ` · ${paidCount} paid off 🎉` : ''}</div>
+      <div class="fh-sub">${active.length} active loan${active.length === 1 ? '' : 's'}${paidCount ? ` · ${paidCount} paid off` : ''}</div>
       <div class="fh-grid">
         <div><span>Interest left</span><b>${money(totalInterest)}</b></div>
         <div><span>Saving with extra</span><b class="goodtext">${totalSaved > 0 ? money(totalSaved) : '—'}</b></div>
       </div>
     </div>
     <h2>Loans</h2>
-    <p class="lead">Balances come from each loan's terms plus the extra payments you've logged — go to any month you <b>didn't</b> actually pay extra and clear it, and the balance re-figures. Set an <b>extra every month</b> to see the interest you'd save.</p>
     ${stats.map(([l, st]) => financeLoanCard(l, st)).join('')}
     <button class="btn block" data-act="loan-add" style="margin-top:4px">+ Add a loan</button>
     ${financeInvest(now)}`;
@@ -489,9 +485,9 @@ function financeLoanCard(loan, st) {
   const head = `<button class="loan-head" data-act="loan-toggle" data-id="${loan.id}">
     <div class="emoji">${loan.emoji || '💵'}</div>
     <div class="body">
-      <div class="row"><span class="n">${esc(loan.name)}</span><span class="a">${paid ? '<b class="goodtext">Paid off 🎉</b>' : money(st.balance)}</span></div>
+      <div class="row"><span class="n">${esc(loan.name)}</span><span class="a">${paid ? '<b class="goodtext">Paid off</b>' : money(st.balance)}</span></div>
       <div class="bar"><i style="width:${st.paidPct}%"></i></div>
-      <div class="du-note">${paid ? `Cleared${loan.lender ? ` · ${esc(loan.lender)}` : ''}` : `${st.paidPct}% paid · debt-free ${moYr(st.payoff)}${loan.lender ? ` · ${esc(loan.lender)}` : ''}`}</div>
+      <div class="du-note">${paid ? `Paid off${loan.lender ? ` · ${esc(loan.lender)}` : ''}` : `${Math.round(st.paidPct)}% paid · ${moYr(st.payoff)}${loan.lender ? ` · ${esc(loan.lender)}` : ''}`}</div>
     </div><span class="chev ${open ? 'down' : ''}">›</span></button>`;
   if (!open) return `<div class="card loan ${paid ? 'done' : ''}">${head}</div>`;
 
@@ -523,7 +519,7 @@ function financeLoanCard(loan, st) {
   const schRows = pastWrap + futRows.map(schRow).join('');
   const savedBox = extra > 0 && st.monthsSaved > 0
     ? `<div class="savebox"><div><span>Interest saved</span><b class="goodtext">${money(st.interestSaved)}</b></div><div><span>Sooner</span><b>${st.monthsSaved} pmt${st.monthsSaved === 1 ? '' : 's'}</b></div><div><span>vs. minimum</span><b>${moYr(st.basePayoff)}</b></div></div>`
-    : `<div class="du-note">At the minimum: debt-free ${moYr(st.basePayoff)} with ${money(st.baseInterest)} interest. Add an extra below to see what you'd save.</div>`;
+    : `<div class="du-note">Minimum pace · debt-free ${moYr(st.basePayoff)} · ${money(st.baseInterest)} interest</div>`;
 
   return `<div class="card loan open">${head}
     <div class="loan-body">
@@ -532,7 +528,7 @@ function financeLoanCard(loan, st) {
         <div><span>Rate</span><b>${(loan.rate * 100).toFixed(2)}%</b></div>
         <div><span>Payment</span><b>${money(loan.payment)}</b></div>
       </div>
-      <div class="finfield"><label>Extra every month <span class="muted">— scenario</span></label>
+      <div class="finfield"><label>Extra per month</label>
         <span class="finwrap"><input class="fin-num" type="text" inputmode="decimal" placeholder="0" value="${fmtNum(extra || '')}" data-loanextra="${loan.id}">${extra > 0 ? `<button class="cellx" data-act="loan-extra-reset" data-id="${loan.id}" title="Clear">✕</button>` : ''}</span></div>
       ${savedBox}
       <div class="loan-summary">
@@ -540,13 +536,13 @@ function financeLoanCard(loan, st) {
         <div><span>Payments left</span><b>${st.months}</b></div>
         <div><span>Interest left</span><b>${money(st.interestRemaining)}</b></div>
       </div>
-      <div class="loan-schhdr">Payment schedule <span class="muted">— ${extra > 0 ? '✓ lock a month at the scenario, ✕ skip it, or type a custom extra' : 'type an extra on any month'}</span></div>
+      <div class="loan-schhdr">Schedule</div>
       <div class="loan-sch">
         <div class="loan-row head"><span class="d">Due</span><span class="p">Payment</span><span class="x">Extra</span><span class="bb">Balance</span></div>
         ${schRows}
       </div>
       ${moreFut > 0 ? `<p class="note">+ ${moreFut} more payment${moreFut === 1 ? '' : 's'} through ${moYr(st.payoff)}.</p>` : ''}
-      <div class="finfield" style="margin-top:12px"><label>Balance correction <span class="muted">— nudge to match your statement</span></label>
+      <div class="finfield" style="margin-top:12px"><label>Balance correction</label>
         <input class="fin-num" type="text" inputmode="decimal" value="${fmtNum(round(st.balance))}" data-loanbal="${loan.id}"></div>
       <button class="btn block danger" data-act="loan-delete" data-id="${loan.id}" style="margin-top:6px">🗑 Delete this loan</button>
     </div></div>`;
@@ -557,7 +553,6 @@ function financeInvest(now) {
   const presets = [['401(k)', 0.07], ['Roth IRA', 0.07], ['HYSA', 0.04]];
   const chips = presets.map(([n, r]) => `<button class="chip ${Math.abs((iv.rate || 0) - r) < 1e-9 ? 'on' : ''}" data-act="inv-preset" data-id="${r}">${n} · ${(r * 100).toFixed(0)}%</button>`).join('');
   return `<h2>Invest instead?</h2>
-    <p class="lead">What the same money could grow to in a 401(k), Roth IRA, or high-yield savings — to weigh against paying a loan down early.</p>
     <div class="card">
       <div class="chips" style="margin:0 -18px 10px;padding-inline:18px">${chips}</div>
       <div class="finfield"><label>Monthly contribution</label><input class="fin-num" type="text" inputmode="decimal" value="${fmtNum(iv.monthly)}" data-inv="monthly"></div>
@@ -582,7 +577,7 @@ function activityList() {
   const spent = round(list.filter((t) => t.type === 'expense').reduce((a, t) => a + t.amount, 0));
   if (!list.length) return '<div class="card empty">Nothing here.</div>';
   // Flat list in the order entered (newest first), each row shows its own date.
-  return `<p class="note">${list.length} line item${list.length > 1 ? 's' : ''} · ${money(spent)} spent · tap ✓ to total, a row to edit</p>
+  return `<p class="note">${list.length} item${list.length > 1 ? 's' : ''} · ${money(spent)}</p>
     <div class="card" style="padding:6px 18px">${list.map(txRow).join('')}</div>`;
 }
 
@@ -612,11 +607,11 @@ function settings() {
         <input type="range" id="sav-slider" min="0" max="${Math.max(5, Math.ceil(poolBase))}" step="5" value="${sw.savings}"></div>
       <div class="prow"><span>💳 Extra spending <span class="muted">(auto)</span></span><b id="extra-amt" class="${sw.extra < 0 ? 'negtext' : ''}">${money(sw.extra)}</b></div>
       ${poolBase < 0 ? `<div class="err">Your pay doesn't cover bills + groceries + everyday spending — nothing left to save.</div>` : ''}
-      <div class="note">Drag to move money between savings and extra spending. This sets the “standard week” on the Plan tab.</div></div>
+      <div class="note">Sets your standard week.</div></div>
     <h2>Week</h2><div class="card">
       <div class="field"><label>Week starts on<br><span class="muted" style="font-size:.8rem">When the weekly budget resets</span></label>
         <select data-set="weekStartDay">${['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map((d, i) => `<option value="${i}" ${(+s.weekStartDay) === i ? 'selected' : ''}>${d}</option>`).join('')}</select></div>
-      <div class="note">Going over one week trims the next week's budget to compensate. You can reset it from the home screen any time.</div></div>
+      </div>
     <h2>Category budgets (monthly)</h2><div class="card">${s.categories.map((c, i) => {
       const avgRow = c.id === 'gas' ? `<label class="muted avgline" style="flex-basis:100%;font-size:.8rem;padding-left:46px"><input type="checkbox" ${c.useAvg ? 'checked' : ''} data-catavg="${i}"> use 12-month average${c.useAvg ? ` (${money(categoryAvg(store.txs, c.id))}) <button class="link" data-act="catavg-view" data-id="${esc(c.id)}">see breakdown ›</button>` : ''}</label>` : '';
       return `<div class="field weekly"><span class="emoji" style="width:36px;height:36px">${c.emoji}</span><label>${esc(c.name)}</label>
@@ -635,11 +630,11 @@ function settings() {
         <button class="btn mini ${b.useAvg ? 'on' : ''}" data-act="billedit" data-i="${i}" aria-label="Edit history">📝</button>
         <button class="x" data-act="delbill" data-i="${i}" aria-label="Delete">✕</button></div>`).join('')}
       <button class="btn block" data-act="addbill">+ Add bill</button>
-      <div class="note">Tap 📝 to log past months and use a 12-month average. Bills on day 1 make up your “ready for the 1st” goal (${money(firstTotal(s))}). Total: ${money(billsTotal(s))}.</div></div>
+      <div class="note">Due on the 1st · ${money(firstTotal(s))} of ${money(billsTotal(s))} total</div></div>
     <h2>Sync &amp; data</h2><div class="card"><div class="field"><label>${syncText}</label></div>
       ${store.syncError ? `<div class="err">${esc(store.syncError)}</div>` : ''}
       <button class="btn block" data-act="reimport">Re-import spreadsheet history</button></div>
-    <p class="note">Everything saves automatically.</p>`;
+    `;
 }
 
 // ---------- the sheet (add flow + edit) ----------
@@ -659,7 +654,7 @@ function drawTrack() {
   const f = track, amtNum = parseFloat(f.amt) || 0, dis = amtNum ? '' : 'disabled style="opacity:.4"';
   $('#sheet').innerHTML = `<div class="panel"><div class="head"><span style="width:40px"></span><span class="step">Track later</span><button data-track="close" aria-label="Close">✕</button></div>
     <div class="q">Just the price</div>
-    <p class="note" style="margin:0 0 10px">Saved aside to finish (category + details) later — not logged yet.</p>
+    
     <div class="amount ${amtNum ? '' : 'zero'}">$${esc(f.amt || '0')}</div>
     ${keypad()}
     <div class="twobtn"><button class="btn block" data-track="more" ${dis}>+ Add more</button><button class="btn primary block" data-track="done" ${dis}>Done</button></div>
@@ -686,7 +681,7 @@ function openPending() {
       <div class="body"><div class="t">${money(x.amount)}</div><div class="s">added ${parseYmd(x.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} · tap to finish</div></div><span class="chev">›</span></button>
     <button class="x" data-act="pending-del" data-id="${esc(x.id)}" aria-label="Discard">✕</button></div>`).join('');
   $('#sheet').innerHTML = `<div class="panel"><div class="head"><span style="width:40px"></span><span class="step">Loose logs to finish</span><button data-act="sheet-close" aria-label="Later">✕</button></div>
-    <p class="note" style="margin:0 0 10px">${pend.length} item${pend.length === 1 ? '' : 's'} captured as price-only. Tap one to add its category and details and log it.</p>
+    <p class="note" style="margin:0 0 10px">${pend.length} item${pend.length === 1 ? '' : 's'} to finish</p>
     ${rows}
     <button class="btn block" data-act="sheet-close" style="margin-top:12px">Later</button></div>`;
   $('#sheet').className = 'sheet';
@@ -1012,7 +1007,7 @@ function editClick(btn) {
 
 // ----- plan a return (full, partial, or more) tied to a purchase -----
 function openReturnPlan(tx) {
-  returnPlan = { txId: tx.id || null, orig: round(tx.amount), amount: round(tx.amount), note: tx.note || '', category: tx.category, pay: tx.pay || 'credit', picking: false };
+  returnPlan = { txId: tx.id || null, orig: round(tx.amount), amount: round(tx.amount), note: tx.note || '', category: tx.category, pay: tx.pay || 'credit', exBudget: !!tx.exBudget, picking: false };
   edit = null; flow = null; drawReturnPlan(); $('#sheet').hidden = false;
 }
 function drawReturnPlan() {
@@ -1023,14 +1018,14 @@ function drawReturnPlan() {
     const rows = list.map((t) => { const c = cat(t.category); return `<button class="tx-main" data-ret="pick" data-id="${esc(t.id)}" style="width:100%">
       <div class="emoji">${c ? c.emoji : '🧾'}</div><div class="body"><div class="t">${esc(t.note || (c ? c.name : 'Purchase'))}</div><div class="s">${c ? esc(c.name) + ' · ' : ''}${moDay(t.date)}</div></div><div class="amt">${money(t.amount)}</div></button>`; }).join('') || '<div class="empty">No purchases to choose from.</div>';
     el.innerHTML = `<div class="panel"><div class="head"><button data-ret="unpick" aria-label="Back">←</button><span class="step">Pick the purchase</span><button data-ret="close" aria-label="Close">✕</button></div>
-      <p class="note" style="margin:0 0 8px">Choose what you're actually returning.</p>${rows}
+      ${rows}
       <button class="btn block" data-ret="unpick" style="margin-top:12px">← Back</button></div>`;
     return;
   }
   const c = cat(r.category), full = Math.abs(r.amount - r.orig) < 0.005;
   const what = r.note ? `“${esc(r.note)}”` : (c ? esc(c.name) : 'this purchase');
   el.innerHTML = `<div class="panel"><div class="head"><span style="width:40px"></span><span class="step">Plan a return</span><button data-ret="close" aria-label="Close">✕</button></div>
-    <p class="note" style="margin:0 0 12px">Flag ${what} (${money(r.orig)}) to return. It leaves your totals right away and stays on your returns list until you mark it done.</p>
+    <p class="note" style="margin:0 0 12px">${what} · ${money(r.orig)}</p>
     <label class="editlbl">Amount to return <span class="muted">(can be more than the purchase)</span></label>
     <input class="sheet-input" id="ret-amt" type="text" inputmode="decimal" value="${fmtNum(r.amount)}">
     <div class="seg"><button data-ret="full" class="${full ? 'on' : ''}">Full · ${money(r.orig)}</button><button data-ret="partial" class="${full ? '' : 'on'}">Other amount</button></div>
@@ -1047,13 +1042,13 @@ function returnClick(btn) {
     case 'unpick': { r.picking = false; return drawReturnPlan(); }
     case 'pick': {
       const t = store.txs.find((x) => x.id === btn.dataset.id);
-      if (t) { r.txId = t.id; r.orig = round(t.amount); r.amount = round(t.amount); r.note = t.note || ''; r.category = t.category; r.pay = t.pay || 'credit'; }
+      if (t) { r.txId = t.id; r.orig = round(t.amount); r.amount = round(t.amount); r.note = t.note || ''; r.category = t.category; r.pay = t.pay || 'credit'; r.exBudget = !!t.exBudget; }
       r.picking = false; return drawReturnPlan();
     }
     case 'save': {
       const a = $('#ret-amt'), amt = round(parseNum(a ? a.value : r.amount));
       if (!(amt > 0)) return toast('Enter an amount');
-      S().returns = [...(S().returns || []), { id: uid(), txId: r.txId, note: r.note, category: r.category, pay: r.pay, orig: r.orig, amount: amt, at: Date.now(), date: today() }];
+      S().returns = [...(S().returns || []), { id: uid(), txId: r.txId, note: r.note, category: r.category, pay: r.pay, exBudget: !!r.exBudget, orig: r.orig, amount: amt, at: Date.now(), date: today() }];
       saveSettings(); closeSheet(); render(); toast('Added to returns');
       return;
     }
@@ -1073,9 +1068,9 @@ function openReturns() {
           <div class="s">${label}${c ? ` · ${c.emoji}` : ''}${x.pay === 'cash' ? ' · debit/cash' : ' · card'} · added ${moDay(x.date || today())}</div></div></div>
       <button class="btn mini good" data-act="return-done" data-id="${esc(x.id)}" aria-label="Mark returned" title="Mark returned">✓</button>
       <button class="x" data-act="return-del" data-id="${esc(x.id)}" aria-label="Remove">✕</button></div>`;
-  }).join('') : '<div class="empty" style="padding:14px">Nothing to return right now. Open a logged purchase and tap “Plan a return” to add one.</div>';
+  }).join('') : '<div class="empty" style="padding:14px">Nothing to return.</div>';
   $('#sheet').innerHTML = `<div class="panel"><div class="head"><span style="width:40px"></span><span class="step">Planned returns</span><button data-act="sheet-close" aria-label="Close">✕</button></div>
-    ${rets.length ? `<p class="note" style="margin:0 0 10px">${rets.length} to return · ${money(total)} total. Tap ✓ once you've returned it.</p>` : ''}
+    ${rets.length ? `<p class="note" style="margin:0 0 10px">${rets.length} to return · ${money(total)}</p>` : ''}
     ${rows}
     <button class="btn block" data-act="sheet-close" style="margin-top:12px">Close</button></div>`;
   $('#sheet').className = 'sheet';

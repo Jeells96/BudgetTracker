@@ -462,3 +462,138 @@ html, body { overscroll-behavior-y: none; }
 .fin-num.pending { border:1px dashed var(--brand); opacity:.75; }
 .loan-row.locked .x input { border:1px solid var(--good); }
 .loan-row { grid-template-columns:0.9fr 0.8fr 1.6fr 1.05fr; }
+
+/* ==========================================================================
+   v63 — Design system refresh: refined tokens, typography, and components
+   ========================================================================== */
+:root {
+  --bg:#f5f6f8; --card:#ffffff; --surface:#f0f1f5;
+  --ink:#0f1117; --muted:#697086; --line:#e8eaf0; --track:#e9ebf1;
+  --brand:#4f46e5; --brand-soft:rgba(79,70,229,.12);
+  --good:#0e9f6e; --bad:#e02424; --warn:#d97706;
+  --shadow:0 1px 2px rgba(15,17,23,.04), 0 6px 18px rgba(15,17,23,.05);
+  --r:16px; --r-lg:20px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg:#0a0b10; --card:#14161e; --surface:#1b1e28;
+    --ink:#edeff5; --muted:#8b92a6; --line:#242834; --track:#242834;
+    --brand:#7c78ff; --brand-soft:rgba(124,120,255,.16);
+    --good:#2fbf85; --bad:#ff5f5f; --warn:#e8a33d;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.26);
+  }
+}
+
+html, body { -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility; line-height:1.45; }
+h1 { font-size:1.55rem; font-weight:700; letter-spacing:-.022em; }
+h2 { font-size:.9rem; font-weight:600; color:var(--muted); text-transform:none; letter-spacing:0; margin:26px 2px 10px; }
+.top { margin-bottom:16px; }
+.top .muted { font-size:.9rem; }
+
+/* Tabular figures everywhere money appears — the single biggest "pro" tell. */
+.hero .big, .fh-big, .invout .big, .amt, .cat .row .a, .trow .b, .trow .n, .plancell,
+.loan-row .p, .loan-row .bb, .loan-stats b, .loan-summary b, .fh-grid b, .savebox b,
+.seltot, .ccbreak b, .splitstat b, .wk-nums b, .amount, .bill .amt, .loan-head .row .a {
+  font-variant-numeric:tabular-nums; font-feature-settings:"tnum" 1;
+}
+
+/* Surfaces */
+.card { border-radius:var(--r-lg); border:1px solid var(--line); box-shadow:var(--shadow); }
+.hero .label { font-size:.85rem; font-weight:500; letter-spacing:.01em; }
+.hero .big { font-size:2.5rem; font-weight:700; letter-spacing:-.03em; margin:4px 0 14px; }
+.emoji { width:38px; height:38px; border-radius:11px; background:var(--surface); border:1px solid var(--line); font-size:1.1rem; }
+
+/* Progress bars — thinner, calmer */
+.bar { height:6px; background:var(--track); }
+.bar > i { background:var(--good); }
+.bar.warn > i { background:var(--warn); }
+.bar.over > i { background:var(--bad); }
+.cat .bar { height:5px; }
+
+/* Controls */
+.btn { border-radius:13px; background:var(--surface); border:1px solid var(--line); font-weight:600; padding:12px 16px; transition:transform .08s ease, background .15s ease; }
+.btn:active { transform:scale(.985); }
+.btn.primary { background:var(--brand); border-color:var(--brand); color:#fff; }
+.btn.danger { background:transparent; border-color:color-mix(in srgb,var(--bad) 32%,transparent); color:var(--bad); }
+.btn.mini { border:1px solid var(--line); }
+.log-btn { border-radius:15px; font-weight:650; letter-spacing:-.01em; }
+.chip { background:var(--surface); border:1px solid var(--line); box-shadow:none; font-size:.875rem; font-weight:550; padding:8px 13px; }
+.chip.on { background:var(--brand); border-color:var(--brand); color:#fff; }
+.sheet-input, .finfield > input, .finwrap input, .field input, .field select, .loan-row .x input, .plancell, .ccinput {
+  background:var(--surface); border:1px solid var(--line); border-radius:11px;
+}
+.sheet-input:focus, .finfield input:focus, .field input:focus, .loan-row .x input:focus, .plancell:focus, .ccinput:focus, .field select:focus {
+  outline:none; border-color:var(--brand); box-shadow:0 0 0 3px var(--brand-soft);
+}
+.note { font-size:.82rem; line-height:1.5; margin:8px 2px; }
+.lead { font-size:.9rem; margin:2px 2px 14px; }
+.callout { border-radius:14px; font-size:.9rem; border:1px solid var(--line); }
+.callout.good { background:color-mix(in srgb,var(--good) 9%,var(--card)); border-color:color-mix(in srgb,var(--good) 24%,transparent); }
+.callout.bad { background:color-mix(in srgb,var(--bad) 9%,var(--card)); border-color:color-mix(in srgb,var(--bad) 24%,transparent); }
+.rollover { border-radius:14px; font-size:.86rem; line-height:1.5; }
+
+/* Tab bar — real icons, glass surface */
+nav#tabs { background:color-mix(in srgb, var(--card) 84%, transparent); backdrop-filter:saturate(180%) blur(20px); -webkit-backdrop-filter:saturate(180%) blur(20px); border-top:1px solid var(--line); }
+nav#tabs button { gap:5px; padding:9px 0 11px; font-size:.68rem; font-weight:600; letter-spacing:.005em; color:var(--muted); }
+nav#tabs button svg { width:22px; height:22px; display:block; stroke:currentColor; fill:none; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
+nav#tabs button span { font-size:inherit; filter:none; opacity:1; }
+nav#tabs button.on { color:var(--brand); font-weight:650; }
+
+/* Sheets */
+.panel { border-radius:24px 24px 0 0; }
+.panel > .head { border-bottom:1px solid var(--line); }
+.panel .head .step { font-weight:600; color:var(--ink); font-size:.9rem; }
+.sheet { background:rgba(8,9,14,.5); backdrop-filter:blur(2px); }
+
+/* Plan sections */
+.psec { border:1px solid var(--line); border-radius:var(--r-lg); }
+.psec > summary { font-size:.98rem; font-weight:650; letter-spacing:-.01em; }
+.psec-body > .card { background:transparent; border:0; box-shadow:none; padding:0; }
+
+/* Finance */
+.finhero { border:1px solid var(--line); border-radius:var(--r-lg);
+  background:linear-gradient(160deg, color-mix(in srgb,var(--brand) 16%, var(--card)) 0%, var(--card) 62%); }
+.fh-label { font-size:.72rem; font-weight:600; }
+.fh-big { font-size:2.3rem; font-weight:700; letter-spacing:-.03em; }
+.fh-grid > div { border:1px solid var(--line); background:color-mix(in srgb,var(--card) 60%, transparent); }
+.loan { border:1px solid var(--line); }
+.loan-head .row .n { font-weight:650; letter-spacing:-.01em; }
+.loan-stats > div, .loan-summary { border:1px solid var(--line); }
+.loan-stats > div { background:var(--surface); }
+.loan-summary { background:color-mix(in srgb,var(--brand) 6%, transparent); }
+.loan-row { font-size:.86rem; }
+.loan-row.head { font-size:.66rem; font-weight:600; }
+.savebox { border-radius:14px; }
+
+/* Lists */
+.tx-main { padding:13px 0; }
+.tx .t { font-weight:600; letter-spacing:-.005em; }
+.tx .s { font-size:.8rem; }
+.tx .amt { font-weight:650; }
+.selbox { border-color:var(--line); }
+.plan-table .trow { font-size:.95rem; }
+
+/* v63.1 — refinements */
+.log-btn { padding:17px; font-size:1.05rem; font-weight:650; border-radius:15px;
+  box-shadow:0 1px 2px rgba(0,0,0,.08); margin:18px 0 4px; }
+.log-btn .plus { font-size:1.2rem; font-weight:600; }
+.stats div { background:var(--surface); border:1px solid var(--line); border-radius:13px; }
+.stats div b { font-size:1.15rem; font-weight:650; }
+.stats div span { font-size:.76rem; }
+.rollover { background:var(--surface); border:1px solid var(--line); border-left:3px solid var(--warn); border-radius:12px; padding:11px 13px; color:var(--muted); }
+.rollover b { color:var(--ink); }
+.rollover.info { background:var(--surface); border-left-color:var(--brand); }
+.hero .label .hint { font-weight:500; font-size:.75rem; opacity:.65; }
+.cat .row .n { font-weight:600; letter-spacing:-.005em; }
+.cat { padding:13px 0; }
+.du-note { font-size:.8rem; font-weight:600; }
+.empty { font-size:.88rem; padding:22px 10px; }
+.field label { font-size:.85rem; }
+.seg { background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:3px; }
+.seg button { border-radius:9px; font-size:.88rem; font-weight:600; }
+.toast { font-size:.9rem; font-weight:600; }
+.wk-cat .n, .bill .n { font-weight:600; }
+.plan-table .head { font-size:.68rem; letter-spacing:.03em; text-transform:uppercase; }
+.plan-table .trow > span:first-child { font-weight:550; }
+.loan-head .du-note { padding-bottom:0; }
+.psec > summary { padding:16px; }
