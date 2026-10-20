@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=58';
-import { TRANSFERS } from './defaults.js?v=58';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd } from './calc.js?v=58';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=59';
+import { TRANSFERS } from './defaults.js?v=59';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd } from './calc.js?v=59';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -202,8 +202,9 @@ function home() {
     <h2>${monthShort(ui.month)} · ${paychecks} paychecks</h2><div class="card">${list}</div>
     <div class="twobtn" style="margin-top:16px">
       <button class="btn block" data-act="track-later">🕗 Track later</button>
-      <button class="btn block ${pend.length ? 'primary' : ''}" data-act="finish-loose" ${pend.length ? '' : 'disabled'}>✓ Finish loose logs${pend.length ? ` (${pend.length})` : ''}</button>
+      <button class="btn block" data-act="returns-view">↩︎ Returns${(s.returns || []).length ? ` · ${(s.returns || []).length}` : ''}</button>
     </div>
+    <button class="btn block ${pend.length ? 'primary' : ''}" data-act="finish-loose" ${pend.length ? '' : 'disabled'} style="margin-top:10px">✓ Finish loose logs${pend.length ? ` (${pend.length})` : ''}</button>
     ${activityBlock()}`;
 }
 
@@ -625,8 +626,8 @@ function settings() {
 }
 
 // ---------- the sheet (add flow + edit) ----------
-let flow = null, edit = null, billEdit = null, track = null, avgCat = null;
-function closeSheet() { const el = $('#sheet'); el.hidden = true; el.className = 'sheet'; el.innerHTML = ''; flow = null; edit = null; billEdit = null; track = null; resetSel(); }
+let flow = null, edit = null, billEdit = null, track = null, avgCat = null, returnPlan = null;
+function closeSheet() { const el = $('#sheet'); el.hidden = true; el.className = 'sheet'; el.innerHTML = ''; flow = null; edit = null; billEdit = null; track = null; returnPlan = null; resetSel(); }
 
 // ----- "track later": capture a price only, to finish with category/description later -----
 const keypad = () => `<div class="pad">${['1','2','3','4','5','6','7','8','9','.','0','⌫'].map((k) => `<button data-${track ? 'track' : 'flow'}="key" data-v="${k}">${k}</button>`).join('')}</div>`;
@@ -953,6 +954,7 @@ function drawEdit() {
       <button data-edit="pay" data-v="cash" class="${e.pay === 'cash' ? 'on' : ''}">💵 Debit / cash</button></div>` : ''}
     ${e.type === 'expense' && cat(e.category)?.useAvg ? `<label class="exrow"><input type="checkbox" id="e-ex" ${e.exAvg ? 'checked' : ''}> Exclude from the ${esc(cat(e.category).name)} average <span class="muted">(unusual trip)</span></label>` : ''}
     <button class="btn primary block" data-edit="save">Save changes</button>
+    ${e.type === 'expense' ? `<button class="btn block" data-edit="return">↩︎ Plan a return</button>` : ''}
     <button class="btn danger block" data-edit="delete">Delete</button></div>`;
 }
 function editClick(btn) {
@@ -962,6 +964,7 @@ function editClick(btn) {
     case 'type': syncEditInputs(); e.type = v; e.category = v === 'income' ? 'income' : v === 'transfer' ? 'bills' : (cat(e.category) ? e.category : S().categories[0].id); return drawEdit();
     case 'cat': syncEditInputs(); e.category = v; return drawEdit();
     case 'pay': syncEditInputs(); e.pay = v; return drawEdit();
+    case 'return': syncEditInputs(); return openReturnPlan(e);
     case 'save': {
       syncEditInputs();
       if (!(e.amount > 0)) return toast('Enter an amount');
@@ -977,6 +980,60 @@ function editClick(btn) {
       return;
     }
   }
+}
+
+// ----- plan a return (full or partial) on a logged purchase -----
+function openReturnPlan(tx) {
+  returnPlan = { txId: tx.id, orig: round(tx.amount), amount: round(tx.amount), note: tx.note || '', category: tx.category, pay: tx.pay || 'credit' };
+  edit = null; drawReturnPlan(); $('#sheet').hidden = false;
+}
+function drawReturnPlan() {
+  const r = returnPlan, c = cat(r.category);
+  const full = r.amount >= r.orig - 0.005;
+  const what = r.note ? `“${esc(r.note)}”` : (c ? esc(c.name) : 'this purchase');
+  $('#sheet').innerHTML = `<div class="panel"><div class="head"><span style="width:40px"></span><span class="step">Plan a return</span><button data-ret="close" aria-label="Close">✕</button></div>
+    <p class="note" style="margin:0 0 12px">Flag ${what} (${money(r.orig)}) to return. It stays in your returns list as a reminder until you mark it done.</p>
+    <label class="editlbl">Amount to return</label>
+    <input class="sheet-input" id="ret-amt" type="text" inputmode="decimal" value="${fmtNum(r.amount)}">
+    <div class="seg"><button data-ret="full" class="${full ? 'on' : ''}">Full · ${money(r.orig)}</button><button data-ret="partial" class="${full ? '' : 'on'}">Partial</button></div>
+    <button class="btn primary block" data-ret="save" style="margin-top:14px">Add to returns</button></div>`;
+}
+function returnClick(btn) {
+  const r = returnPlan;
+  switch (btn.dataset.ret) {
+    case 'close': return closeSheet();
+    case 'full': r.amount = r.orig; return drawReturnPlan();
+    case 'partial': { const a = $('#ret-amt'); if (a) { a.focus(); a.select(); } return; }
+    case 'save': {
+      const a = $('#ret-amt'), amt = Math.min(round(parseNum(a ? a.value : r.amount)), r.orig);
+      if (!(amt > 0)) return toast('Enter an amount');
+      S().returns = [...(S().returns || []), { id: uid(), txId: r.txId, note: r.note, category: r.category, pay: r.pay, orig: r.orig, amount: amt, at: Date.now(), date: today() }];
+      saveSettings(); closeSheet(); render(); toast('Added to returns');
+      return;
+    }
+  }
+}
+
+// ----- the returns list: purchases you're planning to take back -----
+function openReturns() {
+  const rets = (S().returns || []).slice().sort((a, b) => (b.at || 0) - (a.at || 0));
+  const total = round(rets.reduce((a, x) => a + (x.amount || 0), 0));
+  const rows = rets.length ? rets.map((x) => {
+    const c = cat(x.category), partial = x.amount < x.orig - 0.005;
+    const label = x.note ? esc(x.note) : (c ? esc(c.name) : 'Purchase');
+    return `<div class="loose-row">
+      <div class="loose"><div class="emoji">↩︎</div>
+        <div class="body"><div class="t">${money(x.amount)}${partial ? ` <span class="muted" style="font-weight:500">of ${money(x.orig)}</span>` : ''}</div>
+          <div class="s">${label}${c ? ` · ${c.emoji}` : ''}${x.pay === 'cash' ? ' · debit/cash' : ' · card'} · added ${moDay(x.date || today())}</div></div></div>
+      <button class="btn mini good" data-act="return-done" data-id="${esc(x.id)}" aria-label="Mark returned" title="Mark returned">✓</button>
+      <button class="x" data-act="return-del" data-id="${esc(x.id)}" aria-label="Remove">✕</button></div>`;
+  }).join('') : '<div class="empty" style="padding:14px">Nothing to return right now. Open a logged purchase and tap “Plan a return” to add one.</div>';
+  $('#sheet').innerHTML = `<div class="panel"><div class="head"><span style="width:40px"></span><span class="step">Planned returns</span><button data-act="sheet-close" aria-label="Close">✕</button></div>
+    ${rets.length ? `<p class="note" style="margin:0 0 10px">${rets.length} to return · ${money(total)} total. Tap ✓ once you've returned it.</p>` : ''}
+    ${rows}
+    <button class="btn block" data-act="sheet-close" style="margin-top:12px">Close</button></div>`;
+  $('#sheet').className = 'sheet';
+  $('#sheet').hidden = false;
 }
 
 function toast(msg) {
@@ -1155,6 +1212,7 @@ document.addEventListener('click', (e) => {
   const fe = e.target.closest('[data-edit]'); if (fe && edit) return editClick(fe);
   const fl = e.target.closest('[data-flow]'); if (fl && flow) return flowClick(fl);
   const ft = e.target.closest('[data-track]'); if (ft && track) return trackClick(ft);
+  const fr = e.target.closest('[data-ret]'); if (fr && returnPlan) return returnClick(fr);
   if (e.target === $('#sheet')) return closeSheet();
   const tab = e.target.closest('#tabs button');
   if (tab) { if (sel.ids.size) resetSel(); ui.tab = tab.dataset.tab; scrollTo(0, 0); return render(); }
@@ -1211,6 +1269,9 @@ document.addEventListener('click', (e) => {
     case 'catavg-view': return openCatAvg(id);
     case 'avg-toggle': { const t = store.txs.find((x) => x.id === id); if (t) updateTx(id, { exAvg: !t.exAvg }); if (avgCat) openCatAvg(avgCat); return; }
     case 'track-later': return openTrack();
+    case 'returns-view': return openReturns();
+    case 'return-done': { S().returns = (S().returns || []).filter((x) => x.id !== id); saveSettings(); render(); openReturns(); toast('Marked returned'); return; }
+    case 'return-del': { S().returns = (S().returns || []).filter((x) => x.id !== id); saveSettings(); render(); openReturns(); toast('Removed'); return; }
     case 'finish-loose': return openPending();
     case 'finish-item': { const it = (S().pending || []).find((x) => x.id === id); closeSheet(); if (it) openFlow({ amt: String(it.amount), pendingId: it.id, amtLocked: true }); return; }
     case 'pending-del': { if (confirm('Discard this loose item without logging it?')) { S().pending = (S().pending || []).filter((x) => x.id !== id); saveSettings(); render(); if ((S().pending || []).length) openPending(); else closeSheet(); } return; }

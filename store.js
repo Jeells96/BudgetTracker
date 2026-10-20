@@ -1,6 +1,6 @@
-import { firebaseConfig } from './firebase-config.js?v=58';
-import { DEFAULT_SETTINGS } from './defaults.js?v=58';
-import { HISTORY } from './history.js?v=58';
+import { firebaseConfig } from './firebase-config.js?v=59';
+import { DEFAULT_SETTINGS } from './defaults.js?v=59';
+import { HISTORY } from './history.js?v=59';
 
 const LS_KEY = 'budget-tracker-v2';
 const CDN = 'https://www.gstatic.com/firebasejs/11.0.2/';
@@ -24,6 +24,7 @@ function normalize(s) {
   if (s && s.weeklyPay == null && s.income) out.weeklyPay = round2(s.income / 4);
   out.bills = out.bills.map((b) => ({ ...b, day: b.day || 1, history: Array.isArray(b.history) ? b.history : [], useAvg: !!b.useAvg }));
   out.pending = Array.isArray(s && s.pending) ? s.pending : [];
+  out.returns = Array.isArray(s && s.returns) ? s.returns : [];
   const cc = (s && s.cc) || {};
   out.cc = {
     start: cc.start ?? cc.balance ?? 0,

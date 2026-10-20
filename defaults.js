@@ -42,6 +42,7 @@ export const DEFAULT_SETTINGS = {
   weekStartDay: 5,                  // day the weekly budget resets (0=Sun … 6=Sat); default Friday
   weekResetAt: null,                // week-start (YYYY-MM-DD) the user cleared the rollover for
   pending: [],                      // "track later" items: price only, not yet logged {id, amount, date}
+  returns: [],                      // purchases flagged to return {id, txId, note, category, pay, orig, amount, at, date}
   seeded: false,                    // spreadsheet history imported?
   // Loans / payoff planner (seeded from Loans.xlsx). Each loan keeps its original
   // terms and its recorded extra payments; the current balance is DERIVED by

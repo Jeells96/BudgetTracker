@@ -434,3 +434,8 @@ hr.sep { border:0; border-top:1px solid var(--line); margin:16px 0; }
 .psec-body > .card { box-shadow:none; background:var(--bg); }
 .psec-body > .card:first-child { margin-top:0; }
 .psec-t { min-width:0; }
+
+/* v59: keep the sheet close button pinned; returns list */
+.panel > .head { position:sticky; top:0; z-index:6; background:var(--card); margin:-18px -18px 8px; padding:14px 18px 8px; }
+.sheet-page .head { margin:0 -18px 8px; padding:14px 18px 10px; }
+.btn.mini.good { color:var(--good); background:color-mix(in srgb,var(--good) 12%, transparent); }
