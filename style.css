@@ -445,3 +445,7 @@ hr.sep { border:0; border-top:1px solid var(--line); margin:16px 0; }
 .loan-pastwrap > summary { list-style:none; cursor:pointer; padding:9px 2px; font-size:.82rem; color:var(--brand); font-weight:600; }
 .loan-pastwrap > summary::-webkit-details-marker { display:none; }
 .loan-pastwrap[open] > summary { color:var(--muted); }
+
+/* v61: sticky sheet header flush at top (no overlap/crop of the first line) */
+.panel { padding-top:0; }
+.panel > .head { position:sticky; top:0; z-index:6; background:var(--card); margin:0 -18px 8px; padding:14px 18px 8px; }

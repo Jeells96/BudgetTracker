@@ -84,8 +84,11 @@ export function standardWeek(s) {
 export function monthStats(s, txs, month, now = new Date()) {
   const list = txs.filter((t) => t.date.startsWith(month));
   const exp = list.filter((t) => t.type === 'expense');
+  // Planned returns (not yet done) are money coming back, so they lower the totals now.
+  const retIn = (id) => sum((s.returns || []).filter((r) => r.category === id && (r.date || '').startsWith(month)).map((r) => Math.abs(r.amount) || 0));
+  const retMonth = sum((s.returns || []).filter((r) => (r.date || '').startsWith(month)).map((r) => Math.abs(r.amount) || 0));
   const byCat = {};
-  s.categories.forEach((c) => { byCat[c.id] = sum(exp.filter((t) => t.category === c.id).map((t) => t.amount)); });
+  s.categories.forEach((c) => { byCat[c.id] = round(sum(exp.filter((t) => t.category === c.id).map((t) => t.amount)) - retIn(c.id)); });
   const moved = (id) => sum(list.filter((t) => t.type === 'transfer' && t.category === id).map((t) => t.amount));
   const [y, m] = month.split('-').map(Number);
   const dim = new Date(y, m, 0).getDate();
@@ -98,7 +101,7 @@ export function monthStats(s, txs, month, now = new Date()) {
   return {
     list, byCat, dim, day, daysLeft, isCurrent, isPast,
     weeksLeft: Math.max(1, Math.ceil(daysLeft / 7)),
-    spent: sum(exp.map((t) => t.amount)), budget: budgetTotal(s),
+    spent: round(sum(exp.map((t) => t.amount)) - retMonth), budget: budgetTotal(s),
     income: sum(list.filter((t) => t.type === 'income').map((t) => t.amount)),
     billsIn, cardPaid: moved('card'), savingsIn: moved('savings'),
     billsTotal: bills, billsLeft: Math.max(0, round(bills - billsIn)),
@@ -142,7 +145,9 @@ export function weekStats(s, txs, now = new Date()) {
   const ws = weekStart(now, startDay);
   const end = ymd(addDays(parseYmd(ws), 7));
   const ids = s.categories.filter((c) => c.weekly).map((c) => c.id);
-  const spentBetween = (from, to) => sum(txs.filter((t) => t.type === 'expense' && !t.exBudget && t.date >= from && t.date < to && ids.includes(t.category)).map((t) => t.amount));
+  // Planned returns on weekly categories give back spending room for the week they land in.
+  const retBetween = (from, to) => sum((s.returns || []).filter((r) => r.category && ids.includes(r.category) && (r.date || '') >= from && (r.date || '') < to).map((r) => Math.abs(r.amount) || 0));
+  const spentBetween = (from, to) => round(sum(txs.filter((t) => t.type === 'expense' && !t.exBudget && t.date >= from && t.date < to && ids.includes(t.category)).map((t) => t.amount)) - retBetween(from, to));
   const spent = spentBetween(ws, end);
   const base = effectiveEveryday(s, txs, now);               // budget after the card trim
   const trimmedByCard = Math.max(0, round(s.weeklyBudget - base));
@@ -185,8 +190,11 @@ export function cardDetail(s, txs) {
   const adj = s.cc.chargesAdj || 0;                 // manual correction; new purchases still add on top
   const credit = round(rawCredit + adj);
   const paid = asOf ? sum(txs.filter((t) => t.type === 'transfer' && t.category === 'card' && t.date >= asOf).map((t) => t.amount)) : 0;
-  return { start, asOf, rawCredit, adj, credit, paid, computed: Math.max(0, round(start + credit - paid)) };
+  const pendRet = cardPlannedReturns(s);                 // planned returns to the card lower the balance now
+  return { start, asOf, rawCredit, adj, credit, paid, pendRet, computed: Math.max(0, round(start + credit - paid - pendRet)) };
 }
+// Sum of planned (not-yet-done) returns that will credit the card.
+export const cardPlannedReturns = (s) => sum((s.returns || []).filter((r) => (r.pay || 'credit') !== 'cash').map((r) => Math.abs(r.amount) || 0));
 export const cardComputed = (s, txs) => cardDetail(s, txs).computed;
 
 // Carry the balance across statement cycles: once a statement has closed, fold
@@ -206,7 +214,7 @@ export function rollCardBaseline(s, txs, now = new Date()) {
 
 // The balance the rest of the app uses: computed in auto mode, your typed number in manual.
 export function cardBalance(s, txs) {
-  return s.cc.mode === 'manual' ? Math.max(0, round(s.cc.manual || 0)) : cardComputed(s, txs);
+  return s.cc.mode === 'manual' ? Math.max(0, round((s.cc.manual || 0) - cardPlannedReturns(s))) : cardComputed(s, txs);
 }
 
 // ---- paydays ----

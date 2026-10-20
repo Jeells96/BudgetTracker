@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=60';
-import { TRANSFERS } from './defaults.js?v=60';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd } from './calc.js?v=60';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=61';
+import { TRANSFERS } from './defaults.js?v=61';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd } from './calc.js?v=61';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -333,6 +333,7 @@ function cardSection() {
         <div><span>+ purchases since${det.adj ? ' <small>(adjusted)</small>' : ''}</span>
           <span class="ccedit">${det.adj ? '<button class="link" data-act="cc-charges-reset" title="Back to tracked">↺</button>' : ''}<input class="ccinput" type="text" inputmode="decimal" value="${fmtNum(det.credit)}" data-cc="charges"></span></div>
         <div><span>− card payments since</span><b>${money(det.paid)}</b></div>
+        ${det.pendRet > 0.005 ? `<div><span>− planned returns</span><b>${money(det.pendRet)}</b></div>` : ''}
         <div class="tot"><span>Current balance</span><b>${money(det.computed)}</b></div></div>
       <button class="btn block" data-act="cc-reset" style="margin-top:8px">↺ Reset balance to actual</button>
       <p class="note" style="margin:6px 0 0">Returns or credits throwing it off? Reset re-baselines to a number you type (stays on auto from there).</p>`;
@@ -795,6 +796,7 @@ function drawFlow() {
       <input class="sheet-input" id="f-date" type="date" value="${f.date}" max="${today()}">
       ${payToggle}
       ${exToggle}
+      ${c.type === 'expense' && !f.splitting ? `<label class="exrow"><input type="checkbox" id="f-ret" ${f.returning ? 'checked' : ''}> ↩︎ A return is coming <span class="muted">(set it up after saving)</span></label>` : ''}
       ${single
         ? `<button class="btn primary block" data-flow="save" ${saveDis}>${f.splitting ? `Save ${f.splits.length} charges` : 'Save &amp; log it'}</button>`
         : `<div class="twobtn"><button class="btn block" data-flow="again" ${saveDis}>+ Add another</button><button class="btn primary block" data-flow="save" ${saveDis}>Save</button></div>
@@ -897,7 +899,17 @@ function flowClick(btn) {
       return drawFlow();
     }
     case 'back': f.step = (f.amtLocked && f.step === 3) ? 1 : f.step - 1; if (f.step < 1) f.step = 1; return drawFlow();
-    case 'save': { if (!f.splitting && !(parseFloat(f.amt) > 0)) return; if (!gasOk(f)) return; const askCard = f.category === 'card' && weekPlan(S(), store.txs).sch.multi; const tx = flowCommit(); if (askCard) return openCardAsk(tx); closeSheet(); render(); toast(savedMsg(tx)); return; }
+    case 'save': {
+      if (!f.splitting && !(parseFloat(f.amt) > 0)) return;
+      if (!gasOk(f)) return;
+      const askCard = f.category === 'card' && weekPlan(S(), store.txs).sch.multi;
+      const wantReturn = !f.splitting && logCat(f.category)?.type === 'expense' && $('#f-ret') && $('#f-ret').checked;
+      const tx = flowCommit();
+      if (askCard) return openCardAsk(tx);
+      render(); toast(savedMsg(tx));
+      if (wantReturn) return openReturnPlan(tx);   // jump straight into planning the return
+      closeSheet(); return;
+    }
     case 'again': { if (!(parseFloat(f.amt) > 0)) return; if (!gasOk(f)) return; const tx = flowCommit(); f.count += 1; f.amt = ''; f.note = ''; f.exAvg = false; f.vehicle = null; f.step = 2; drawFlow(); render(); toast(savedMsg(tx)); return; }
   }
 }
@@ -986,21 +998,31 @@ function editClick(btn) {
   }
 }
 
-// ----- plan a return (full or partial) on a logged purchase -----
+// ----- plan a return (full, partial, or more) tied to a purchase -----
 function openReturnPlan(tx) {
-  returnPlan = { txId: tx.id, orig: round(tx.amount), amount: round(tx.amount), note: tx.note || '', category: tx.category, pay: tx.pay || 'credit' };
-  edit = null; drawReturnPlan(); $('#sheet').hidden = false;
+  returnPlan = { txId: tx.id || null, orig: round(tx.amount), amount: round(tx.amount), note: tx.note || '', category: tx.category, pay: tx.pay || 'credit', picking: false };
+  edit = null; flow = null; drawReturnPlan(); $('#sheet').hidden = false;
 }
 function drawReturnPlan() {
-  const r = returnPlan, c = cat(r.category);
-  const full = r.amount >= r.orig - 0.005;
+  const r = returnPlan, el = $('#sheet');
+  if (r.picking) {
+    // Pick a different logged purchase to return instead.
+    const list = store.txs.filter((t) => t.type === 'expense').sort(sortTx).slice(0, 40);
+    const rows = list.map((t) => { const c = cat(t.category); return `<button class="tx-main" data-ret="pick" data-id="${esc(t.id)}" style="width:100%">
+      <div class="emoji">${c ? c.emoji : '🧾'}</div><div class="body"><div class="t">${esc(t.note || (c ? c.name : 'Purchase'))}</div><div class="s">${c ? esc(c.name) + ' · ' : ''}${moDay(t.date)}</div></div><div class="amt">${money(t.amount)}</div></button>`; }).join('') || '<div class="empty">No purchases to choose from.</div>';
+    el.innerHTML = `<div class="panel"><div class="head"><button data-ret="unpick" aria-label="Back">←</button><span class="step">Pick the purchase</span><button data-ret="close" aria-label="Close">✕</button></div>
+      <p class="note" style="margin:0 0 8px">Choose what you're actually returning.</p>${rows}</div>`;
+    return;
+  }
+  const c = cat(r.category), full = Math.abs(r.amount - r.orig) < 0.005;
   const what = r.note ? `“${esc(r.note)}”` : (c ? esc(c.name) : 'this purchase');
-  $('#sheet').innerHTML = `<div class="panel"><div class="head"><span style="width:40px"></span><span class="step">Plan a return</span><button data-ret="close" aria-label="Close">✕</button></div>
-    <p class="note" style="margin:0 0 12px">Flag ${what} (${money(r.orig)}) to return. It stays in your returns list as a reminder until you mark it done.</p>
-    <label class="editlbl">Amount to return</label>
+  el.innerHTML = `<div class="panel"><div class="head"><span style="width:40px"></span><span class="step">Plan a return</span><button data-ret="close" aria-label="Close">✕</button></div>
+    <p class="note" style="margin:0 0 12px">Flag ${what} (${money(r.orig)}) to return. It leaves your totals right away and stays on your returns list until you mark it done.</p>
+    <label class="editlbl">Amount to return <span class="muted">(can be more than the purchase)</span></label>
     <input class="sheet-input" id="ret-amt" type="text" inputmode="decimal" value="${fmtNum(r.amount)}">
-    <div class="seg"><button data-ret="full" class="${full ? 'on' : ''}">Full · ${money(r.orig)}</button><button data-ret="partial" class="${full ? '' : 'on'}">Partial</button></div>
-    <button class="btn primary block" data-ret="save" style="margin-top:14px">Add to returns</button></div>`;
+    <div class="seg"><button data-ret="full" class="${full ? 'on' : ''}">Full · ${money(r.orig)}</button><button data-ret="partial" class="${full ? '' : 'on'}">Other amount</button></div>
+    <button class="btn block" data-ret="pickstart" style="margin-top:10px">↩︎ Returning something else? Pick a purchase</button>
+    <button class="btn primary block" data-ret="save" style="margin-top:10px">Add to returns</button></div>`;
 }
 function returnClick(btn) {
   const r = returnPlan;
@@ -1008,8 +1030,15 @@ function returnClick(btn) {
     case 'close': return closeSheet();
     case 'full': r.amount = r.orig; return drawReturnPlan();
     case 'partial': { const a = $('#ret-amt'); if (a) { a.focus(); a.select(); } return; }
+    case 'pickstart': { r.picking = true; return drawReturnPlan(); }
+    case 'unpick': { r.picking = false; return drawReturnPlan(); }
+    case 'pick': {
+      const t = store.txs.find((x) => x.id === btn.dataset.id);
+      if (t) { r.txId = t.id; r.orig = round(t.amount); r.amount = round(t.amount); r.note = t.note || ''; r.category = t.category; r.pay = t.pay || 'credit'; }
+      r.picking = false; return drawReturnPlan();
+    }
     case 'save': {
-      const a = $('#ret-amt'), amt = Math.min(round(parseNum(a ? a.value : r.amount)), r.orig);
+      const a = $('#ret-amt'), amt = round(parseNum(a ? a.value : r.amount));
       if (!(amt > 0)) return toast('Enter an amount');
       S().returns = [...(S().returns || []), { id: uid(), txId: r.txId, note: r.note, category: r.category, pay: r.pay, orig: r.orig, amount: amt, at: Date.now(), date: today() }];
       saveSettings(); closeSheet(); render(); toast('Added to returns');
@@ -1274,7 +1303,15 @@ document.addEventListener('click', (e) => {
     case 'avg-toggle': { const t = store.txs.find((x) => x.id === id); if (t) updateTx(id, { exAvg: !t.exAvg }); if (avgCat) openCatAvg(avgCat); return; }
     case 'track-later': return openTrack();
     case 'returns-view': return openReturns();
-    case 'return-done': { S().returns = (S().returns || []).filter((x) => x.id !== id); saveSettings(); render(); openReturns(); toast('Marked returned'); return; }
+    case 'return-done': {
+      const r = (S().returns || []).find((x) => x.id === id);
+      if (r) {
+        // Log the refund as a credit so the money stays out of your totals for good.
+        if (r.category) addTx({ type: 'expense', category: r.category, amount: -Math.abs(r.amount), pay: r.pay === 'cash' ? 'cash' : 'credit', note: 'Return' + (r.note ? ': ' + r.note : ''), date: today() });
+        S().returns = (S().returns || []).filter((x) => x.id !== id); saveSettings();
+      }
+      render(); openReturns(); toast('Logged as returned'); return;
+    }
     case 'return-del': { S().returns = (S().returns || []).filter((x) => x.id !== id); saveSettings(); render(); openReturns(); toast('Removed'); return; }
     case 'finish-loose': return openPending();
     case 'finish-item': { const it = (S().pending || []).find((x) => x.id === id); closeSheet(); if (it) openFlow({ amt: String(it.amount), pendingId: it.id, amtLocked: true }); return; }
