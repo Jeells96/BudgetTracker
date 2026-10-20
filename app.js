@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=59';
-import { TRANSFERS } from './defaults.js?v=59';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd } from './calc.js?v=59';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=60';
+import { TRANSFERS } from './defaults.js?v=60';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd } from './calc.js?v=60';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -494,15 +494,19 @@ function financeLoanCard(loan, st) {
     </div><span class="chev ${open ? 'down' : ''}">›</span></button>`;
   if (!open) return `<div class="card loan ${paid ? 'done' : ''}">${head}</div>`;
 
-  // Schedule window: a few months back (to fix "I didn't pay extra that month") through the upcoming payments.
-  const pivot = (() => { const i = st.rows.findIndex((r) => r.future); return i < 0 ? st.rows.length : i; })();
-  const startI = Math.max(0, pivot - 9);
-  const win = st.rows.slice(startI, pivot + 15);
-  const moreFut = st.rows.length - (pivot + 15);
-  const schRows = win.map((r) => `<div class="loan-row${r.future ? '' : ' past'}">
-      <span class="d">${moDay(r.date)}</span><span class="p">${money(r.total)}</span>
+  // Schedule: current month at the top; earlier months collapse into a dropdown
+  // (still editable there, e.g. to mark a month you didn't actually pay extra).
+  const mStart = ymd(new Date()).slice(0, 7) + '-01';
+  const pivot = (() => { const i = st.rows.findIndex((r) => r.date >= mStart); return i < 0 ? st.rows.length : i; })();
+  const pastRows = st.rows.slice(Math.max(0, pivot - 12), pivot);
+  const futRows = st.rows.slice(pivot, pivot + 18);
+  const moreFut = st.rows.length - (pivot + 18);
+  const schRow = (r) => `<div class="loan-row${r.future ? '' : ' past'}">
+      <span class="d">${moDay(r.date)}</span><span class="p">${money(r.payment)}</span>
       <span class="x"><input class="fin-num" type="text" inputmode="decimal" placeholder="0" value="${loan.extras[r.date] != null ? fmtNum(loan.extras[r.date]) : ''}" data-loanpay="${loan.id}|${r.date}"></span>
-      <span class="bb">${money(r.balance)}</span></div>`).join('');
+      <span class="bb">${money(r.balance)}</span></div>`;
+  const pastWrap = pastRows.length ? `<details class="loan-pastwrap"><summary>↕ Show ${pastRows.length} earlier payment${pastRows.length === 1 ? '' : 's'}</summary>${pastRows.map(schRow).join('')}</details>` : '';
+  const schRows = pastWrap + futRows.map(schRow).join('');
   const extra = loan.extra || 0;
   const savedBox = extra > 0 && st.monthsSaved > 0
     ? `<div class="savebox"><div><span>Interest saved</span><b class="goodtext">${money(st.interestSaved)}</b></div><div><span>Sooner</span><b>${st.monthsSaved} pmt${st.monthsSaved === 1 ? '' : 's'}</b></div><div><span>vs. minimum</span><b>${moYr(st.basePayoff)}</b></div></div>`

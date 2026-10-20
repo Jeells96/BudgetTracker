@@ -488,8 +488,9 @@ export function loanAmortize(loan, now = new Date(), over = null) {
     let principal = pay - interest; if (principal < 0) principal = 0;
     let extra = extras[d] != null ? Math.max(0, extras[d]) : (future ? bulk : 0);
     if (principal + extra >= bal) { principal = Math.min(principal, bal); extra = Math.max(0, bal - principal); }
+    const payment = principal + interest;   // the actual scheduled payment (your normal payment, or less on the final month)
     bal -= principal + extra;
-    rows.push({ date: d, future, interest: round(interest), principal: round(principal), extra: round(extra), total: round(principal + extra), balance: round(Math.max(0, bal)) });
+    rows.push({ date: d, future, interest: round(interest), principal: round(principal), extra: round(extra), payment: round(payment), total: round(payment + extra), balance: round(Math.max(0, bal)) });
     if (!future) { curBal = bal; asOf = d; }
     if (future) interestFuture += interest;
     if (bal <= 0.005 && !payoff) payoff = d;
