@@ -449,3 +449,16 @@ hr.sep { border:0; border-top:1px solid var(--line); margin:16px 0; }
 /* v61: sticky sheet header flush at top (no overlap/crop of the first line) */
 .panel { padding-top:0; }
 .panel > .head { position:sticky; top:0; z-index:6; background:var(--card); margin:0 -18px 8px; padding:14px 18px 8px; }
+
+/* v62: stop bottom-sheet scroll getting "stuck"; per-month extra confirm UI */
+.panel { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+html, body { overscroll-behavior-y: none; }
+.loan-row .x .exwrap { display:flex; align-items:center; gap:4px; }
+.loan-row .x .exwrap input { flex:1; min-width:0; }
+.exbtn { flex:none; width:24px; height:28px; border-radius:8px; font-size:.85rem; font-weight:800; display:grid; place-items:center; }
+.exbtn.ok { color:#fff; background:var(--good); }
+.exbtn.no { color:#fff; background:var(--bad); }
+.exbtn.rev { color:var(--muted); background:var(--track); font-weight:600; }
+.fin-num.pending { border:1px dashed var(--brand); opacity:.75; }
+.loan-row.locked .x input { border:1px solid var(--good); }
+.loan-row { grid-template-columns:0.9fr 0.8fr 1.6fr 1.05fr; }

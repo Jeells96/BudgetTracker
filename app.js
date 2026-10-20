@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=61';
-import { TRANSFERS } from './defaults.js?v=61';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd } from './calc.js?v=61';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=62';
+import { TRANSFERS } from './defaults.js?v=62';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd } from './calc.js?v=62';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -495,20 +495,32 @@ function financeLoanCard(loan, st) {
     </div><span class="chev ${open ? 'down' : ''}">›</span></button>`;
   if (!open) return `<div class="card loan ${paid ? 'done' : ''}">${head}</div>`;
 
+  const extra = loan.extra || 0;
   // Schedule: current month at the top; earlier months collapse into a dropdown
   // (still editable there, e.g. to mark a month you didn't actually pay extra).
+  // With an "extra every month" scenario, each upcoming month shows the proposed
+  // extra as a PENDING suggestion with ✓ (lock it) / ✕ (skip) / type a custom amount.
+  // Locked months are stored per-date, so changing the scenario never touches them.
   const mStart = ymd(new Date()).slice(0, 7) + '-01';
   const pivot = (() => { const i = st.rows.findIndex((r) => r.date >= mStart); return i < 0 ? st.rows.length : i; })();
   const pastRows = st.rows.slice(Math.max(0, pivot - 12), pivot);
   const futRows = st.rows.slice(pivot, pivot + 18);
   const moreFut = st.rows.length - (pivot + 18);
-  const schRow = (r) => `<div class="loan-row${r.future ? '' : ' past'}">
+  const exCell = (r) => {
+    const locked = loan.extras[r.date] != null;
+    const pending = r.future && !locked && extra > 0;
+    const val = locked ? fmtNum(loan.extras[r.date]) : (pending ? fmtNum(extra) : '');
+    const inp = `<input class="fin-num${pending ? ' pending' : ''}" type="text" inputmode="decimal" placeholder="0" value="${val}" data-loanpay="${loan.id}|${r.date}">`;
+    if (pending) return `<span class="exwrap">${inp}<button class="exbtn ok" data-act="loan-lock" data-id="${loan.id}|${r.date}" title="Confirm this month">✓</button><button class="exbtn no" data-act="loan-skip" data-id="${loan.id}|${r.date}" title="No extra this month">✕</button></span>`;
+    if (r.future && locked) return `<span class="exwrap">${inp}<button class="exbtn rev" data-act="loan-unlock" data-id="${loan.id}|${r.date}" title="Back to the scenario">↺</button></span>`;
+    return inp;
+  };
+  const schRow = (r) => `<div class="loan-row${r.future ? '' : ' past'}${(r.future && loan.extras[r.date] != null) ? ' locked' : ''}">
       <span class="d">${moDay(r.date)}</span><span class="p">${money(r.payment)}</span>
-      <span class="x"><input class="fin-num" type="text" inputmode="decimal" placeholder="0" value="${loan.extras[r.date] != null ? fmtNum(loan.extras[r.date]) : ''}" data-loanpay="${loan.id}|${r.date}"></span>
+      <span class="x">${exCell(r)}</span>
       <span class="bb">${money(r.balance)}</span></div>`;
   const pastWrap = pastRows.length ? `<details class="loan-pastwrap"><summary>↕ Show ${pastRows.length} earlier payment${pastRows.length === 1 ? '' : 's'}</summary>${pastRows.map(schRow).join('')}</details>` : '';
   const schRows = pastWrap + futRows.map(schRow).join('');
-  const extra = loan.extra || 0;
   const savedBox = extra > 0 && st.monthsSaved > 0
     ? `<div class="savebox"><div><span>Interest saved</span><b class="goodtext">${money(st.interestSaved)}</b></div><div><span>Sooner</span><b>${st.monthsSaved} pmt${st.monthsSaved === 1 ? '' : 's'}</b></div><div><span>vs. minimum</span><b>${moYr(st.basePayoff)}</b></div></div>`
     : `<div class="du-note">At the minimum: debt-free ${moYr(st.basePayoff)} with ${money(st.baseInterest)} interest. Add an extra below to see what you'd save.</div>`;
@@ -528,7 +540,7 @@ function financeLoanCard(loan, st) {
         <div><span>Payments left</span><b>${st.months}</b></div>
         <div><span>Interest left</span><b>${money(st.interestRemaining)}</b></div>
       </div>
-      <div class="loan-schhdr">Payment schedule <span class="muted">— edit any Extra (dim rows already happened)</span></div>
+      <div class="loan-schhdr">Payment schedule <span class="muted">— ${extra > 0 ? '✓ lock a month at the scenario, ✕ skip it, or type a custom extra' : 'type an extra on any month'}</span></div>
       <div class="loan-sch">
         <div class="loan-row head"><span class="d">Due</span><span class="p">Payment</span><span class="x">Extra</span><span class="bb">Balance</span></div>
         ${schRows}
@@ -1011,7 +1023,8 @@ function drawReturnPlan() {
     const rows = list.map((t) => { const c = cat(t.category); return `<button class="tx-main" data-ret="pick" data-id="${esc(t.id)}" style="width:100%">
       <div class="emoji">${c ? c.emoji : '🧾'}</div><div class="body"><div class="t">${esc(t.note || (c ? c.name : 'Purchase'))}</div><div class="s">${c ? esc(c.name) + ' · ' : ''}${moDay(t.date)}</div></div><div class="amt">${money(t.amount)}</div></button>`; }).join('') || '<div class="empty">No purchases to choose from.</div>';
     el.innerHTML = `<div class="panel"><div class="head"><button data-ret="unpick" aria-label="Back">←</button><span class="step">Pick the purchase</span><button data-ret="close" aria-label="Close">✕</button></div>
-      <p class="note" style="margin:0 0 8px">Choose what you're actually returning.</p>${rows}</div>`;
+      <p class="note" style="margin:0 0 8px">Choose what you're actually returning.</p>${rows}
+      <button class="btn block" data-ret="unpick" style="margin-top:12px">← Back</button></div>`;
     return;
   }
   const c = cat(r.category), full = Math.abs(r.amount - r.orig) < 0.005;
@@ -1264,6 +1277,9 @@ document.addEventListener('click', (e) => {
     }
     case 'loan-toggle': { ui.openLoan = ui.openLoan === id ? null : id; return render(); }
     case 'loan-extra-reset': { const l = loanById(id); if (l) { l.extra = 0; saveSettings(); } return render(); }
+    case 'loan-lock': { const [lid, date] = id.split('|'); const l = loanById(lid); if (l) { l.extras = { ...(l.extras || {}), [date]: Math.max(0, round(l.extra || 0)) }; saveSettings(); } return render(); }
+    case 'loan-skip': { const [lid, date] = id.split('|'); const l = loanById(lid); if (l) { l.extras = { ...(l.extras || {}), [date]: 0 }; saveSettings(); } return render(); }
+    case 'loan-unlock': { const [lid, date] = id.split('|'); const l = loanById(lid); if (l) { const ex = { ...(l.extras || {}) }; delete ex[date]; l.extras = ex; saveSettings(); } return render(); }
     case 'loan-delete': { const l = loanById(id); if (l && confirm(`Delete ${l.name}? This hides it from Finance.`)) { l.deleted = true; ui.openLoan = null; saveSettings(); render(); } return; }
     case 'loan-add': {
       const name = prompt('Loan name?'); if (!name || !name.trim()) return;
