@@ -1,6 +1,6 @@
-import { firebaseConfig } from './firebase-config.js?v=56';
-import { DEFAULT_SETTINGS } from './defaults.js?v=56';
-import { HISTORY } from './history.js?v=56';
+import { firebaseConfig } from './firebase-config.js?v=57';
+import { DEFAULT_SETTINGS } from './defaults.js?v=57';
+import { HISTORY } from './history.js?v=57';
 
 const LS_KEY = 'budget-tracker-v2';
 const CDN = 'https://www.gstatic.com/firebasejs/11.0.2/';
@@ -38,7 +38,34 @@ function normalize(s) {
   };
   const ba = (s && s.billsAcct) || {};
   out.billsAcct = { bal: ba.bal ?? null, asOf: ba.asOf ?? null };
+  out.finance = normalizeFinance(s && s.finance);
   return out;
+}
+
+// Keep the loan planner in sync with the hardcoded defaults (so newly-added loans
+// appear) while preserving the user's own edits: current balance, planned extras, etc.
+function normalizeFinance(fin) {
+  fin = fin || {};
+  const def = clone(DEFAULT_SETTINGS).finance;
+  const stored = {};
+  (Array.isArray(fin.loans) ? fin.loans : []).forEach((l) => { if (l && l.id) stored[l.id] = l; });
+  const loans = def.loans.map((d) => {
+    const u = stored[d.id] || {};
+    return {
+      ...d,
+      name: u.name || d.name, lender: u.lender ?? d.lender,
+      rate: u.rate != null ? u.rate : d.rate,
+      payment: u.payment != null ? u.payment : d.payment,
+      balance: u.balance != null ? u.balance : d.balance,
+      asOf: u.asOf || d.asOf,
+      extra: u.extra != null ? u.extra : d.extra,
+      extras: (u.extras && typeof u.extras === 'object') ? u.extras : {}
+    };
+  });
+  // Keep any custom loans the user added that aren't part of the defaults.
+  (Array.isArray(fin.loans) ? fin.loans : []).forEach((l) => { if (l && l.id && !def.loans.find((d) => d.id === l.id)) loans.push(l); });
+  const iv = fin.invest || {};
+  return { loans, invest: { monthly: iv.monthly != null ? iv.monthly : def.invest.monthly, years: iv.years != null ? iv.years : def.invest.years, rate: iv.rate != null ? iv.rate : def.invest.rate } };
 }
 const round2 = (n) => Math.round(n * 100) / 100;
 

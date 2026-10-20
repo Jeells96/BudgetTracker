@@ -455,3 +455,65 @@ export function trends(s, txs) {
   return { months, avg: { spent: avg('spent'), savings: avg('savings'), income: avg('income'), bills: avg('bills'), card: avg('card') }, count: months.length };
 }
 
+
+// ---- loans / finance ----
+// Add n whole months to a YYYY-MM-DD date, clamping the day to the month length.
+export function addMonthsYmd(s, n) {
+  const d = parseYmd(s), day = d.getDate();
+  const t = new Date(d.getFullYear(), d.getMonth() + n, 1);
+  const dim = new Date(t.getFullYear(), t.getMonth() + 1, 0).getDate();
+  t.setDate(Math.min(day, dim));
+  return ymd(t);
+}
+
+// Project a loan forward from its current balance (as-of snapshot) on its monthly
+// schedule, applying the scheduled payment plus any extra each due date. The extra
+// for a date is its explicit per-date entry if set, otherwise the loan's flat
+// "extra every month" amount (0 by default — nothing extra unless you say so).
+// `over` lets callers override { bulk, extras } to compare scenarios.
+export function loanProject(loan, now = new Date(), over = null) {
+  const r = (loan.rate || 0) / 12, pay = loan.payment || 0;
+  const extras = (over && over.extras) || loan.extras || {};
+  const bulk = Math.max(0, (over && over.bulk != null) ? over.bulk : (loan.extra || 0));
+  const asOf = loan.asOf || loan.start;
+  let bal = Math.max(0, loan.balance != null ? loan.balance : (loan.principal || 0));
+  let d = addMonthsYmd(asOf, 1), guard = 0, interest = 0;
+  const rows = [];
+  let payoff = bal <= 0.005 ? asOf : null;
+  while (bal > 0.005 && guard++ < 1800) {
+    const i = bal * r;
+    let principal = pay - i; if (principal < 0) principal = 0;
+    let extra = extras[d] != null ? Math.max(0, extras[d]) : bulk;
+    if (principal + extra >= bal) { principal = Math.min(principal, bal); extra = Math.max(0, bal - principal); }
+    const total = principal + extra;
+    bal -= total; interest += i;
+    rows.push({ date: d, interest: round(i), principal: round(principal), extra: round(extra), total: round(total), balance: round(Math.max(0, bal)) });
+    if (bal <= 0.005 && !payoff) payoff = d;
+    d = addMonthsYmd(d, 1);
+  }
+  return { rows, payoff, interest: round(interest), months: rows.length, paidOff: (loan.balance || 0) <= 0.005 };
+}
+
+// Summary for a loan: current-plan payoff vs the no-extra baseline, so we can show
+// interest saved and months shaved off by paying extra.
+export function loanStats(loan, now = new Date()) {
+  const plan = loanProject(loan, now);
+  const base = loanProject(loan, now, { bulk: 0, extras: {} });
+  const principal = loan.principal || 0, bal = Math.max(0, loan.balance || 0);
+  return {
+    balance: round(bal), principal: round(principal),
+    paidPct: principal > 0 ? Math.max(0, Math.min(100, round((1 - bal / principal) * 100))) : (bal <= 0.005 ? 100 : 0),
+    payoff: plan.payoff, months: plan.months, interestRemaining: plan.interest,
+    basePayoff: base.payoff, baseMonths: base.months, baseInterest: base.interest,
+    interestSaved: round(base.interest - plan.interest), monthsSaved: base.months - plan.months,
+    paidOff: bal <= 0.005, rows: plan.rows
+  };
+}
+
+// Future value of fixed monthly contributions compounded monthly.
+export function investFV(monthly, years, annualRate) {
+  const m = Math.max(0, monthly || 0), n = Math.max(0, Math.round((years || 0) * 12)), r = (annualRate || 0) / 12;
+  const fv = r > 0 ? m * ((Math.pow(1 + r, n) - 1) / r) : m * n;
+  const contributed = m * n;
+  return { fv: round(fv), contributed: round(contributed), growth: round(fv - contributed), months: n };
+}

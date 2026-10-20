@@ -359,3 +359,48 @@ hr.sep { border:0; border-top:1px solid var(--line); margin:16px 0; }
 .selbar .selcount { font-size:.82rem; opacity:.75; white-space:nowrap; }
 .selbar .seltot { font-size:1.25rem; font-weight:800; }
 .selbar .selclear { background:color-mix(in srgb,var(--bg) 24%,transparent); color:var(--bg); border-radius:99px; padding:7px 16px; font-weight:700; font-size:.85rem; }
+
+/* v57: always-on checkboxes, Home+Activity merge, Finance tab */
+.tx { display:flex; align-items:center; gap:10px; padding:0; border-top:1px solid var(--line); }
+.tx:first-child { border-top:0; }
+.tx-main { flex:1; min-width:0; display:flex; align-items:center; gap:12px; padding:12px 0; width:100%; text-align:left; background:none; }
+.selbox { width:23px; height:23px; border-radius:50%; border:2px solid var(--line); flex:none; display:grid; place-items:center; color:#fff; font-size:.8rem; font-weight:800; background:none; cursor:pointer; }
+.selbox.on { background:var(--brand); border-color:var(--brand); }
+.selbox.on::after { content:'✓'; }
+.tx.selected { background:color-mix(in srgb,var(--brand) 10%,transparent); border-radius:12px; }
+.acthead { display:flex; align-items:baseline; gap:10px; }
+
+.loan { padding:0; overflow:hidden; }
+.loan-head { display:flex; align-items:center; gap:12px; width:100%; text-align:left; padding:14px 16px; background:none; }
+.loan-head .emoji { font-size:1.6rem; flex:none; }
+.loan-head .body { flex:1; min-width:0; }
+.loan-head .row { display:flex; justify-content:space-between; gap:8px; }
+.loan-head .row .n { font-weight:700; } .loan-head .row .a { font-weight:800; white-space:nowrap; }
+.loan-head .bar { margin:7px 0 5px; height:8px; }
+.loan-head .chev { color:var(--muted); font-size:1.3rem; opacity:.5; transition:transform .15s; align-self:center; flex:none; }
+.loan-head .chev.down { transform:rotate(90deg); }
+.loan.done { opacity:.72; }
+.loan-body { padding:2px 16px 16px; border-top:1px dashed var(--line); }
+.loan-stats { display:flex; gap:8px; margin:12px 0; }
+.loan-stats > div { flex:1; background:var(--bg); border-radius:14px; padding:9px 11px; }
+.loan-stats span { font-size:.66rem; color:var(--muted); display:block; text-transform:uppercase; letter-spacing:.03em; }
+.loan-stats b { font-size:1.02rem; }
+.loan-summary { display:flex; gap:4px; margin:12px 0; background:color-mix(in srgb,var(--brand) 8%,transparent); border-radius:16px; padding:6px; }
+.loan-summary > div { flex:1; padding:5px 8px; text-align:center; }
+.loan-summary span { font-size:.64rem; color:var(--muted); display:block; text-transform:uppercase; letter-spacing:.03em; }
+.loan-summary b { font-size:1rem; }
+.finfield { margin:10px 0; }
+.finfield label { display:block; font-size:.8rem; color:var(--muted); margin-bottom:5px; }
+.finfield > input, .finwrap input { width:100%; padding:12px 14px; border-radius:12px; background:var(--bg); border:1px solid transparent; font-size:1.05rem; }
+.finfield input:focus { outline:2px solid var(--brand); }
+.finwrap { position:relative; display:block; } .finwrap input { padding-right:40px; }
+.finwrap .cellx { position:absolute; right:10px; top:50%; transform:translateY(-50%); font-size:1rem; }
+.finrow2 { display:flex; gap:10px; } .finrow2 .finfield { flex:1; margin:10px 0 0; }
+.loan-sch { margin-top:12px; }
+.loan-row { display:grid; grid-template-columns:1.1fr 1fr 1.1fr 1.2fr; gap:6px; align-items:center; padding:6px 0; border-top:1px solid var(--line); font-size:.9rem; }
+.loan-row.head { color:var(--muted); font-size:.68rem; text-transform:uppercase; letter-spacing:.03em; border-top:0; }
+.loan-row .d { color:var(--muted); } .loan-row .bb { text-align:right; font-weight:600; }
+.loan-row .x input { width:100%; padding:7px 8px; border-radius:9px; background:var(--bg); border:1px solid transparent; font-size:.9rem; text-align:right; }
+.loan-row .x input:focus { outline:2px solid var(--brand); }
+.invout { text-align:center; margin-top:14px; padding-top:12px; border-top:1px solid var(--line); }
+.invout .big { font-size:2rem; font-weight:800; }

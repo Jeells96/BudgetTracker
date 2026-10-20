@@ -42,8 +42,31 @@ export const DEFAULT_SETTINGS = {
   weekStartDay: 5,                  // day the weekly budget resets (0=Sun … 6=Sat); default Friday
   weekResetAt: null,                // week-start (YYYY-MM-DD) the user cleared the rollover for
   pending: [],                      // "track later" items: price only, not yet logged {id, amount, date}
-  seeded: false                     // spreadsheet history imported?
+  seeded: false,                    // spreadsheet history imported?
+  // Loans / payoff planner (seeded from Loans.xlsx). Each loan keeps its original
+  // terms plus a current `balance` as of `asOf` — the actual balance from your real
+  // statement, so past extra payments are already baked in ("my progress"). Going
+  // forward:
+  //   extra      = a flat extra you plan to add to EVERY future payment (0 = none)
+  //   extras     = one-off overrides per due date { 'YYYY-MM-DD': amount } (blank = $0;
+  //                you can always go back and set one). An override wins over `extra`.
+  finance: DEFAULT_FINANCE()
 };
+
+// Loans as of 2026-10-20, balances taken straight from Loans.xlsx (latest payment
+// on or before that date). Rates/payments/terms are the loan originals.
+function DEFAULT_FINANCE() {
+  return {
+    loans: [
+      { id: 'car',     name: 'Car',     sub: 'KIA', lender: 'Gesa',     emoji: '🚗', principal: 11742.67, rate: 0.0299, payment: 321.04, start: '2026-01-09', balance: 2791.90,   asOf: '2026-10-09', extra: 0, extras: {} },
+      { id: 'truck',   name: 'Truck',   sub: '',    lender: 'IBEW',     emoji: '🛻', principal: 28867,    rate: 0.0549, payment: 413.71, start: '2023-09-01', balance: 0,         asOf: '2026-10-01', extra: 0, extras: {} },
+      { id: 'trailer', name: 'Trailer', sub: '',    lender: 'Peak',     emoji: '🚐', principal: 29102.80, rate: 0.0749, payment: 306.94, start: '2025-08-08', balance: 2431.56,   asOf: '2026-10-08', extra: 0, extras: {} },
+      { id: 'house',   name: 'House',   sub: '',    lender: 'Citizens', emoji: '🏠', principal: 312000,   rate: 0.0325, payment: 1357.84, start: '2020-01-01', balance: 265882.77, asOf: '2026-10-01', extra: 0, extras: {} }
+    ],
+    // Investment what-if: monthly contribution, horizon, expected annual return.
+    invest: { monthly: 500, years: 20, rate: 0.07 }
+  };
+}
 
 // Money that moves but isn't "spending".
 export const TRANSFERS = [

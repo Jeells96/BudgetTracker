@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=56';
-import { TRANSFERS } from './defaults.js?v=56';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends } from './calc.js?v=56';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=57';
+import { TRANSFERS } from './defaults.js?v=57';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanProject, loanStats, investFV, addMonthsYmd } from './calc.js?v=57';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -18,29 +18,30 @@ const dayLabel = (s) => {
   return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', ...(d.getFullYear() !== new Date().getFullYear() ? { year: 'numeric' } : {}) });
 };
 const ordinal = (n) => n + (['th', 'st', 'nd', 'rd'][(n % 100 >> 3) ^ 1 && n % 10 < 4 ? n % 10 : 0]);
+const moDay = (s) => parseYmd(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+const moYr = (s) => parseYmd(s).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
 
-const ui = { tab: 'home', month: monthKey(new Date()), filter: 'all', all: false, q: '', planDraft: {}, planLive: true, openCat: null };
+const ui = { tab: 'home', month: monthKey(new Date()), filter: 'all', all: false, q: '', planDraft: {}, planLive: true, openCat: null, openLoan: null };
 try { ui.planDraft = JSON.parse(localStorage.getItem('plan-draft') || '{}') || {}; } catch { ui.planDraft = {}; }
 try { ui.planLive = JSON.parse(localStorage.getItem('plan-live') ?? 'true'); } catch { ui.planLive = true; }
 const savePlanDraft = () => { try { localStorage.setItem('plan-draft', JSON.stringify(ui.planDraft || {})); } catch {} };
 const savePlanLive = () => { try { localStorage.setItem('plan-live', JSON.stringify(!!ui.planLive)); } catch {} };
 
 // ---------- multi-select + live totaller ----------
-// A transient selection used in the breakdown and activity views: tap rows to add
-// them up. It never persists — leaving the view (closing the sheet or switching
+// Every purchase row carries a checkbox, always ready — tap any to add them up.
+// The running total never persists: leaving the view (closing a sheet or switching
 // tabs) clears it.
-const sel = { on: false, ids: new Set() };
+const sel = { ids: new Set() };
 const selTotal = () => round([...sel.ids].reduce((a, id) => { const t = store.txs.find((x) => x.id === id); return a + (t ? t.amount : 0); }, 0));
 function renderSelBar() {
   const el = $('#seltotal'); if (!el) return;
-  if (!sel.on || sel.ids.size === 0) { el.hidden = true; el.innerHTML = ''; return; }
-  const n = sel.ids.size;
+  if (sel.ids.size === 0) { el.hidden = true; el.innerHTML = ''; return; }
   el.hidden = false;
   el.innerHTML = `<div class="selbar">
-    <span class="selcount">${n} selected</span><span class="seltot">${money(selTotal())}</span>
-    <button class="selclear" data-act="sel-done">Done</button></div>`;
+    <span class="selcount">${sel.ids.size} selected</span><span class="seltot">${money(selTotal())}</span>
+    <button class="selclear" data-act="sel-done">Clear</button></div>`;
 }
-function resetSel() { sel.on = false; sel.ids.clear(); renderSelBar(); }
+function resetSel() { if (!sel.ids.size) { renderSelBar(); return; } sel.ids.clear(); renderSelBar(); }
 
 // ---------- helpers ----------
 const S = () => store.settings;
@@ -64,14 +65,14 @@ function maybePendingPrompt() {
 }
 function render() {
   document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === ui.tab));
-  $('#app').innerHTML = { home, bills, plan: planTab, activity, settings }[ui.tab]();
+  $('#app').innerHTML = { home, bills, plan: planTab, finance, settings }[ui.tab]();
 }
 store.onChange = () => { if (!document.activeElement || !document.activeElement.closest('#app input')) render(); };
 
 function header(title, nav = true) {
   const months = !nav ? '' : `<div class="month">
     <button data-act="prev" aria-label="Previous month">‹</button><button data-act="next" aria-label="Next month">›</button></div>`;
-  const sub = ui.tab === 'activity' && ui.all ? 'Whole history' : nav ? monthLabel(ui.month) : '';
+  const sub = nav ? monthLabel(ui.month) : '';
   return `<div class="top"><div><h1>${title}</h1><div class="muted">${sub}</div></div>${months}</div>`;
 }
 
@@ -188,7 +189,6 @@ function home() {
     exRow('🐷', 'Savings', ms.savingsIn, savingsTarget, 'savings', savingsTarget > 0, true),
     moneyRow('🏦', 'Bills account', ms.billsIn, ms.billsTotal, 'goto', 'bills', true)
   ].join('');
-  const recent = monthTxs().slice(0, 5);
 
   return `${header('Budget')}
     ${hero}
@@ -197,11 +197,11 @@ function home() {
     ${forgivenNote}
     <button class="log-btn" data-act="log"><span class="plus">+</span> Log a purchase</button>
     <h2>${monthShort(ui.month)} · ${paychecks} paychecks</h2><div class="card">${list}</div>
-    <h2>Recent</h2><div class="card">${recent.length ? recent.map(txRow).join('') : '<div class="empty">Nothing logged yet this month.<br>Tap the big button to add your first purchase.</div>'}</div>
     <div class="twobtn" style="margin-top:16px">
       <button class="btn block" data-act="track-later">🕗 Track later</button>
       <button class="btn block ${pend.length ? 'primary' : ''}" data-act="finish-loose" ${pend.length ? '' : 'disabled'}>✓ Finish loose logs${pend.length ? ` (${pend.length})` : ''}</button>
-    </div>`;
+    </div>
+    ${activityBlock()}`;
 }
 
 function txRow(t) {
@@ -211,11 +211,11 @@ function txRow(t) {
   else { const c = cat(t.category); icon = c ? c.emoji : '🧾'; label = t.note || (c ? c.name : 'Purchase'); sub = c ? c.name : t.category; amt = `<div class="amt">${money(t.amount)}</div>`; }
   const ccDot = (t.type === 'expense' && t.pay === 'credit' ? ' <span class="cc-dot" title="Credit card">💳</span>' : '') + (t.exAvg ? ' <span class="ex-tag" title="Excluded from average">excl. avg</span>' : '');
   const dateStr = parseYmd(t.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  const selOn = sel.on, picked = sel.ids.has(t.id);
-  const lead = selOn ? `<span class="selbox${picked ? ' on' : ''}"></span>` : '';
-  const tail = selOn ? '' : '<span class="chev">›</span>';
-  return `<button class="tx${selOn ? ' selectable' : ''}${picked ? ' selected' : ''}" data-act="${selOn ? 'tx-toggle' : 'tx'}" data-id="${esc(t.id)}">${lead}<div class="emoji">${icon}</div>
-    <div class="body"><div class="t">${esc(label)}${ccDot}</div><div class="s">${sub ? esc(sub) + ' · ' : ''}${dateStr}</div></div>${amt}${tail}</button>`;
+  const picked = sel.ids.has(t.id);
+  return `<div class="tx${picked ? ' selected' : ''}">
+    <button class="selbox${picked ? ' on' : ''}" data-act="tx-toggle" data-id="${esc(t.id)}" aria-label="Select for total"></button>
+    <button class="tx-main" data-act="tx" data-id="${esc(t.id)}"><div class="emoji">${icon}</div>
+    <div class="body"><div class="t">${esc(label)}${ccDot}</div><div class="s">${sub ? esc(sub) + ' · ' : ''}${dateStr}</div></div>${amt}<span class="chev">›</span></button></div>`;
 }
 
 function billsAcctCard(s, now = new Date()) {
@@ -459,6 +459,94 @@ function planTab() {
     <p class="note">${cardNote} Edits are saved until you reset.</p>`;
 }
 
+// ---------- Finance: loan payoff planner + investment what-if ----------
+const loanById = (id) => S().finance.loans.find((l) => l.id === id);
+
+function finance() {
+  const fin = S().finance, now = new Date();
+  const active = fin.loans.filter((l) => (l.balance || 0) > 0.005);
+  const paidCount = fin.loans.length - active.length;
+  const totalDebt = round(active.reduce((a, l) => a + (l.balance || 0), 0));
+  const totalInterest = round(active.reduce((a, l) => a + loanStats(l, now).interestRemaining, 0));
+  return `${header('Finance', false)}
+    <div class="card hero" style="box-shadow:none;padding:4px 0">
+      <div class="label">Total debt</div>
+      <div class="big">${money(totalDebt)}</div>
+      <div class="note" style="margin-top:6px">${active.length} active loan${active.length === 1 ? '' : 's'}${paidCount ? ` · ${paidCount} paid off 🎉` : ''}${totalDebt > 0 ? ` · ${money(totalInterest)} interest left at your current plan` : ''}</div>
+    </div>
+    <h2>Loans</h2>
+    <p class="lead">Balances are set from your statements, so past extra payments already count. Add an <b>extra every month</b> or tap a due date for a one-off — leave a date blank and it assumes no extra that month. Projections update instantly.</p>
+    ${fin.loans.map((l) => financeLoanCard(l, now)).join('')}
+    ${financeInvest(now)}`;
+}
+
+function financeLoanCard(loan, now) {
+  const st = loanStats(loan, now), open = ui.openLoan === loan.id, paid = st.paidOff;
+  const head = `<button class="loan-head" data-act="loan-toggle" data-id="${loan.id}">
+    <div class="emoji">${loan.emoji || '💵'}</div>
+    <div class="body">
+      <div class="row"><span class="n">${esc(loan.name)}</span><span class="a">${paid ? '<b class="goodtext">Paid off 🎉</b>' : money(st.balance)}</span></div>
+      <div class="bar"><i style="width:${st.paidPct}%"></i></div>
+      <div class="du-note">${paid ? `Cleared · ${esc(loan.lender || '')}` : `${st.paidPct}% paid · debt-free ${moYr(st.payoff)}${loan.lender ? ` · ${esc(loan.lender)}` : ''}`}</div>
+    </div><span class="chev ${open ? 'down' : ''}">›</span></button>`;
+  if (!open) return `<div class="card loan ${paid ? 'done' : ''}">${head}</div>`;
+  if (paid) return `<div class="card loan done">${head}<div class="loan-body"><div class="empty">This loan is paid off. 🎉 Nothing left to plan.</div></div></div>`;
+
+  const extra = loan.extra || 0;
+  const savedLine = extra > 0 && st.monthsSaved > 0
+    ? `<div class="du-note good">Paying ${money(extra)} extra/mo clears it ${st.monthsSaved} payment${st.monthsSaved === 1 ? '' : 's'} sooner and saves ${money(st.interestSaved)} in interest.</div>`
+    : `<div class="du-note">Minimum-only: debt-free ${moYr(st.basePayoff)}, ${money(st.baseInterest)} interest.</div>`;
+  const rows = st.rows.slice(0, 18);
+  const more = st.rows.length - rows.length;
+  const schRows = rows.map((r) => `<div class="loan-row">
+      <span class="d">${moDay(r.date)}</span><span class="p">${money(r.total)}</span>
+      <span class="x"><input class="fin-num" type="number" inputmode="decimal" placeholder="0" value="${loan.extras[r.date] != null ? loan.extras[r.date] : ''}" data-loanpay="${loan.id}|${r.date}"></span>
+      <span class="bb">${money(r.balance)}</span></div>`).join('');
+  return `<div class="card loan open">${head}
+    <div class="loan-body">
+      <div class="loan-stats">
+        <div><span>Balance</span><b>${money(st.balance)}</b></div>
+        <div><span>Rate</span><b>${(loan.rate * 100).toFixed(2)}%</b></div>
+        <div><span>Payment</span><b>${money(loan.payment)}</b></div>
+      </div>
+      <div class="finfield"><label>Balance now <span class="muted">(as of ${moDay(loan.asOf)})</span></label>
+        <input class="fin-num" type="number" inputmode="decimal" value="${round(st.balance)}" data-loanbal="${loan.id}"></div>
+      <div class="finfield"><label>Extra every month</label>
+        <span class="finwrap"><input class="fin-num" type="number" inputmode="decimal" placeholder="0" value="${extra || ''}" data-loanextra="${loan.id}">${extra > 0 ? `<button class="cellx" data-act="loan-extra-reset" data-id="${loan.id}" title="Clear">✕</button>` : ''}</span></div>
+      <div class="loan-summary">
+        <div><span>Debt-free</span><b>${moYr(st.payoff)}</b></div>
+        <div><span>Payments left</span><b>${st.months}</b></div>
+        <div><span>Interest left</span><b>${money(st.interestRemaining)}</b></div>
+      </div>
+      ${savedLine}
+      <div class="loan-sch">
+        <div class="loan-row head"><span class="d">Due</span><span class="p">Payment</span><span class="x">Extra</span><span class="bb">Balance</span></div>
+        ${schRows}
+      </div>
+      ${more > 0 ? `<p class="note">+ ${more} more payment${more === 1 ? '' : 's'} through ${moYr(st.payoff)}.</p>` : ''}
+    </div></div>`;
+}
+
+function financeInvest(now) {
+  const iv = S().finance.invest, res = investFV(iv.monthly, iv.years, iv.rate);
+  const presets = [['401(k)', 0.07], ['Roth IRA', 0.07], ['HYSA', 0.04]];
+  const chips = presets.map(([n, r]) => `<button class="chip ${Math.abs((iv.rate || 0) - r) < 1e-9 ? 'on' : ''}" data-act="inv-preset" data-id="${r}">${n} · ${(r * 100).toFixed(0)}%</button>`).join('');
+  return `<h2>Invest instead?</h2>
+    <p class="lead">What the same money could grow to in a 401(k), Roth IRA, or high-yield savings — to weigh against paying a loan down early.</p>
+    <div class="card">
+      <div class="chips" style="margin:0 -18px 8px;padding-inline:18px">${chips}</div>
+      <div class="finfield"><label>Monthly contribution</label><input class="fin-num" type="number" inputmode="decimal" value="${iv.monthly}" data-inv="monthly"></div>
+      <div class="finrow2">
+        <div class="finfield"><label>Years</label><input class="fin-num" type="number" inputmode="decimal" value="${iv.years}" data-inv="years"></div>
+        <div class="finfield"><label>Return %</label><input class="fin-num" type="number" inputmode="decimal" value="${round(iv.rate * 100)}" data-inv="rate"></div>
+      </div>
+      <div class="invout">
+        <div class="big">${money(res.fv)}</div>
+        <div class="note">after ${iv.years} year${iv.years === 1 ? '' : 's'} · ${money(res.contributed)} in · <span class="goodtext">${money(res.growth)} growth</span></div>
+      </div>
+    </div>`;
+}
+
 function activityList() {
   let list = (ui.all ? [...store.txs] : monthTxs()).sort(sortTx);
   if (ui.filter === 'income') list = list.filter((t) => t.type === 'income');
@@ -469,18 +557,18 @@ function activityList() {
   const spent = round(list.filter((t) => t.type === 'expense').reduce((a, t) => a + t.amount, 0));
   if (!list.length) return '<div class="card empty">Nothing here.</div>';
   // Flat list in the order entered (newest first), each row shows its own date.
-  return `<p class="note">${list.length} line item${list.length > 1 ? 's' : ''} · ${money(spent)} spent · ${sel.on ? 'tap to select' : 'tap any to edit'}</p>
+  return `<p class="note">${list.length} line item${list.length > 1 ? 's' : ''} · ${money(spent)} spent · tap ✓ to total, a row to edit</p>
     <div class="card" style="padding:6px 18px">${list.map(txRow).join('')}</div>`;
 }
 
-function activity() {
+// The activity log, folded into the Home tab (search + filters + full list).
+function activityBlock() {
   const chips = [['all', 'All'], ...S().categories.map((c) => [c.id, c.emoji + ' ' + c.name]), ['income', '💰 Income'], ['transfer', '🏦 Bills/Savings/Card']]
     .map(([id, l]) => `<button class="chip ${ui.filter === id ? 'on' : ''}" data-act="filter" data-id="${esc(id)}">${esc(l)}</button>`).join('');
-  return `${header('Activity', !ui.all)}
+  return `<div class="acthead"><h2>Activity</h2>${ui.all ? '<span class="muted">Whole history</span>' : ''}</div>
     <div class="searchrow"><input id="q" class="sheet-input" type="search" placeholder="Search purchases…" value="${esc(ui.q)}" autocomplete="off">
     <button class="chip" data-act="trends">📈 Trends</button>
-    <button class="chip ${ui.all ? 'on' : ''}" data-act="all">All</button>
-    <button class="chip ${sel.on ? 'on' : ''}" data-act="sel-mode">☑︎ ${sel.on ? 'Done' : 'Select'}</button></div>
+    <button class="chip ${ui.all ? 'on' : ''}" data-act="all">All</button></div>
     <div class="chips">${chips}</div><div id="actlist">${activityList()}</div>`;
 }
 
@@ -962,7 +1050,7 @@ function openWeek() {
   }).join('');
 
   $('#sheet').innerHTML = `<div class="panel sheet-page"><div class="head">
-      <button class="backbtn" data-act="sheet-close" aria-label="Back">←</button><span class="step">${monthShort(ui.month)} · weekly</span><button class="hdr-sel ${sel.on ? 'on' : ''}" data-act="sel-mode">${sel.on ? 'Done' : 'Select'}</button></div>
+      <button class="backbtn" data-act="sheet-close" aria-label="Back">←</button><span class="step">${monthShort(ui.month)} · weekly</span><span style="width:28px"></span></div>
     <div class="card hero" style="box-shadow:none;padding:4px 0">
       <div class="label">Left to spend this week</div>
       <div class="big ${ws.left < 0 ? 'neg' : ''}">${money(ws.left)}</div>
@@ -1062,26 +1150,23 @@ document.addEventListener('click', (e) => {
   const ft = e.target.closest('[data-track]'); if (ft && track) return trackClick(ft);
   if (e.target === $('#sheet')) return closeSheet();
   const tab = e.target.closest('#tabs button');
-  if (tab) { if (sel.on) resetSel(); ui.tab = tab.dataset.tab; scrollTo(0, 0); return render(); }
+  if (tab) { if (sel.ids.size) resetSel(); ui.tab = tab.dataset.tab; scrollTo(0, 0); return render(); }
   const b = e.target.closest('[data-act]'); if (!b) return;
   const id = b.dataset.id, i = +b.dataset.i;
   switch (b.dataset.act) {
     case 'log': return openFlow();
     case 'log-xfer': return openFlow({ category: id });
     case 'week': resetSel(); return openWeek();
-    case 'sel-mode': {
-      sel.on = !sel.on; sel.ids.clear(); renderSelBar();
-      // The breakdown lives in the sheet; everything else is the main view.
-      if (!$('#sheet').hidden) return openWeek();
-      return render();
-    }
     case 'sel-done': { resetSel(); if (!$('#sheet').hidden) return openWeek(); return render(); }
     case 'tx-toggle': {
-      if (sel.ids.has(id)) sel.ids.delete(id); else sel.ids.add(id);
-      b.classList.toggle('selected', sel.ids.has(id));
-      const box = b.querySelector('.selbox'); if (box) box.classList.toggle('on', sel.ids.has(id));
+      const now = sel.ids.has(id) ? (sel.ids.delete(id), false) : (sel.ids.add(id), true);
+      b.classList.toggle('on', now);
+      const row = b.closest('.tx'); if (row) row.classList.toggle('selected', now);
       return renderSelBar();
     }
+    case 'loan-toggle': { ui.openLoan = ui.openLoan === id ? null : id; return render(); }
+    case 'loan-extra-reset': { const l = loanById(id); if (l) { l.extra = 0; saveSettings(); } return render(); }
+    case 'inv-preset': { S().finance.invest.rate = parseFloat(id) || 0; saveSettings(); return render(); }
     case 'week-reset': { S().weekResetAt = weekStats(S(), store.txs).start; saveSettings(); closeSheet(); return render(); }
     case 'week-unreset': { S().weekResetAt = null; saveSettings(); closeSheet(); return render(); }
     case 'overage-view': return openOverage();
@@ -1120,7 +1205,7 @@ document.addEventListener('click', (e) => {
     case 'trends': return openTrends();
     case 'sheet-close': return closeSheet();
     case 'goto': ui.tab = id; scrollTo(0, 0); return render();
-    case 'cat-filter': ui.filter = id; ui.all = false; ui.tab = 'activity'; scrollTo(0, 0); return render();
+    case 'cat-filter': { ui.filter = id; ui.all = false; ui.tab = 'home'; render(); const el = $('#actlist'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
     case 'cat-toggle': ui.openCat = ui.openCat === id ? null : id; return render();
     case 'prev': case 'next': { const d = parseYmd(ui.month + '-01'); d.setMonth(d.getMonth() + (b.dataset.act === 'next' ? 1 : -1)); ui.month = monthKey(d); return render(); }
     case 'filter': ui.filter = id; return render();
@@ -1147,7 +1232,7 @@ document.addEventListener('click', (e) => {
 // Select the whole value when a numeric field is focused, so typing replaces it
 // (no need to delete a leftover 0).
 document.addEventListener('focusin', (e) => {
-  if (e.target.matches('input.plancell, input.ccinput, input[data-billsbal], input[data-cc]')) {
+  if (e.target.matches('input.plancell, input.ccinput, input.fin-num, input[data-billsbal], input[data-cc]')) {
     try { e.target.select(); } catch {}
   }
 });
@@ -1172,6 +1257,10 @@ document.addEventListener('change', (e) => {
   else if (t.dataset.billfix) { S().bills[billEdit].amount = num(); saveSettings(); drawBillEdit(); return; }
   else if (t.hasAttribute('data-billavg')) { S().bills[billEdit].useAvg = t.checked; saveSettings(); drawBillEdit(); render(); return; }
   else if (t.dataset.bh) { const h = (S().bills[billEdit].history || []).find((x) => x.id === t.dataset.bh); if (h) { h[t.dataset.f] = t.dataset.f === 'amount' ? num() : (t.value || h.month); saveSettings(); drawBillEdit(); } return; }
+  else if (t.dataset.loanextra) { const l = loanById(t.dataset.loanextra); if (l) { l.extra = Math.max(0, num()); saveSettings(); } }
+  else if (t.dataset.loanbal) { const l = loanById(t.dataset.loanbal); if (l) { l.balance = Math.max(0, num()); l.asOf = today(); saveSettings(); } }
+  else if (t.dataset.loanpay) { const [lid, date] = t.dataset.loanpay.split('|'); const l = loanById(lid); if (l) { const ex = { ...(l.extras || {}) }; if (t.value.trim() === '') delete ex[date]; else ex[date] = Math.max(0, num()); l.extras = ex; saveSettings(); } }
+  else if (t.dataset.inv) { const iv = S().finance.invest, f = t.dataset.inv; iv[f] = f === 'rate' ? Math.max(0, num()) / 100 : Math.max(0, num()); saveSettings(); }
   else if (t.dataset.catavg) { S().categories[+t.dataset.catavg].useAvg = t.checked; saveSettings(); }
   else if (t.dataset.cat) { const c = S().categories[+t.dataset.cat]; c[t.dataset.field] = t.type === 'checkbox' ? t.checked : num(); saveSettings(); }
   else if (t.dataset.bill) {
