@@ -404,3 +404,33 @@ hr.sep { border:0; border-top:1px solid var(--line); margin:16px 0; }
 .loan-row .x input:focus { outline:2px solid var(--brand); }
 .invout { text-align:center; margin-top:14px; padding-top:12px; border-top:1px solid var(--line); }
 .invout .big { font-size:2rem; font-weight:800; }
+
+/* v58: advanced finance hero + collapsible plan sections */
+.finhero { background:linear-gradient(145deg, color-mix(in srgb,var(--brand) 22%, var(--card)), var(--card)); border-radius:22px; padding:18px 18px 16px; box-shadow:var(--shadow); margin-bottom:14px; }
+.fh-label { font-size:.8rem; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; }
+.fh-big { font-size:2.4rem; font-weight:800; line-height:1.1; margin:2px 0; }
+.fh-sub { font-size:.85rem; color:var(--muted); }
+.fh-grid { display:flex; gap:10px; margin-top:14px; }
+.fh-grid > div { flex:1; background:color-mix(in srgb,var(--card) 70%, transparent); border-radius:14px; padding:10px 12px; }
+.fh-grid span { display:block; font-size:.66rem; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; }
+.fh-grid b { font-size:1.15rem; }
+.savebox { display:flex; gap:4px; margin:12px 0; background:color-mix(in srgb,var(--good) 14%, transparent); border:1px solid color-mix(in srgb,var(--good) 30%, transparent); border-radius:16px; padding:8px 6px; }
+.savebox > div { flex:1; text-align:center; padding:2px 6px; }
+.savebox span { display:block; font-size:.64rem; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; }
+.savebox b { font-size:1.05rem; }
+.loan-schhdr { font-size:.78rem; color:var(--muted); margin:14px 0 2px; }
+.loan-row.past { opacity:.55; }
+.loan-row.past .bb { font-weight:500; }
+.btn.danger { color:var(--bad); background:color-mix(in srgb,var(--bad) 10%, transparent); }
+
+/* Collapsible Plan sections */
+.psec { background:var(--card); border-radius:18px; box-shadow:var(--shadow); margin-bottom:12px; overflow:hidden; }
+.psec > summary { list-style:none; cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:15px 16px; font-weight:700; font-size:1.02rem; }
+.psec > summary::-webkit-details-marker { display:none; }
+.psec .psec-caret { color:var(--muted); font-size:1.3rem; transition:transform .15s; flex:none; }
+.psec[open] > summary { border-bottom:1px solid var(--line); }
+.psec[open] .psec-caret { transform:rotate(90deg); }
+.psec-body { padding:12px 16px 16px; }
+.psec-body > .card { box-shadow:none; background:var(--bg); }
+.psec-body > .card:first-child { margin-top:0; }
+.psec-t { min-width:0; }

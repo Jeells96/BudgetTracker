@@ -44,24 +44,36 @@ export const DEFAULT_SETTINGS = {
   pending: [],                      // "track later" items: price only, not yet logged {id, amount, date}
   seeded: false,                    // spreadsheet history imported?
   // Loans / payoff planner (seeded from Loans.xlsx). Each loan keeps its original
-  // terms plus a current `balance` as of `asOf` — the actual balance from your real
-  // statement, so past extra payments are already baked in ("my progress"). Going
-  // forward:
-  //   extra      = a flat extra you plan to add to EVERY future payment (0 = none)
-  //   extras     = one-off overrides per due date { 'YYYY-MM-DD': amount } (blank = $0;
-  //                you can always go back and set one). An override wins over `extra`.
+  // terms and its recorded extra payments; the current balance is DERIVED by
+  // amortizing from the start date applying the scheduled payment + those extras, so
+  // you can go back and change which months you actually paid extra and the balance
+  // re-figures itself.
+  //   extras  = per-due-date extra payments { 'YYYY-MM-DD': amount }. Past entries are
+  //             what you actually paid (seeded from the sheet) — edit or delete any you
+  //             didn't make. A blank date means no extra that month.
+  //   extra   = a flat extra applied to EVERY future payment (a quick "pay $X more/mo"
+  //             scenario; 0 = none). A per-date entry overrides it.
+  //   adjust  = one-time balance correction for statement quirks (e.g. an escrow bump),
+  //             so the derived balance matches your real statement.
+  //   deleted = hide a loan you don't want tracked.
   finance: DEFAULT_FINANCE()
 };
 
-// Loans as of 2026-10-20, balances taken straight from Loans.xlsx (latest payment
-// on or before that date). Rates/payments/terms are the loan originals.
+// Loans from Loans.xlsx. Balances derive from these terms + recorded extras; `adjust`
+// pins the derived balance to the real statement as of Oct 2026.
 function DEFAULT_FINANCE() {
+  const houseExtras = {};                       // the $100/mo you actually paid, Aug 2024 → Oct 2026
+  let hy = 2024, hm = 8;
+  while (hy < 2026 || (hy === 2026 && hm <= 10)) {
+    houseExtras[`${hy}-${String(hm).padStart(2, '0')}-01`] = 100;
+    hm++; if (hm > 12) { hm = 1; hy++; }
+  }
   return {
     loans: [
-      { id: 'car',     name: 'Car',     sub: 'KIA', lender: 'Gesa',     emoji: '🚗', principal: 11742.67, rate: 0.0299, payment: 321.04, start: '2026-01-09', balance: 2791.90,   asOf: '2026-10-09', extra: 0, extras: {} },
-      { id: 'truck',   name: 'Truck',   sub: '',    lender: 'IBEW',     emoji: '🛻', principal: 28867,    rate: 0.0549, payment: 413.71, start: '2023-09-01', balance: 0,         asOf: '2026-10-01', extra: 0, extras: {} },
-      { id: 'trailer', name: 'Trailer', sub: '',    lender: 'Peak',     emoji: '🚐', principal: 29102.80, rate: 0.0749, payment: 306.94, start: '2025-08-08', balance: 2431.56,   asOf: '2026-10-08', extra: 0, extras: {} },
-      { id: 'house',   name: 'House',   sub: '',    lender: 'Citizens', emoji: '🏠', principal: 312000,   rate: 0.0325, payment: 1357.84, start: '2020-01-01', balance: 265882.77, asOf: '2026-10-01', extra: 0, extras: {} }
+      { id: 'car',     name: 'Car',     sub: 'KIA', lender: 'Gesa',     emoji: '🚗', principal: 11742.67, rate: 0.0299, payment: 321.04188852945856, start: '2026-01-09', adjust: 0,       extra: 0, extras: { '2026-10-09': 6000 } },
+      { id: 'truck',   name: 'Truck',   sub: '',    lender: 'IBEW',     emoji: '🛻', principal: 28867,    rate: 0.0549, payment: 413.71367515129634, start: '2023-09-01', adjust: 0,       extra: 0, extras: { '2026-04-01': 1415, '2026-07-01': 6000, '2026-08-01': 6000, '2026-09-01': 3989.96 } },
+      { id: 'trailer', name: 'Trailer', sub: '',    lender: 'Peak',     emoji: '🚐', principal: 29102.80, rate: 0.0749, payment: 306.9430570308452,  start: '2025-08-08', adjust: -83.40, extra: 0, extras: { '2026-04-08': 1000, '2026-05-08': 1000, '2026-06-08': 22000 } },
+      { id: 'house',   name: 'House',   sub: '',    lender: 'Citizens', emoji: '🏠', principal: 312000,   rate: 0.0325, payment: 1357.8437155058275, start: '2020-01-01', adjust: 3697.65, extra: 0, extras: houseExtras }
     ],
     // Investment what-if: monthly contribution, horizon, expected annual return.
     invest: { monthly: 500, years: 20, rate: 0.07 }

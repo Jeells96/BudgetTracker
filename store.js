@@ -1,6 +1,6 @@
-import { firebaseConfig } from './firebase-config.js?v=57';
-import { DEFAULT_SETTINGS } from './defaults.js?v=57';
-import { HISTORY } from './history.js?v=57';
+import { firebaseConfig } from './firebase-config.js?v=58';
+import { DEFAULT_SETTINGS } from './defaults.js?v=58';
+import { HISTORY } from './history.js?v=58';
 
 const LS_KEY = 'budget-tracker-v2';
 const CDN = 'https://www.gstatic.com/firebasejs/11.0.2/';
@@ -56,10 +56,10 @@ function normalizeFinance(fin) {
       name: u.name || d.name, lender: u.lender ?? d.lender,
       rate: u.rate != null ? u.rate : d.rate,
       payment: u.payment != null ? u.payment : d.payment,
-      balance: u.balance != null ? u.balance : d.balance,
-      asOf: u.asOf || d.asOf,
+      adjust: u.adjust != null ? u.adjust : d.adjust,
       extra: u.extra != null ? u.extra : d.extra,
-      extras: (u.extras && typeof u.extras === 'object') ? u.extras : {}
+      extras: (u.extras && typeof u.extras === 'object') ? u.extras : d.extras,
+      deleted: !!u.deleted
     };
   });
   // Keep any custom loans the user added that aren't part of the defaults.

@@ -466,46 +466,57 @@ export function addMonthsYmd(s, n) {
   return ymd(t);
 }
 
-// Project a loan forward from its current balance (as-of snapshot) on its monthly
-// schedule, applying the scheduled payment plus any extra each due date. The extra
-// for a date is its explicit per-date entry if set, otherwise the loan's flat
-// "extra every month" amount (0 by default — nothing extra unless you say so).
-// `over` lets callers override { bulk, extras } to compare scenarios.
-export function loanProject(loan, now = new Date(), over = null) {
+// Amortize a loan from its origin on its monthly schedule. Each due date pays the
+// scheduled amount plus any extra: an explicit per-date entry if set (edit any month
+// — past "did I actually pay extra?" or future planned), otherwise the flat "extra
+// every month" (bulk) on FUTURE dates only (0 = nothing extra). `loan.adjust` is a
+// one-time balance correction (statement quirks like an escrow bump) injected at the
+// as-of point so both the current balance and the forward projection stay true.
+// `over` replaces { extras, bulk } for scenario comparisons.
+export function loanAmortize(loan, now = new Date(), over = null) {
   const r = (loan.rate || 0) / 12, pay = loan.payment || 0;
   const extras = (over && over.extras) || loan.extras || {};
   const bulk = Math.max(0, (over && over.bulk != null) ? over.bulk : (loan.extra || 0));
-  const asOf = loan.asOf || loan.start;
-  let bal = Math.max(0, loan.balance != null ? loan.balance : (loan.principal || 0));
-  let d = addMonthsYmd(asOf, 1), guard = 0, interest = 0;
-  const rows = [];
-  let payoff = bal <= 0.005 ? asOf : null;
-  while (bal > 0.005 && guard++ < 1800) {
-    const i = bal * r;
-    let principal = pay - i; if (principal < 0) principal = 0;
-    let extra = extras[d] != null ? Math.max(0, extras[d]) : bulk;
+  const adjust = loan.adjust || 0, today = ymd(now);
+  let bal = loan.principal || 0, d = loan.start, guard = 0, applied = false;
+  const rows = []; let curBal = loan.principal || 0, interestFuture = 0, payoff = null, asOf = loan.start;
+  while (guard++ < 2400) {
+    const future = d > today;
+    if (future && !applied) { bal = Math.max(0, bal + adjust); applied = true; }   // inject the correction
+    if (bal <= 0.005) { if (!payoff) payoff = rows.length ? rows[rows.length - 1].date : loan.start; break; }
+    const interest = bal * r;
+    let principal = pay - interest; if (principal < 0) principal = 0;
+    let extra = extras[d] != null ? Math.max(0, extras[d]) : (future ? bulk : 0);
     if (principal + extra >= bal) { principal = Math.min(principal, bal); extra = Math.max(0, bal - principal); }
-    const total = principal + extra;
-    bal -= total; interest += i;
-    rows.push({ date: d, interest: round(i), principal: round(principal), extra: round(extra), total: round(total), balance: round(Math.max(0, bal)) });
+    bal -= principal + extra;
+    rows.push({ date: d, future, interest: round(interest), principal: round(principal), extra: round(extra), total: round(principal + extra), balance: round(Math.max(0, bal)) });
+    if (!future) { curBal = bal; asOf = d; }
+    if (future) interestFuture += interest;
     if (bal <= 0.005 && !payoff) payoff = d;
     d = addMonthsYmd(d, 1);
   }
-  return { rows, payoff, interest: round(interest), months: rows.length, paidOff: (loan.balance || 0) <= 0.005 };
+  return { rows, payoff, asOf, balance: Math.max(0, round(curBal + adjust)), interestFuture: round(interestFuture), monthsFuture: rows.filter((x) => x.future).length };
 }
 
-// Summary for a loan: current-plan payoff vs the no-extra baseline, so we can show
-// interest saved and months shaved off by paying extra.
+// Keep only the already-happened extras (dates on or before today) — the baseline
+// for "what you'd pay from here at the minimum".
+function pastExtras(extras, today) {
+  const o = {}; for (const k in (extras || {})) if (k <= today) o[k] = extras[k]; return o;
+}
+
+// Summary for a loan: current-plan payoff vs the minimum-from-here baseline, so we
+// can show interest and time saved by paying extra.
 export function loanStats(loan, now = new Date()) {
-  const plan = loanProject(loan, now);
-  const base = loanProject(loan, now, { bulk: 0, extras: {} });
-  const principal = loan.principal || 0, bal = Math.max(0, loan.balance || 0);
+  const today = ymd(now);
+  const plan = loanAmortize(loan, now);
+  const base = loanAmortize(loan, now, { bulk: 0, extras: pastExtras(loan.extras, today) });
+  const principal = loan.principal || 0, bal = plan.balance;
   return {
-    balance: round(bal), principal: round(principal),
+    balance: bal, principal: round(principal), asOf: plan.asOf,
     paidPct: principal > 0 ? Math.max(0, Math.min(100, round((1 - bal / principal) * 100))) : (bal <= 0.005 ? 100 : 0),
-    payoff: plan.payoff, months: plan.months, interestRemaining: plan.interest,
-    basePayoff: base.payoff, baseMonths: base.months, baseInterest: base.interest,
-    interestSaved: round(base.interest - plan.interest), monthsSaved: base.months - plan.months,
+    payoff: plan.payoff, months: plan.monthsFuture, interestRemaining: plan.interestFuture,
+    basePayoff: base.payoff, baseMonths: base.monthsFuture, baseInterest: base.interestFuture,
+    interestSaved: round(base.interestFuture - plan.interestFuture), monthsSaved: base.monthsFuture - plan.monthsFuture,
     paidOff: bal <= 0.005, rows: plan.rows
   };
 }

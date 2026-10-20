@@ -1,10 +1,13 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=57';
-import { TRANSFERS } from './defaults.js?v=57';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanProject, loanStats, investFV, addMonthsYmd } from './calc.js?v=57';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=58';
+import { TRANSFERS } from './defaults.js?v=58';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd } from './calc.js?v=58';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const money = (n) => (n < 0 ? '-' : '') + '$' + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: Math.abs(n) % 1 ? 2 : 0, maximumFractionDigits: 2 });
+// Text-box number formatting: show thousands separators, parse back by stripping them.
+const fmtNum = (n) => (n == null || n === '' || isNaN(n)) ? '' : Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 });
+const parseNum = (v) => { const n = parseFloat(String(v).replace(/[^0-9.\-]/g, '')); return isNaN(n) ? 0 : n; };
 
 const today = () => ymd(new Date());
 const monthKey = (d) => ymd(d).slice(0, 7);
@@ -14,11 +17,11 @@ const dayLabel = (s) => {
   if (s === today()) return 'Today';
   const y = new Date(); y.setDate(y.getDate() - 1);
   if (s === ymd(y)) return 'Yesterday';
-  const d = parseYmd(s);
-  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', ...(d.getFullYear() !== new Date().getFullYear() ? { year: 'numeric' } : {}) });
+  return parseYmd(s).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
 };
 const ordinal = (n) => n + (['th', 'st', 'nd', 'rd'][(n % 100 >> 3) ^ 1 && n % 10 < 4 ? n % 10 : 0]);
-const moDay = (s) => parseYmd(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+// Dates always show the year.
+const moDay = (s) => parseYmd(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 const moYr = (s) => parseYmd(s).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
 
 const ui = { tab: 'home', month: monthKey(new Date()), filter: 'all', all: false, q: '', planDraft: {}, planLive: true, openCat: null, openLoan: null };
@@ -65,7 +68,7 @@ function maybePendingPrompt() {
 }
 function render() {
   document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === ui.tab));
-  $('#app').innerHTML = { home, bills, plan: planTab, finance, settings }[ui.tab]();
+  $('#app').innerHTML = ({ home, plan: planTab, finance, settings }[ui.tab] || home)();
 }
 store.onChange = () => { if (!document.activeElement || !document.activeElement.closest('#app input')) render(); };
 
@@ -187,7 +190,7 @@ function home() {
     ...s.categories.filter((c) => !rolledIds.has(c.id)).map((c) => { const bud = cb(c); return exRow(c.emoji, c.name, ms.byCat[c.id], bud, c.id, bud > 0); }),
     otherRow,
     exRow('🐷', 'Savings', ms.savingsIn, savingsTarget, 'savings', savingsTarget > 0, true),
-    moneyRow('🏦', 'Bills account', ms.billsIn, ms.billsTotal, 'goto', 'bills', true)
+    moneyRow('🏦', 'Bills account', ms.billsIn, ms.billsTotal, 'goto', 'plan', true)
   ].join('');
 
   return `${header('Budget')}
@@ -210,7 +213,7 @@ function txRow(t) {
   else if (t.type === 'transfer') { const x = tfer(t.category); const nm = x?.name || t.category; icon = x?.emoji || '🔁'; label = t.note || nm; sub = t.note ? nm : ''; amt = `<div class="amt xfer">${money(t.amount)}</div>`; }
   else { const c = cat(t.category); icon = c ? c.emoji : '🧾'; label = t.note || (c ? c.name : 'Purchase'); sub = c ? c.name : t.category; amt = `<div class="amt">${money(t.amount)}</div>`; }
   const ccDot = (t.type === 'expense' && t.pay === 'credit' ? ' <span class="cc-dot" title="Credit card">💳</span>' : '') + (t.exAvg ? ' <span class="ex-tag" title="Excluded from average">excl. avg</span>' : '');
-  const dateStr = parseYmd(t.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const dateStr = parseYmd(t.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   const picked = sel.ids.has(t.id);
   return `<div class="tx${picked ? ' selected' : ''}">
     <button class="selbox${picked ? ' on' : ''}" data-act="tx-toggle" data-id="${esc(t.id)}" aria-label="Select for total"></button>
@@ -221,7 +224,7 @@ function txRow(t) {
 function billsAcctCard(s, now = new Date()) {
   const bp = billsProjection(s, store.txs, now);
   const asOfLabel = bp.hasBal ? 'as of ' + shortDate(parseYmd(bp.asOf)) + (bp.staleDays >= 1 ? ` · ${bp.staleDays} day${bp.staleDays === 1 ? '' : 's'} ago` : '') : 'enter your bank balance to start';
-  const firstLabel = parseYmd(bp.firstDue).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const firstLabel = parseYmd(bp.firstDue).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   const verdict = !bp.hasBal ? ''
     : bp.covered
       ? `<b class="goodtext">Covered · ${money(bp.surplus)} to spare</b>`
@@ -246,7 +249,7 @@ function billsAcctCard(s, now = new Date()) {
 
   return `<div class="card">
     <div class="field"><label>Bills account balance<br><span class="muted" style="font-size:.8rem">${asOfLabel}</span></label>
-      <input type="number" inputmode="decimal" value="${bp.hasBal ? bp.bal : ''}" placeholder="0" data-billsbal></div>
+      <input type="text" inputmode="decimal" value="${bp.hasBal ? fmtNum(bp.bal) : ''}" placeholder="0" data-billsbal></div>
     ${staleNote}
     ${bp.hasBal ? `<div class="week" style="margin-top:2px"><span class="muted">${bp.fridays} Friday${bp.fridays === 1 ? '' : 's'} left in ${bp.monthName}</span>${verdict}</div>
     <div class="ccbreak" style="margin-top:8px">
@@ -261,35 +264,19 @@ function billsAcctCard(s, now = new Date()) {
   </div>`;
 }
 
-function bills() {
-  const s = S();
-  const byDay = [...s.bills].sort((a, b) => a.day - b.day || a.name.localeCompare(b.name));
-  const first = byDay.filter((x) => x.day === 1), later = byDay.filter((x) => x.day !== 1);
-  const tot = (l) => round(l.reduce((a, x) => a + billAmount(x), 0));
-  const billRow = (x) => `<div class="bill"><div class="d-badge">${x.day}</div><div class="body"><div class="n">${esc(x.name)}</div><div class="d">Auto-pays the ${ordinal(x.day)}${x.useAvg && x.history && x.history.length ? ' · 12-mo avg' : ''}</div></div><div class="amt">${money(billAmount(x))}</div></div>`;
-
-  return `${header('Bills')}
-    ${cardSection()}
-    <h2>Bills account</h2>
-    ${billsAcctCard(s)}
-    <button class="btn block" data-act="log-xfer" data-id="bills">+ Log a transfer to the bills account</button>
-    <h2>Due on the 1st · ${money(tot(first))}</h2><div class="card">${first.map(billRow).join('') || '<div class="empty">Nothing due on the 1st.</div>'}</div>
-    ${later.length ? `<h2>Later in the month · ${money(tot(later))}</h2><div class="card">${later.map(billRow).join('')}</div>` : ''}
-    <p class="note">Bills pay themselves, so there's nothing to check off. Change amounts and due days in Settings.</p>`;
-}
 
 function payoffScheduleHTML(sch) {
   if (!sch.payments.length) return '';
   const thisFri = ymd(nextPayday(new Date(), S().weekStartDay ?? 5));
-  const label = (d) => d === thisFri ? 'This Fri' : parseYmd(d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  const label = (d) => d === thisFri ? 'This Fri' : parseYmd(d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
   const rows = sch.payments.map((p) => {
     const tag = p.paid ? ' <span class="paidtag">✓ paid</span>' : (p.manual ? ' <span class="mantag">edited</span>' : '');
     const revert = p.manual ? `<button class="link" data-act="cc-pay-clear" data-id="${p.date}" title="Back to auto">↺</button>` : '';
     return `<div class="sch-row${p.paid ? ' paid' : ''}${p.manual ? ' man' : ''}"><span>${label(p.date)}${tag}</span>
-      <span class="ccedit">${revert}<input class="ccinput" type="number" inputmode="decimal" value="${p.amount}" data-cc-pay="${p.date}"></span></div>`;
+      <span class="ccedit">${revert}<input class="ccinput" type="text" inputmode="decimal" value="${fmtNum(p.amount)}" data-cc-pay="${p.date}"></span></div>`;
   }).join('');
   const endD = sch.payoffDate || sch.end;
-  const head = `<div class="week"><span class="muted">Payoff plan · ${sch.weeks} payment${sch.weeks === 1 ? '' : 's'}</span><b class="goodtext">clear by ${parseYmd(endD).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</b></div>`;
+  const head = `<div class="week"><span class="muted">Payoff plan · ${sch.weeks} payment${sch.weeks === 1 ? '' : 's'}</span><b class="goodtext">clear by ${parseYmd(endD).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</b></div>`;
   return `<div class="plan">
     ${head}
     <div class="sched">${rows}</div>
@@ -339,28 +326,39 @@ function cardSection() {
   if (auto) {
     setup = `
       <div class="field"><label>Starting balance<br><span class="muted" style="font-size:.8rem">${det.asOf ? 'as of ' + shortDate(parseYmd(det.asOf)) : 'set this to start tracking'}</span></label>
-        <input type="number" inputmode="decimal" value="${cc.start || ''}" placeholder="0" data-cc="start"></div>
+        <input type="text" inputmode="decimal" value="${fmtNum(cc.start || '')}" placeholder="0" data-cc="start"></div>
       <div class="ccbreak">
         <div><span>Starting balance</span><b>${money(det.start)}</b></div>
         <div><span>+ purchases since${det.adj ? ' <small>(adjusted)</small>' : ''}</span>
-          <span class="ccedit">${det.adj ? '<button class="link" data-act="cc-charges-reset" title="Back to tracked">↺</button>' : ''}<input class="ccinput" type="number" inputmode="decimal" value="${det.credit}" data-cc="charges"></span></div>
+          <span class="ccedit">${det.adj ? '<button class="link" data-act="cc-charges-reset" title="Back to tracked">↺</button>' : ''}<input class="ccinput" type="text" inputmode="decimal" value="${fmtNum(det.credit)}" data-cc="charges"></span></div>
         <div><span>− card payments since</span><b>${money(det.paid)}</b></div>
         <div class="tot"><span>Current balance</span><b>${money(det.computed)}</b></div></div>
       <button class="btn block" data-act="cc-reset" style="margin-top:8px">↺ Reset balance to actual</button>
       <p class="note" style="margin:6px 0 0">Returns or credits throwing it off? Reset re-baselines to a number you type (stays on auto from there).</p>`;
   } else {
     setup = `
-      <div class="field"><label>Your current balance</label><input type="number" inputmode="decimal" value="${cc.manual || ''}" placeholder="0" data-cc="manual"></div>
+      <div class="field"><label>Your current balance</label><input type="text" inputmode="decimal" value="${fmtNum(cc.manual || '')}" placeholder="0" data-cc="manual"></div>
       <div class="ccbreak"><div class="tot"><span>App estimate</span><b>${money(det.computed)}</b></div>
         <div><span>Difference</span><b class="${diff ? 'negtext' : ''}">${diff === 0 ? 'matches' : (diff > 0 ? '+' : '−') + money(Math.abs(diff)).replace('-', '')}</b></div></div>`;
   }
 
-  return `<h2>Credit card</h2><div class="card">
+  return `<div class="card">
     ${wp.cardBalance > 0 ? planBlock : '<div class="note" style="margin:0 0 8px">No balance to pay off right now.</div>'}
     ${modeToggle}
     ${setup}
     <div class="note">Statement closes the ${ordinal(cyc.endDay)} · this cycle ${shortDate(parseYmd(cyc.start))} – ${shortDate(parseYmd(cyc.end))}. New purchases default to credit card when you log them.</div>
     <button class="btn block" data-act="log-xfer" data-id="card">+ Log a card payment</button></div>`;
+}
+
+// The monthly bills list (due on the 1st, then later), used in the Plan tab.
+function billsListHTML(s) {
+  const byDay = [...s.bills].sort((a, b) => a.day - b.day || a.name.localeCompare(b.name));
+  const first = byDay.filter((x) => x.day === 1), later = byDay.filter((x) => x.day !== 1);
+  const tot = (l) => round(l.reduce((a, x) => a + billAmount(x), 0));
+  const billRow = (x) => `<div class="bill"><div class="d-badge">${x.day}</div><div class="body"><div class="n">${esc(x.name)}</div><div class="d">Auto-pays the ${ordinal(x.day)}${x.useAvg && x.history && x.history.length ? ' · 12-mo avg' : ''}</div></div><div class="amt">${money(billAmount(x))}</div></div>`;
+  return `<div class="bill-sub">Due on the 1st · ${money(tot(first))}</div><div class="card">${first.map(billRow).join('') || '<div class="empty">Nothing due on the 1st.</div>'}</div>
+    ${later.length ? `<div class="bill-sub">Later in the month · ${money(tot(later))}</div><div class="card">${later.map(billRow).join('')}</div>` : ''}
+    <p class="note">Bills pay themselves, so there's nothing to check off. Change amounts and due days in Settings.</p>`;
 }
 
 // Merge the (persisted) what-if draft over the computed recommendation.
@@ -402,31 +400,16 @@ function planTab() {
   const edq = (field) => ui.planDraft[field] !== undefined;    // has a what-if edit?
   // Always show the reset-to-recommended ↺ (consistent columns + resettable even with a custom value).
   const resetBtn = (field) => `<button class="cellx" data-act="plan-reset-field" data-id="${field}" title="Reset to recommended">↺</button>`;
-  const erow = (label, field, extra = '') => `<div class="trow"><span>${label}</span><span class="b">${money(stdVal[field])}</span><span class="n"><input class="plancell" data-plan="${field}" type="number" inputmode="decimal" placeholder="0" value="${p[field] || ''}">${resetBtn(field)}<button class="cellx" data-act="plan-clear" data-id="${field}" title="Clear">✕</button></span></div>${extra}`;
-
-  const btAsOf = bt.hasBal ? 'as of ' + shortDate(parseYmd(bt.asOf)) + (bt.staleDays >= 1 ? ` · ${bt.staleDays}d ago` : '') : 'enter it to see the weekly transfer you need';
-  const btLump = bt.overfund > 0.005 ? ` · ${money(bt.overfund)} total` : '';
-  const billsBox = `<div class="card">
-    <div class="field"><label>Bills account balance<br><span class="muted" style="font-size:.8rem">${btAsOf}</span></label>
-      <input type="number" inputmode="decimal" value="${bt.hasBal ? bt.bal : ''}" placeholder="0" data-billsbal></div>
-    ${bt.hasBal ? `<div class="week" style="margin-top:2px"><span class="muted">${bt.fridays} Friday${bt.fridays === 1 ? '' : 's'} left before ${bt.nextMonthName} 1st</span><b class="${bt.covered ? 'goodtext' : 'negtext'}">${bt.covered ? money(bt.surplus) + ' to spare' : 'short ' + money(bt.shortfall)}</b></div>
-    <div class="ccbreak" style="margin-top:8px">
-      <div><span>Weekly transfer needed</span><b>${money(bt.weeklyNeeded)}</b></div>
-      <div><span>On the table (your plan)</span><b>${money(bt.onTable)}</b></div>
-      <div class="tot"><span>${bt.diff > 0.005 ? 'Transfer more' : bt.diff < -0.005 ? 'You can move less' : 'Right on plan'}</span>
-        <b class="${bt.diff > 0.005 ? 'negtext' : 'goodtext'}">${Math.abs(bt.diff) < 0.005 ? '—' : money(Math.abs(bt.diff)) + '/wk' + btLump}</b></div>
-    </div>
-    <p class="note" style="margin:6px 0 0">Editable here or on the Bills tab — same number. FYI only; it doesn't change your plan below.</p>` : ''}
-  </div>`;
+  const erow = (label, field, extra = '') => `<div class="trow"><span>${label}</span><span class="b">${money(stdVal[field])}</span><span class="n"><input class="plancell" data-plan="${field}" type="text" inputmode="decimal" placeholder="0" value="${fmtNum(p[field] || '')}">${resetBtn(field)}<button class="cellx" data-act="plan-clear" data-id="${field}" title="Clear">✕</button></span></div>${extra}`;
 
   const stratLabel = { extra: 'from leftover', spend: 'spending less', save: 'saving less', split: 'splitting the difference', stretch: 'stretching the payoff', none: '' }[wp.strategy];
   const cardNote = sch.balance > 0
-    ? `Card balance ${money(sch.balance)} → paying <b>${money(rc.extra)}</b> this Friday (${stratLabel}).${sch.multi ? ` Paid off by ${parseYmd(sch.payoffDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} (${sch.weeks} payments — see Bills tab to change the strategy).` : ' Cleared this payday.'} Your everyday spending stays at ${money(rc.everyday)} and doesn't touch the balance as long as you're at or under it.`
+    ? `Card balance ${money(sch.balance)} → paying <b>${money(rc.extra)}</b> this Friday (${stratLabel}).${sch.multi ? ` Paid off by ${moDay(sch.payoffDate)} (${sch.weeks} payments — open Credit card below to change the strategy).` : ' Cleared this payday.'} Your everyday spending stays at ${money(rc.everyday)} and doesn't touch the balance as long as you're at or under it.`
     : `No card balance. The Extra line is spare money after everything else.`;
 
   // Indented editable sub-row (used inside the merged Spending + card group).
   // `std` lets us override the Standard-week value (a perfect standard week has no card debt).
-  const subrow = (label, field, std = stdVal[field]) => `<div class="trow sub"><span>↳ ${label}</span><span class="b">${money(std)}</span><span class="n"><input class="plancell" data-plan="${field}" type="number" inputmode="decimal" placeholder="0" value="${p[field] || ''}">${resetBtn(field)}<button class="cellx" data-act="plan-clear" data-id="${field}" title="Clear">✕</button></span></div>`;
+  const subrow = (label, field, std = stdVal[field]) => `<div class="trow sub"><span>↳ ${label}</span><span class="b">${money(std)}</span><span class="n"><input class="plancell" data-plan="${field}" type="text" inputmode="decimal" placeholder="0" value="${fmtNum(p[field] || '')}">${resetBtn(field)}<button class="cellx" data-act="plan-clear" data-id="${field}" title="Clear">✕</button></span></div>`;
 
   // Live toggle: Spending shows what you've actually spent this week (live) or your
   // planned budget. Tapping flips between the two; the Recommended/reset follows it.
@@ -442,9 +425,7 @@ function planTab() {
        ${subrow('Card paydown', 'extra', 0)}`
     : `${erow('Everyday spending', 'everyday', liveChip)}${erow('Extra', 'extra')}`;
 
-  return `${header('Plan', false)}
-    <p class="lead"><b>Spending</b> can show your <b>live</b> actual spent this week or your planned <b>budget</b> — tap the chip under it to switch. Tap any amount to try a what-if; the pool and leftover update with no math.</p>
-    <h2>Bills account</h2>${billsBox}
+  const plannerBody = `
     <div class="card plan-table">
       <div class="trow head"><span></span><span class="b">Standard week</span><span class="n">Recommended</span></div>
       ${erow('Paycheck', 'pay')}
@@ -457,51 +438,75 @@ function planTab() {
     <div class="callout ${p.leftover < 0 ? 'bad' : 'good'}" id="plan-callout">${calloutHTML(p.leftover)}</div>
     <button class="btn block" id="plan-reset-btn" data-act="plan-reset" ${edited ? '' : 'hidden'}>↺ Reset to recommended</button>
     <p class="note">${cardNote} Edits are saved until you reset.</p>`;
+
+  // Each area is a collapsible section. The weekly planner is open by default; the
+  // rest start collapsed. (Native <details>, so open/closed is remembered per tap.)
+  const sec = (title, body, open = false) => `<details class="psec"${open ? ' open' : ''}><summary><span class="psec-t">${title}</span><span class="psec-caret">›</span></summary><div class="psec-body">${body}</div></details>`;
+  const billsAcctBody = billsAcctCard(s) + `<button class="btn block" data-act="log-xfer" data-id="bills" style="margin-top:8px">+ Log a transfer to the bills account</button>`;
+  const baTag = bt.hasBal ? (bt.covered ? ' · covered' : ' · short ' + money(bt.shortfall)) : '';
+
+  return `${header('Plan', false)}
+    <p class="lead"><b>Spending</b> can show your <b>live</b> actual spent this week or your planned <b>budget</b> — tap the chip to switch. Tap any amount to try a what-if. Tap a section header to expand it.</p>
+    ${sec("📊 This week's plan", plannerBody, true)}
+    ${sec(`💳 Credit card · ${money(wp.cardBalance)}`, cardSection())}
+    ${sec(`🏦 Bills account balance${baTag}`, billsAcctBody)}
+    ${sec(`🧾 Monthly bills · ${money(billsTotal(s))}`, billsListHTML(s))}`;
 }
 
 // ---------- Finance: loan payoff planner + investment what-if ----------
 const loanById = (id) => S().finance.loans.find((l) => l.id === id);
 
 function finance() {
-  const fin = S().finance, now = new Date();
-  const active = fin.loans.filter((l) => (l.balance || 0) > 0.005);
-  const paidCount = fin.loans.length - active.length;
-  const totalDebt = round(active.reduce((a, l) => a + (l.balance || 0), 0));
-  const totalInterest = round(active.reduce((a, l) => a + loanStats(l, now).interestRemaining, 0));
+  const now = new Date();
+  const loans = S().finance.loans.filter((l) => !l.deleted);
+  const stats = loans.map((l) => [l, loanStats(l, now)]);
+  const active = stats.filter(([, st]) => !st.paidOff);
+  const paidCount = stats.length - active.length;
+  const totalDebt = round(active.reduce((a, [, st]) => a + st.balance, 0));
+  const totalInterest = round(active.reduce((a, [, st]) => a + st.interestRemaining, 0));
+  const totalSaved = round(active.reduce((a, [, st]) => a + Math.max(0, st.interestSaved), 0));
   return `${header('Finance', false)}
-    <div class="card hero" style="box-shadow:none;padding:4px 0">
-      <div class="label">Total debt</div>
-      <div class="big">${money(totalDebt)}</div>
-      <div class="note" style="margin-top:6px">${active.length} active loan${active.length === 1 ? '' : 's'}${paidCount ? ` · ${paidCount} paid off 🎉` : ''}${totalDebt > 0 ? ` · ${money(totalInterest)} interest left at your current plan` : ''}</div>
+    <div class="finhero">
+      <div class="fh-label">Total debt</div>
+      <div class="fh-big">${money(totalDebt)}</div>
+      <div class="fh-sub">${active.length} active loan${active.length === 1 ? '' : 's'}${paidCount ? ` · ${paidCount} paid off 🎉` : ''}</div>
+      <div class="fh-grid">
+        <div><span>Interest left</span><b>${money(totalInterest)}</b></div>
+        <div><span>Saving with extra</span><b class="goodtext">${totalSaved > 0 ? money(totalSaved) : '—'}</b></div>
+      </div>
     </div>
     <h2>Loans</h2>
-    <p class="lead">Balances are set from your statements, so past extra payments already count. Add an <b>extra every month</b> or tap a due date for a one-off — leave a date blank and it assumes no extra that month. Projections update instantly.</p>
-    ${fin.loans.map((l) => financeLoanCard(l, now)).join('')}
+    <p class="lead">Balances come from each loan's terms plus the extra payments you've logged — go to any month you <b>didn't</b> actually pay extra and clear it, and the balance re-figures. Set an <b>extra every month</b> to see the interest you'd save.</p>
+    ${stats.map(([l, st]) => financeLoanCard(l, st)).join('')}
+    <button class="btn block" data-act="loan-add" style="margin-top:4px">+ Add a loan</button>
     ${financeInvest(now)}`;
 }
 
-function financeLoanCard(loan, now) {
-  const st = loanStats(loan, now), open = ui.openLoan === loan.id, paid = st.paidOff;
+function financeLoanCard(loan, st) {
+  const open = ui.openLoan === loan.id, paid = st.paidOff;
   const head = `<button class="loan-head" data-act="loan-toggle" data-id="${loan.id}">
     <div class="emoji">${loan.emoji || '💵'}</div>
     <div class="body">
       <div class="row"><span class="n">${esc(loan.name)}</span><span class="a">${paid ? '<b class="goodtext">Paid off 🎉</b>' : money(st.balance)}</span></div>
       <div class="bar"><i style="width:${st.paidPct}%"></i></div>
-      <div class="du-note">${paid ? `Cleared · ${esc(loan.lender || '')}` : `${st.paidPct}% paid · debt-free ${moYr(st.payoff)}${loan.lender ? ` · ${esc(loan.lender)}` : ''}`}</div>
+      <div class="du-note">${paid ? `Cleared${loan.lender ? ` · ${esc(loan.lender)}` : ''}` : `${st.paidPct}% paid · debt-free ${moYr(st.payoff)}${loan.lender ? ` · ${esc(loan.lender)}` : ''}`}</div>
     </div><span class="chev ${open ? 'down' : ''}">›</span></button>`;
   if (!open) return `<div class="card loan ${paid ? 'done' : ''}">${head}</div>`;
-  if (paid) return `<div class="card loan done">${head}<div class="loan-body"><div class="empty">This loan is paid off. 🎉 Nothing left to plan.</div></div></div>`;
 
-  const extra = loan.extra || 0;
-  const savedLine = extra > 0 && st.monthsSaved > 0
-    ? `<div class="du-note good">Paying ${money(extra)} extra/mo clears it ${st.monthsSaved} payment${st.monthsSaved === 1 ? '' : 's'} sooner and saves ${money(st.interestSaved)} in interest.</div>`
-    : `<div class="du-note">Minimum-only: debt-free ${moYr(st.basePayoff)}, ${money(st.baseInterest)} interest.</div>`;
-  const rows = st.rows.slice(0, 18);
-  const more = st.rows.length - rows.length;
-  const schRows = rows.map((r) => `<div class="loan-row">
+  // Schedule window: a few months back (to fix "I didn't pay extra that month") through the upcoming payments.
+  const pivot = (() => { const i = st.rows.findIndex((r) => r.future); return i < 0 ? st.rows.length : i; })();
+  const startI = Math.max(0, pivot - 9);
+  const win = st.rows.slice(startI, pivot + 15);
+  const moreFut = st.rows.length - (pivot + 15);
+  const schRows = win.map((r) => `<div class="loan-row${r.future ? '' : ' past'}">
       <span class="d">${moDay(r.date)}</span><span class="p">${money(r.total)}</span>
-      <span class="x"><input class="fin-num" type="number" inputmode="decimal" placeholder="0" value="${loan.extras[r.date] != null ? loan.extras[r.date] : ''}" data-loanpay="${loan.id}|${r.date}"></span>
+      <span class="x"><input class="fin-num" type="text" inputmode="decimal" placeholder="0" value="${loan.extras[r.date] != null ? fmtNum(loan.extras[r.date]) : ''}" data-loanpay="${loan.id}|${r.date}"></span>
       <span class="bb">${money(r.balance)}</span></div>`).join('');
+  const extra = loan.extra || 0;
+  const savedBox = extra > 0 && st.monthsSaved > 0
+    ? `<div class="savebox"><div><span>Interest saved</span><b class="goodtext">${money(st.interestSaved)}</b></div><div><span>Sooner</span><b>${st.monthsSaved} pmt${st.monthsSaved === 1 ? '' : 's'}</b></div><div><span>vs. minimum</span><b>${moYr(st.basePayoff)}</b></div></div>`
+    : `<div class="du-note">At the minimum: debt-free ${moYr(st.basePayoff)} with ${money(st.baseInterest)} interest. Add an extra below to see what you'd save.</div>`;
+
   return `<div class="card loan open">${head}
     <div class="loan-body">
       <div class="loan-stats">
@@ -509,21 +514,23 @@ function financeLoanCard(loan, now) {
         <div><span>Rate</span><b>${(loan.rate * 100).toFixed(2)}%</b></div>
         <div><span>Payment</span><b>${money(loan.payment)}</b></div>
       </div>
-      <div class="finfield"><label>Balance now <span class="muted">(as of ${moDay(loan.asOf)})</span></label>
-        <input class="fin-num" type="number" inputmode="decimal" value="${round(st.balance)}" data-loanbal="${loan.id}"></div>
-      <div class="finfield"><label>Extra every month</label>
-        <span class="finwrap"><input class="fin-num" type="number" inputmode="decimal" placeholder="0" value="${extra || ''}" data-loanextra="${loan.id}">${extra > 0 ? `<button class="cellx" data-act="loan-extra-reset" data-id="${loan.id}" title="Clear">✕</button>` : ''}</span></div>
+      <div class="finfield"><label>Extra every month <span class="muted">— scenario</span></label>
+        <span class="finwrap"><input class="fin-num" type="text" inputmode="decimal" placeholder="0" value="${fmtNum(extra || '')}" data-loanextra="${loan.id}">${extra > 0 ? `<button class="cellx" data-act="loan-extra-reset" data-id="${loan.id}" title="Clear">✕</button>` : ''}</span></div>
+      ${savedBox}
       <div class="loan-summary">
         <div><span>Debt-free</span><b>${moYr(st.payoff)}</b></div>
         <div><span>Payments left</span><b>${st.months}</b></div>
         <div><span>Interest left</span><b>${money(st.interestRemaining)}</b></div>
       </div>
-      ${savedLine}
+      <div class="loan-schhdr">Payment schedule <span class="muted">— edit any Extra (dim rows already happened)</span></div>
       <div class="loan-sch">
         <div class="loan-row head"><span class="d">Due</span><span class="p">Payment</span><span class="x">Extra</span><span class="bb">Balance</span></div>
         ${schRows}
       </div>
-      ${more > 0 ? `<p class="note">+ ${more} more payment${more === 1 ? '' : 's'} through ${moYr(st.payoff)}.</p>` : ''}
+      ${moreFut > 0 ? `<p class="note">+ ${moreFut} more payment${moreFut === 1 ? '' : 's'} through ${moYr(st.payoff)}.</p>` : ''}
+      <div class="finfield" style="margin-top:12px"><label>Balance correction <span class="muted">— nudge to match your statement</span></label>
+        <input class="fin-num" type="text" inputmode="decimal" value="${fmtNum(round(st.balance))}" data-loanbal="${loan.id}"></div>
+      <button class="btn block danger" data-act="loan-delete" data-id="${loan.id}" style="margin-top:6px">🗑 Delete this loan</button>
     </div></div>`;
 }
 
@@ -534,11 +541,11 @@ function financeInvest(now) {
   return `<h2>Invest instead?</h2>
     <p class="lead">What the same money could grow to in a 401(k), Roth IRA, or high-yield savings — to weigh against paying a loan down early.</p>
     <div class="card">
-      <div class="chips" style="margin:0 -18px 8px;padding-inline:18px">${chips}</div>
-      <div class="finfield"><label>Monthly contribution</label><input class="fin-num" type="number" inputmode="decimal" value="${iv.monthly}" data-inv="monthly"></div>
+      <div class="chips" style="margin:0 -18px 10px;padding-inline:18px">${chips}</div>
+      <div class="finfield"><label>Monthly contribution</label><input class="fin-num" type="text" inputmode="decimal" value="${fmtNum(iv.monthly)}" data-inv="monthly"></div>
       <div class="finrow2">
-        <div class="finfield"><label>Years</label><input class="fin-num" type="number" inputmode="decimal" value="${iv.years}" data-inv="years"></div>
-        <div class="finfield"><label>Return %</label><input class="fin-num" type="number" inputmode="decimal" value="${round(iv.rate * 100)}" data-inv="rate"></div>
+        <div class="finfield"><label>Years</label><input class="fin-num" type="text" inputmode="decimal" value="${fmtNum(iv.years)}" data-inv="years"></div>
+        <div class="finfield"><label>Return %</label><input class="fin-num" type="text" inputmode="decimal" value="${fmtNum(round(iv.rate * 100))}" data-inv="rate"></div>
       </div>
       <div class="invout">
         <div class="big">${money(res.fv)}</div>
@@ -578,10 +585,10 @@ function settings() {
   const syncText = { local: 'Saved on this device only', connecting: 'Connecting…', synced: 'Synced to the cloud ✓', error: 'Not syncing' }[store.sync];
   return `${header('Settings', false)}
     <h2>Weekly plan</h2><div class="card planner">
-      <div class="field"><label>Weekly pay<br><span class="muted" style="font-size:.8rem">= ${money(monthlyIncome(s))} a month</span></label><input type="number" inputmode="decimal" value="${s.weeklyPay}" data-set="weeklyPay"></div>
+      <div class="field"><label>Weekly pay<br><span class="muted" style="font-size:.8rem">= ${money(monthlyIncome(s))} a month</span></label><input type="text" inputmode="decimal" value="${fmtNum(s.weeklyPay)}" data-set="weeklyPay"></div>
       <div class="prow"><span>− Bills account <span class="muted">(total ÷ 4)</span></span><b>${money(sw.bills)}</b></div>
       <div class="prow"><span>− Groceries <span class="muted">(budget ÷ 4)</span></span><b>${money(sw.groceries)}</b></div>
-      <div class="field"><label>− Everyday spending</label><input type="number" inputmode="decimal" value="${s.weeklyBudget}" data-set="weeklyBudget"></div>
+      <div class="field"><label>− Everyday spending</label><input type="text" inputmode="decimal" value="${fmtNum(s.weeklyBudget)}" data-set="weeklyBudget"></div>
       <div class="prow total"><span>Leftover to divide</span><b id="pool" class="${poolBase < 0 ? 'negtext' : ''}">${money(poolBase)}</b></div>
       <div class="splitrow"><div class="splitlabel"><span>🐷 Savings</span><b id="sav-amt">${money(sw.savings)}</b></div>
         <input type="range" id="sav-slider" min="0" max="${Math.max(5, Math.ceil(poolBase))}" step="5" value="${sw.savings}"></div>
@@ -595,7 +602,7 @@ function settings() {
     <h2>Category budgets (monthly)</h2><div class="card">${s.categories.map((c, i) => {
       const avgRow = c.id === 'gas' ? `<label class="muted avgline" style="flex-basis:100%;font-size:.8rem;padding-left:46px"><input type="checkbox" ${c.useAvg ? 'checked' : ''} data-catavg="${i}"> use 12-month average${c.useAvg ? ` (${money(categoryAvg(store.txs, c.id))}) <button class="link" data-act="catavg-view" data-id="${esc(c.id)}">see breakdown ›</button>` : ''}</label>` : '';
       return `<div class="field weekly"><span class="emoji" style="width:36px;height:36px">${c.emoji}</span><label>${esc(c.name)}</label>
-        <input type="number" inputmode="decimal" value="${c.useAvg ? categoryAvg(store.txs, c.id) : c.budget}" ${c.useAvg ? 'disabled title="Using 12-month average"' : ''} data-cat="${i}" data-field="budget">
+        <input type="text" inputmode="decimal" value="${fmtNum(c.useAvg ? categoryAvg(store.txs, c.id) : c.budget)}" ${c.useAvg ? 'disabled title="Using 12-month average"' : ''} data-cat="${i}" data-field="budget">
         <button class="x" data-act="delcat" data-i="${i}" aria-label="Delete">✕</button>
         <label class="muted" style="flex-basis:100%;font-size:.8rem;padding-left:46px"><input type="checkbox" ${c.weekly ? 'checked' : ''} data-cat="${i}" data-field="weekly"> counts toward weekly everyday budget</label>
         ${avgRow}</div>`;
@@ -605,7 +612,7 @@ function settings() {
       <div class="field bill-head"><span style="flex:1">Bill</span><span style="width:84px;text-align:right">Amount</span><span style="width:46px;text-align:center">Day</span><span style="width:64px"></span></div>
       ${s.bills.map((b, i) => `
       <div class="field"><input class="name" type="text" value="${esc(b.name)}" data-bill="${i}" data-field="name">
-        <input type="number" inputmode="decimal" value="${b.useAvg ? billAmount(b) : b.amount}" ${b.useAvg ? 'disabled title="Using 12-month average"' : ''} data-bill="${i}" data-field="amount" style="width:84px">
+        <input type="text" inputmode="decimal" value="${fmtNum(b.useAvg ? billAmount(b) : b.amount)}" ${b.useAvg ? 'disabled title="Using 12-month average"' : ''} data-bill="${i}" data-field="amount" style="width:84px">
         <input type="number" inputmode="numeric" min="1" max="31" value="${b.day}" data-bill="${i}" data-field="day" style="width:46px;text-align:center">
         <button class="btn mini ${b.useAvg ? 'on' : ''}" data-act="billedit" data-i="${i}" aria-label="Edit history">📝</button>
         <button class="x" data-act="delbill" data-i="${i}" aria-label="Delete">✕</button></div>`).join('')}
@@ -658,7 +665,7 @@ function openPending() {
   if (!pend.length) return;
   const rows = pend.map((x) => `<div class="loose-row">
     <button class="loose" data-act="finish-item" data-id="${esc(x.id)}"><div class="emoji">🕗</div>
-      <div class="body"><div class="t">${money(x.amount)}</div><div class="s">added ${parseYmd(x.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · tap to finish</div></div><span class="chev">›</span></button>
+      <div class="body"><div class="t">${money(x.amount)}</div><div class="s">added ${parseYmd(x.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} · tap to finish</div></div><span class="chev">›</span></button>
     <button class="x" data-act="pending-del" data-id="${esc(x.id)}" aria-label="Discard">✕</button></div>`).join('');
   $('#sheet').innerHTML = `<div class="panel"><div class="head"><span style="width:40px"></span><span class="step">Loose logs to finish</span><button data-act="sheet-close" aria-label="Later">✕</button></div>
     <p class="note" style="margin:0 0 10px">${pend.length} item${pend.length === 1 ? '' : 's'} captured as price-only. Tap one to add its category and details and log it.</p>
@@ -679,12 +686,12 @@ function drawBillEdit() {
   const avg = billAmount({ ...b, useAvg: true });
   const rows = hist.map((h) => `<div class="field">
     <input type="month" data-bh="${esc(h.id)}" data-f="month" value="${esc(h.month)}" max="${today().slice(0, 7)}">
-    <input type="number" inputmode="decimal" data-bh="${esc(h.id)}" data-f="amount" value="${h.amount}" style="width:100px" placeholder="0">
+    <input type="text" inputmode="decimal" data-bh="${esc(h.id)}" data-f="amount" value="${fmtNum(h.amount)}" style="width:100px" placeholder="0">
     <button class="x" data-act="bh-del" data-id="${esc(h.id)}" aria-label="Remove">✕</button></div>`).join('') || '<div class="empty" style="padding:14px">No months logged yet.</div>';
   $('#sheet').innerHTML = `<div class="panel"><div class="head">
       <span style="width:40px"></span><span class="step">Edit ${esc(b.name)}</span><button data-act="bill-done" aria-label="Done">✕</button></div>
     <label class="editlbl">Fixed amount</label>
-    <input class="sheet-input" type="number" inputmode="decimal" value="${b.amount}" data-billfix="amount" ${b.useAvg ? 'disabled' : ''}>
+    <input class="sheet-input" type="text" inputmode="decimal" value="${fmtNum(b.amount)}" data-billfix="amount" ${b.useAvg ? 'disabled' : ''}>
     <label class="paytoggle" style="display:flex;align-items:center;gap:10px;margin:12px 2px 4px"><input type="checkbox" data-billavg ${b.useAvg ? 'checked' : ''}> Use 12-month average${b.history && b.history.length ? ` <b style="margin-left:auto">${money(avg)}</b>` : ''}</label>
     <div class="note" style="margin:2px 2px 10px">${b.useAvg ? `Using the average of the last ${Math.min(12, hist.length)} month${hist.length === 1 ? '' : 's'}.` : 'Turn on to use the average of the months below instead of the fixed amount.'}</div>
     <label class="editlbl">Past months</label>
@@ -922,7 +929,7 @@ function openEdit(tx) {
 }
 function syncEditInputs() {
   const a = $('#e-amt'), n = $('#e-note'), d = $('#e-date');
-  if (a) edit.amount = parseFloat(a.value) || 0;
+  if (a) edit.amount = parseNum(a.value);
   if (n) edit.note = n.value;
   if (d) edit.date = d.value || edit.date;
   const ex = $('#e-ex'); if (ex) edit.exAvg = ex.checked;
@@ -935,7 +942,7 @@ function drawEdit() {
   el.innerHTML = `<div class="panel"><div class="head"><span style="width:40px"></span><span class="step">Edit item</span><button data-edit="close" aria-label="Close">✕</button></div>
     <div class="seg">${[['expense', 'Purchase'], ['income', 'Income'], ['transfer', 'Transfer']].map(([v, l]) => `<button data-edit="type" data-v="${v}" class="${e.type === v ? 'on' : ''}">${l}</button>`).join('')}</div>
     <label class="editlbl">Amount</label>
-    <input class="sheet-input" id="e-amt" type="number" inputmode="decimal" value="${e.amount}">
+    <input class="sheet-input" id="e-amt" type="text" inputmode="decimal" value="${fmtNum(e.amount)}">
     ${picker}
     <label class="editlbl">Note</label>
     <input class="sheet-input" id="e-note" type="text" value="${esc(e.note || '')}" placeholder="Note" autocomplete="off">
@@ -978,7 +985,7 @@ function toast(msg) {
 }
 
 // ----- this month, week by week -----
-const shortDate = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+const shortDate = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
 // Last week's over-spend that penalizes this week — review each purchase and
 // forgive (ignore) the ones you don't want carried over.
@@ -1166,6 +1173,15 @@ document.addEventListener('click', (e) => {
     }
     case 'loan-toggle': { ui.openLoan = ui.openLoan === id ? null : id; return render(); }
     case 'loan-extra-reset': { const l = loanById(id); if (l) { l.extra = 0; saveSettings(); } return render(); }
+    case 'loan-delete': { const l = loanById(id); if (l && confirm(`Delete ${l.name}? This hides it from Finance.`)) { l.deleted = true; ui.openLoan = null; saveSettings(); render(); } return; }
+    case 'loan-add': {
+      const name = prompt('Loan name?'); if (!name || !name.trim()) return;
+      const bal = Math.max(0, parseNum(prompt('Current balance?', '0')));
+      const rate = Math.max(0, parseNum(prompt('Annual interest rate % (e.g. 5.5)?', '0'))) / 100;
+      const payment = Math.max(0, parseNum(prompt('Monthly payment?', '0')));
+      S().finance.loans.push({ id: uid(), name: name.trim(), lender: '', emoji: '💵', principal: round(bal), rate, payment: round(payment), start: today(), adjust: 0, extra: 0, extras: {} });
+      ui.openLoan = S().finance.loans[S().finance.loans.length - 1].id; saveSettings(); return render();
+    }
     case 'inv-preset': { S().finance.invest.rate = parseFloat(id) || 0; saveSettings(); return render(); }
     case 'week-reset': { S().weekResetAt = weekStats(S(), store.txs).start; saveSettings(); closeSheet(); return render(); }
     case 'week-unreset': { S().weekResetAt = null; saveSettings(); closeSheet(); return render(); }
@@ -1232,7 +1248,7 @@ document.addEventListener('click', (e) => {
 // Select the whole value when a numeric field is focused, so typing replaces it
 // (no need to delete a leftover 0).
 document.addEventListener('focusin', (e) => {
-  if (e.target.matches('input.plancell, input.ccinput, input.fin-num, input[data-billsbal], input[data-cc]')) {
+  if (e.target.matches('input.plancell, input.ccinput, input.fin-num, input.sheet-input, input[data-billsbal], input[data-cc], input[data-set], input[data-cat], input[data-bill], input[data-bh]')) {
     try { e.target.select(); } catch {}
   }
 });
@@ -1240,11 +1256,11 @@ document.addEventListener('focusin', (e) => {
 document.addEventListener('input', (e) => {
   if (e.target.id === 'q') { ui.q = e.target.value; $('#actlist').innerHTML = activityList(); }
   else if (e.target.id === 'sav-slider') slideSavings(+e.target.value);
-  else if (e.target.dataset.plan) { (ui.planDraft ||= {})[e.target.dataset.plan] = parseFloat(e.target.value) || 0; savePlanDraft(); planRecalc(); }
+  else if (e.target.dataset.plan) { (ui.planDraft ||= {})[e.target.dataset.plan] = parseNum(e.target.value); savePlanDraft(); planRecalc(); }
 });
 
 document.addEventListener('change', (e) => {
-  const t = e.target, num = () => parseFloat(t.value) || 0;
+  const t = e.target, num = () => parseNum(t.value);
   if (t.id === 'sav-slider') { slideSavings(+t.value); saveSettings(); return; }
   if (t.dataset.set) { S()[t.dataset.set] = num(); saveSettings(); }
   else if (t.hasAttribute('data-billsbal')) { S().billsAcct = { bal: num(), asOf: today() }; saveSettings(); render(); return; }
@@ -1258,7 +1274,7 @@ document.addEventListener('change', (e) => {
   else if (t.hasAttribute('data-billavg')) { S().bills[billEdit].useAvg = t.checked; saveSettings(); drawBillEdit(); render(); return; }
   else if (t.dataset.bh) { const h = (S().bills[billEdit].history || []).find((x) => x.id === t.dataset.bh); if (h) { h[t.dataset.f] = t.dataset.f === 'amount' ? num() : (t.value || h.month); saveSettings(); drawBillEdit(); } return; }
   else if (t.dataset.loanextra) { const l = loanById(t.dataset.loanextra); if (l) { l.extra = Math.max(0, num()); saveSettings(); } }
-  else if (t.dataset.loanbal) { const l = loanById(t.dataset.loanbal); if (l) { l.balance = Math.max(0, num()); l.asOf = today(); saveSettings(); } }
+  else if (t.dataset.loanbal) { const l = loanById(t.dataset.loanbal); if (l) { const cur = loanStats(l, new Date()).balance; l.adjust = round((l.adjust || 0) + (Math.max(0, num()) - cur)); saveSettings(); } }
   else if (t.dataset.loanpay) { const [lid, date] = t.dataset.loanpay.split('|'); const l = loanById(lid); if (l) { const ex = { ...(l.extras || {}) }; if (t.value.trim() === '') delete ex[date]; else ex[date] = Math.max(0, num()); l.extras = ex; saveSettings(); } }
   else if (t.dataset.inv) { const iv = S().finance.invest, f = t.dataset.inv; iv[f] = f === 'rate' ? Math.max(0, num()) / 100 : Math.max(0, num()); saveSettings(); }
   else if (t.dataset.catavg) { S().categories[+t.dataset.catavg].useAvg = t.checked; saveSettings(); }
