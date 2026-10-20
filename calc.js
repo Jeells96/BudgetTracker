@@ -1,6 +1,14 @@
 // All the budget math + the "coach" advice, as pure functions of (settings, transactions, today).
 export const round = (n) => Math.round(n * 100) / 100;
 const sum = (a) => round(a.reduce((s, x) => s + x, 0));
+// A purchase flagged to return cancels itself, never more than itself. `returned`
+// lives on the transaction, so the offset lands in that purchase's own week and
+// month — a return can never invent spending room somewhere else.
+export const txNet = (t) => {
+  const back = Math.abs(t.returned || 0);
+  if (!back || !(t.amount > 0)) return t.amount;
+  return round(Math.max(0, t.amount - Math.min(back, t.amount)));
+};
 const pad = (n) => String(n).padStart(2, '0');
 export const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 export const parseYmd = (s) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
@@ -84,11 +92,8 @@ export function standardWeek(s) {
 export function monthStats(s, txs, month, now = new Date()) {
   const list = txs.filter((t) => t.date.startsWith(month));
   const exp = list.filter((t) => t.type === 'expense');
-  // Planned returns (not yet done) are money coming back, so they lower the totals now.
-  const retIn = (id) => sum((s.returns || []).filter((r) => r.category === id && (r.date || '').startsWith(month)).map((r) => Math.abs(r.amount) || 0));
-  const retMonth = sum((s.returns || []).filter((r) => (r.date || '').startsWith(month)).map((r) => Math.abs(r.amount) || 0));
   const byCat = {};
-  s.categories.forEach((c) => { byCat[c.id] = round(sum(exp.filter((t) => t.category === c.id).map((t) => t.amount)) - retIn(c.id)); });
+  s.categories.forEach((c) => { byCat[c.id] = sum(exp.filter((t) => t.category === c.id).map(txNet)); });
   const moved = (id) => sum(list.filter((t) => t.type === 'transfer' && t.category === id).map((t) => t.amount));
   const [y, m] = month.split('-').map(Number);
   const dim = new Date(y, m, 0).getDate();
@@ -101,7 +106,7 @@ export function monthStats(s, txs, month, now = new Date()) {
   return {
     list, byCat, dim, day, daysLeft, isCurrent, isPast,
     weeksLeft: Math.max(1, Math.ceil(daysLeft / 7)),
-    spent: round(sum(exp.map((t) => t.amount)) - retMonth), budget: budgetTotal(s),
+    spent: sum(exp.map(txNet)), budget: budgetTotal(s),
     income: sum(list.filter((t) => t.type === 'income').map((t) => t.amount)),
     billsIn, cardPaid: moved('card'), savingsIn: moved('savings'),
     billsTotal: bills, billsLeft: Math.max(0, round(bills - billsIn)),
@@ -133,12 +138,7 @@ export function effectiveEveryday(s, txs = [], now = new Date()) {
       ? { ...t, amount: 0 }
       : t
   );
-  // Same rule in reverse: a planned return of a budgeted purchase is already given
-  // back as weekly spending room, so it must not ALSO loosen the trim — otherwise
-  // the refund is credited twice. Only returns of out-of-budget purchases (the ones
-  // whose charges do raise the trim above) are allowed to lower it.
-  const payoffS = { ...s, returns: (s.returns || []).filter((r) => r.exBudget) };
-  const cp = cardPlan(payoffS, payoffTxs, now);
+  const cp = cardPlan(s, payoffTxs, now);
   if (cp.balance <= 0) return base;
   if (strat === 'spend') return cp.options.spend.newSpend;
   if (strat === 'split') return cp.options.split.newSpend;
@@ -150,24 +150,21 @@ export function weekStats(s, txs, now = new Date()) {
   const ws = weekStart(now, startDay);
   const end = ymd(addDays(parseYmd(ws), 7));
   const ids = s.categories.filter((c) => c.weekly).map((c) => c.id);
-  // A planned return on a weekly category is spending room coming back, so it ADDS to
-  // the week's budget rather than subtracting from what you've spent — same money
-  // either way, but "spent" stays what you actually spent instead of going negative.
-  const retBetween = (from, to) => sum((s.returns || []).filter((r) => r.category && ids.includes(r.category) && (r.date || '') >= from && (r.date || '') < to).map((r) => Math.abs(r.amount) || 0));
-  const spentBetween = (from, to) => sum(txs.filter((t) => t.type === 'expense' && !t.exBudget && t.date >= from && t.date < to && ids.includes(t.category)).map((t) => t.amount));
+  // Purchases you've flagged to return don't count against the week (they cancel
+  // themselves) — but they never add room either.
+  const spentBetween = (from, to) => sum(txs.filter((t) => t.type === 'expense' && !t.exBudget && t.date >= from && t.date < to && ids.includes(t.category)).map(txNet));
   const spent = round(spentBetween(ws, end));
-  const returning = retBetween(ws, end);                     // credit landing this week
   const base = effectiveEveryday(s, txs, now);               // budget after the card trim
   const trimmedByCard = Math.max(0, round(s.weeklyBudget - base));
   // Roll a previous over-spend (vs the same trimmed budget) into this week unless reset.
   const prevStart = weekStart(addDays(parseYmd(ws), -1), startDay);
-  const prevLeft = round(base + retBetween(prevStart, ws) - spentBetween(prevStart, ws));
+  const prevLeft = round(base - spentBetween(prevStart, ws));
   const reset = s.weekResetAt === ws;
   const carryover = !reset && prevLeft < 0 ? prevLeft : 0;
   const overage = prevLeft < 0 ? round(-prevLeft) : 0;        // last week's over-spend (raw)
   const forgiven = reset && overage > 0 ? overage : 0;        // over-spend you chose to forgive
-  const budget = round(base + carryover + returning);
-  return { start: ws, end, ids, spent, returning, baseBudget: base, planBudget: s.weeklyBudget, trimmedByCard, carryover, overage, forgiven, budget, left: round(budget - spent), reset };
+  const budget = round(base + carryover);
+  return { start: ws, end, ids, spent, baseBudget: base, planBudget: s.weeklyBudget, trimmedByCard, carryover, overage, forgiven, budget, left: round(budget - spent), reset };
 }
 
 // ---- credit card ----
@@ -194,15 +191,12 @@ export function cycleWindow(now = new Date()) {
 // purchases logged since the baseline date − card payments since then.
 export function cardDetail(s, txs) {
   const start = s.cc.start || 0, asOf = s.cc.asOf;
-  const rawCredit = asOf ? sum(txs.filter((t) => t.type === 'expense' && t.pay !== 'cash' && t.date >= asOf).map((t) => t.amount)) : 0;
+  const rawCredit = asOf ? sum(txs.filter((t) => t.type === 'expense' && t.pay !== 'cash' && t.date >= asOf).map(txNet)) : 0;
   const adj = s.cc.chargesAdj || 0;                 // manual correction; new purchases still add on top
   const credit = round(rawCredit + adj);
   const paid = asOf ? sum(txs.filter((t) => t.type === 'transfer' && t.category === 'card' && t.date >= asOf).map((t) => t.amount)) : 0;
-  const pendRet = cardPlannedReturns(s);                 // planned returns to the card lower the balance now
-  return { start, asOf, rawCredit, adj, credit, paid, pendRet, computed: Math.max(0, round(start + credit - paid - pendRet)) };
+  return { start, asOf, rawCredit, adj, credit, paid, computed: Math.max(0, round(start + credit - paid)) };
 }
-// Sum of planned (not-yet-done) returns that will credit the card.
-export const cardPlannedReturns = (s) => sum((s.returns || []).filter((r) => (r.pay || 'credit') !== 'cash').map((r) => Math.abs(r.amount) || 0));
 export const cardComputed = (s, txs) => cardDetail(s, txs).computed;
 
 // Carry the balance across statement cycles: once a statement has closed, fold
@@ -222,7 +216,7 @@ export function rollCardBaseline(s, txs, now = new Date()) {
 
 // The balance the rest of the app uses: computed in auto mode, your typed number in manual.
 export function cardBalance(s, txs) {
-  return s.cc.mode === 'manual' ? Math.max(0, round((s.cc.manual || 0) - cardPlannedReturns(s))) : cardComputed(s, txs);
+  return s.cc.mode === 'manual' ? Math.max(0, round(s.cc.manual || 0)) : cardComputed(s, txs);
 }
 
 // ---- paydays ----

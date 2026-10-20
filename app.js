@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=65';
-import { TRANSFERS } from './defaults.js?v=65';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd } from './calc.js?v=65';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=66';
+import { TRANSFERS } from './defaults.js?v=66';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=66';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -90,7 +90,7 @@ function home() {
   if (weekly) {
     const cardRet = round((s.returns || []).filter((r) => (r.pay || 'credit') !== 'cash').reduce((a, r) => a + Math.abs(r.amount || 0), 0));
     const stat3 = bal > 0
-      ? `<div><b>${money(bal)}</b><span>${cardRet > 0 ? `Card · ${money(cardRet)} returning` : 'Card balance'}</span></div>`
+      ? `<div><b>${money(bal)}</b><span>${cardRet > 0 ? `Card · ${money(cardRet)} to return` : 'Card balance'}</span></div>`
       : `<div><b>${money(s.weeklySavings)}</b><span>Weekly savings</span></div>`;
     hero = `<button class="card hero tappable" data-act="week">
       <div class="label">Left to spend this week <span class="hint">tap for breakdown ›</span></div>
@@ -109,7 +109,7 @@ function home() {
       <div class="note" style="margin:8px 0 0">${n} purchase${n === 1 ? '' : 's'}${ms.income ? ` · ${money(ms.income)} income` : ''}</div></div>`;
   }
   const cardTrim = weekly && ws.trimmedByCard > 0
-    ? `<div class="rollover">Spend-less plan · ${money(ws.baseBudget)} this week, ${money(ws.trimmedByCard)} freed for the card.</div>`
+    ? `<div class="rollover">Weekly ${money(ws.planBudget)} − ${money(ws.trimmedByCard)} to the card = <b>${money(ws.baseBudget)}</b> to spend this week.</div>`
     : '';
   const rollover = weekly && ws.carryover < 0
     ? `<div class="rollover">You went ${money(-ws.carryover)} over last week, so this week is trimmed to ${money(ws.budget)}. <button class="link" data-act="overage-view">Review overages</button> · <button class="link" data-act="week-reset">Forgive all</button></div>`
@@ -214,7 +214,9 @@ function txRow(t) {
   if (t.type === 'income') { icon = '💰'; label = t.note || 'Income'; sub = 'Income'; amt = `<div class="amt in">+${money(t.amount)}</div>`; }
   else if (t.type === 'transfer') { const x = tfer(t.category); const nm = x?.name || t.category; icon = x?.emoji || '🔁'; label = t.note || nm; sub = t.note ? nm : ''; amt = `<div class="amt xfer">${money(t.amount)}</div>`; }
   else { const c = cat(t.category); icon = c ? c.emoji : '🧾'; label = t.note || (c ? c.name : 'Purchase'); sub = c ? c.name : t.category; amt = `<div class="amt">${money(t.amount)}</div>`; }
-  const ccDot = (t.type === 'expense' && t.pay === 'credit' ? ' <span class="cc-dot" title="Credit card">💳</span>' : '') + (t.exAvg ? ' <span class="ex-tag" title="Excluded from average">excl. avg</span>' : '');
+  const ccDot = (t.type === 'expense' && t.pay === 'credit' ? ' <span class="cc-dot" title="Credit card">💳</span>' : '')
+    + (t.returned > 0 ? ' <span class="ex-tag ret">returning</span>' : '')
+    + (t.exAvg ? ' <span class="ex-tag" title="Excluded from average">excl. avg</span>' : '');
   const dateStr = parseYmd(t.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   const picked = sel.ids.has(t.id);
   return `<div class="tx${picked ? ' selected' : ''}">
@@ -348,8 +350,8 @@ function cardSection() {
   const retTotal = round(cardRets.reduce((a, r) => a + Math.abs(r.amount || 0), 0));
   const retBlock = cardRets.length ? `
     <button class="retstrip" data-act="returns-view">
-      <span class="rs-n">${cardRets.length} planned return${cardRets.length === 1 ? '' : 's'} coming back to this card</span>
-      <b>−${money(retTotal)}</b><span class="rs-go">Review ›</span></button>
+      <span class="rs-n">${cardRets.length} return${cardRets.length === 1 ? '' : 's'} still to make</span>
+      <b>${money(retTotal)}</b><span class="rs-go">Review ›</span></button>
     <div class="retlist">${cardRets.map((r) => `<div><span>${esc(r.note || cat(r.category)?.name || 'Purchase')}</span><b>−${money(Math.abs(r.amount))}</b></div>`).join('')}</div>` : '';
 
   return `<div class="card">
@@ -436,6 +438,11 @@ function planTab() {
        ${subrow('Card paydown', 'extra', 0)}`
     : `${erow('Everyday spending', 'everyday', liveChip)}${erow('Extra', 'extra')}`;
 
+  // Where the trimmed spending number actually comes from.
+  const pw = weekStats(s, store.txs);
+  const trimNote = pw.trimmedByCard > 0
+    ? `<p class="note">Spending is trimmed for the card: weekly ${money(pw.planBudget)} − ${money(pw.trimmedByCard)} to the card = <b>${money(pw.baseBudget)}</b>${pw.carryover < 0 ? ` − ${money(-pw.carryover)} rolled over = <b>${money(pw.budget)}</b>` : ''} this week.</p>`
+    : '';
   const plannerBody = `
     <div class="card plan-table">
       <div class="trow head"><span></span><span class="b">Standard</span><span class="n">Recommended</span></div>
@@ -448,6 +455,7 @@ function planTab() {
     </div>
     <div class="callout ${p.leftover < 0 ? 'bad' : 'good'}" id="plan-callout">${calloutHTML(p.leftover)}</div>
     <button class="btn block" id="plan-reset-btn" data-act="plan-reset" ${edited ? '' : 'hidden'}>↺ Reset to recommended</button>
+    ${trimNote}
     ${cardNote ? `<p class="note">${cardNote}</p>` : ''}`;
 
   // Each area is a collapsible section. The weekly planner is open by default; the
@@ -585,7 +593,7 @@ function activityList() {
   else if (ui.filter !== 'all') list = list.filter((t) => t.type === 'expense' && t.category === ui.filter);
   const q = ui.q.trim().toLowerCase();
   if (q) list = list.filter((t) => (t.note + ' ' + (cat(t.category)?.name || t.category)).toLowerCase().includes(q) || String(t.amount).includes(q));
-  const spent = round(list.filter((t) => t.type === 'expense').reduce((a, t) => a + t.amount, 0));
+  const spent = round(list.filter((t) => t.type === 'expense').reduce((a, t) => a + txNet(t), 0));
   if (!list.length) return '<div class="card empty">Nothing here.</div>';
   // Flat list in the order entered (newest first), each row shows its own date.
   return `<p class="note">${list.length} item${list.length > 1 ? 's' : ''} · ${money(spent)}</p>
@@ -1059,7 +1067,10 @@ function returnClick(btn) {
     case 'save': {
       const a = $('#ret-amt'), amt = round(parseNum(a ? a.value : r.amount));
       if (!(amt > 0)) return toast('Enter an amount');
-      S().returns = [...(S().returns || []), { id: uid(), txId: r.txId, note: r.note, category: r.category, pay: r.pay, exBudget: !!r.exBudget, orig: r.orig, amount: amt, at: Date.now(), date: today() }];
+      // The offset lives on the purchase (capped at it) so it cancels that purchase
+      // and nothing else; `returns` is just the reminder that it hasn't happened yet.
+      if (r.txId) updateTx(r.txId, { returned: Math.min(amt, r.orig) });
+      S().returns = [...(S().returns || []), { id: uid(), txId: r.txId, note: r.note, category: r.category, pay: r.pay, orig: r.orig, amount: amt, at: Date.now(), date: today() }];
       saveSettings(); closeSheet(); render(); toast('Added to returns');
       return;
     }
@@ -1326,15 +1337,18 @@ document.addEventListener('click', (e) => {
     case 'track-later': return openTrack();
     case 'returns-view': return openReturns();
     case 'return-done': {
-      const r = (S().returns || []).find((x) => x.id === id);
-      if (r) {
-        // Log the refund as a credit so the money stays out of your totals for good.
-        if (r.category) addTx({ type: 'expense', category: r.category, amount: -Math.abs(r.amount), pay: r.pay === 'cash' ? 'cash' : 'credit', note: 'Return' + (r.note ? ': ' + r.note : ''), date: today() });
-        S().returns = (S().returns || []).filter((x) => x.id !== id); saveSettings();
-      }
-      render(); openReturns(); toast('Logged as returned'); return;
+      // The purchase was already cancelled when you flagged it, so nothing moves —
+      // this just ticks it off the reminder list.
+      S().returns = (S().returns || []).filter((x) => x.id !== id); saveSettings();
+      render(); openReturns(); toast('Returned'); return;
     }
-    case 'return-del': { S().returns = (S().returns || []).filter((x) => x.id !== id); saveSettings(); render(); openReturns(); toast('Removed'); return; }
+    case 'return-del': {
+      // Not returning it after all — the purchase counts again.
+      const r = (S().returns || []).find((x) => x.id === id);
+      if (r && r.txId) updateTx(r.txId, { returned: 0 });
+      S().returns = (S().returns || []).filter((x) => x.id !== id); saveSettings();
+      render(); openReturns(); toast('Back in your spending'); return;
+    }
     case 'finish-loose': return openPending();
     case 'finish-item': { const it = (S().pending || []).find((x) => x.id === id); closeSheet(); if (it) openFlow({ amt: String(it.amount), pendingId: it.id, amtLocked: true }); return; }
     case 'pending-del': { if (confirm('Discard this loose item without logging it?')) { S().pending = (S().pending || []).filter((x) => x.id !== id); saveSettings(); render(); if ((S().pending || []).length) openPending(); else closeSheet(); } return; }

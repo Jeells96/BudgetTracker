@@ -495,3 +495,4 @@ nav#tabs button.on { background:var(--ink); color:var(--canvas); }
 /* retstrip is a button */
 .retstrip { width:100%; text-align:left; }
 .retstrip:active { opacity:.8; }
+.ex-tag.ret { background:var(--accent-soft); color:var(--accent); }
