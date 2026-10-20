@@ -118,31 +118,65 @@ export function monthStats(s, txs, month, now = new Date()) {
 // everyday money flows to the card, but the budget amount itself is unchanged).
 // Your everyday weekly budget after the card strategy. "Spend less" / "Split" cut
 // it to free money for the card; the cut amount is what goes to the card that week.
-export function effectiveEveryday(s, txs = [], now = new Date()) {
-  const base = s.weeklyBudget;
-  const strat = s.cc && s.cc.strategy;
-  if (strat !== 'spend' && strat !== 'split') return base;
+// Spending you cover with your normal weekly budget is self-funding: you charge it
+// and your allowance pays it back, so it must not inflate the payoff plan or you'd
+// be asked to pay for the same money twice. Going OVER the allowance is different —
+// that excess is real new debt, so it stays in and the payoff plan spreads it over
+// the paydays you have left. `allowance` is how much of each past week's everyday
+// spending is forgiven; the current week always forgives in full, so this week's
+// over-spend never changes this week's own plan.
+export function planTxs(s, txs, allowance = Infinity, now = new Date()) {
+  if (!s.cc || s.cc.mode === 'manual') return txs;
+  const startDay = s.weekStartDay ?? 5;
+  const curWeek = weekStart(now, startDay);
+  const prevWeek = weekStart(addDays(parseYmd(curWeek), -1), startDay);
+  const asOf = s.cc.asOf || '';
+  const weeklyIds = new Set(s.categories.filter((c) => c.weekly).map((c) => c.id));
+  const left = {};                                   // allowance still to forgive, per week
+  const out = txs.slice();
+  const order = txs.map((t, i) => i).sort((a, b) => (txs[a].date < txs[b].date ? -1 : txs[a].date > txs[b].date ? 1 : 0));
+  for (const i of order) {
+    const t = txs[i];
+    if (!(t.type === 'expense' && !t.exBudget && t.pay !== 'cash' && t.date >= asOf)) continue;
+    const amt = txNet(t);                            // a flagged return already cancels itself
+    const zero = { ...t, amount: 0, returned: 0 };
+    if (!(amt > 0)) { out[i] = zero; continue; }
+    if (!weeklyIds.has(t.category)) { out[i] = zero; continue; }   // has its own budget
+    const w = weekStart(parseYmd(t.date), startDay);
+    if (w >= curWeek) { out[i] = zero; continue; }                 // this week doesn't penalise itself
+    if (s.weekResetAt === curWeek && w === prevWeek) { out[i] = zero; continue; }   // you forgave it
+    if (left[w] === undefined) left[w] = Math.max(0, allowance);
+    const forgive = Math.min(amt, left[w]);
+    left[w] -= forgive;
+    out[i] = { ...t, amount: round(amt - forgive), returned: 0 };  // only the over-budget part survives
+  }
+  return out;
+}
 
-  // The weekly limit exists to pay down the PRE-EXISTING card debt, not to react
-  // to what you spend this week. Any budgeted purchase charged to the card this
-  // period is money you'll cover with your normal spending — it is not new card
-  // debt, so it must not tighten the weekly limit. (Spend over the limit and that
-  // overage rolls into next week via weekStats carryover — the only thing that
-  // should ever change the plan, and only the following week.) So when sizing the
-  // trim, ignore every budgeted (non-cash, in-budget) card purchase since the
-  // baseline and plan off the starting balance ± corrections − payments. The real
-  // card balance and the Bills-tab payoff schedule still reflect every charge.
-  const payoffTxs = txs.map((t) =>
-    s.cc.mode !== 'manual' && t.type === 'expense' && !t.exBudget &&
-    t.pay !== 'cash' && t.date >= (s.cc.asOf || '')
-      ? { ...t, amount: 0 }
-      : t
-  );
-  const cp = cardPlan(s, payoffTxs, now);
+// The weekly spending allowance implied by a given plan balance.
+function adjustedFrom(s, ptxs, now) {
+  const base = s.weeklyBudget, strat = s.cc && s.cc.strategy;
+  if (strat !== 'spend' && strat !== 'split') return base;
+  const cp = cardPlan(s, ptxs, now);
   if (cp.balance <= 0) return base;
-  if (strat === 'spend') return cp.options.spend.newSpend;
-  if (strat === 'split') return cp.options.split.newSpend;
-  return base;
+  return strat === 'spend' ? cp.options.spend.newSpend : cp.options.split.newSpend;
+}
+
+// What your weekly allowance would be with no over-spend in the picture — the
+// yardstick an over-spend is measured against.
+export const everydayBeforeOverage = (s, txs = [], now = new Date()) => adjustedFrom(s, planTxs(s, txs, Infinity, now), now);
+
+// Two passes: work out the allowance with everything forgiven, then forgive only up
+// to that allowance so each past week's over-spend lands on the card.
+export function planTxsFor(s, txs, now = new Date()) {
+  const allowance = adjustedFrom(s, planTxs(s, txs, Infinity, now), now);
+  return planTxs(s, txs, allowance, now);
+}
+
+// Your everyday weekly budget after the card strategy. "Spend less" / "Split" cut it
+// to free money for the card; the cut amount is what goes to the card that week.
+export function effectiveEveryday(s, txs = [], now = new Date()) {
+  return adjustedFrom(s, planTxsFor(s, txs, now), now);
 }
 
 export function weekStats(s, txs, now = new Date()) {
@@ -156,14 +190,16 @@ export function weekStats(s, txs, now = new Date()) {
   const spent = round(spentBetween(ws, end));
   const base = effectiveEveryday(s, txs, now);               // budget after the card trim
   const trimmedByCard = Math.max(0, round(s.weeklyBudget - base));
-  // Roll a previous over-spend (vs the same trimmed budget) into this week unless reset.
+  // Last week's over-spend was charged to the card, so the payoff plan already
+  // spreads it across the paydays you have left. Docking this week's spending too
+  // would charge you for it twice, so the week's budget stands as planned.
   const prevStart = weekStart(addDays(parseYmd(ws), -1), startDay);
-  const prevLeft = round(base - spentBetween(prevStart, ws));
+  const prevLeft = round(everydayBeforeOverage(s, txs, now) - spentBetween(prevStart, ws));
   const reset = s.weekResetAt === ws;
-  const carryover = !reset && prevLeft < 0 ? prevLeft : 0;
-  const overage = prevLeft < 0 ? round(-prevLeft) : 0;        // last week's over-spend (raw)
-  const forgiven = reset && overage > 0 ? overage : 0;        // over-spend you chose to forgive
-  const budget = round(base + carryover);
+  const carryover = 0;
+  const overage = prevLeft < 0 ? round(-prevLeft) : 0;        // last week's over-spend
+  const forgiven = reset && overage > 0 ? overage : 0;
+  const budget = round(base);
   return { start: ws, end, ids, spent, baseBudget: base, planBudget: s.weeklyBudget, trimmedByCard, carryover, overage, forgiven, budget, left: round(budget - spent), reset };
 }
 
@@ -415,7 +451,7 @@ export function weekPlan(s, txs, now = new Date()) {
   const sw = standardWeek(s);
   const bt = billsProjection(s, txs, now);
   const ms = monthStats(s, txs, ymd(now).slice(0, 7), now);
-  const cp = cardPlan(s, txs, now);
+  const cp = cardPlan(s, planTxsFor(s, txs, now), now);   // same balance the weekly budget uses
   const startDay = s.weekStartDay ?? 5;
 
   const pay = sw.pay;
@@ -425,12 +461,13 @@ export function weekPlan(s, txs, now = new Date()) {
   const strat = cp.balance > 0 ? (s.cc.strategy || 'extra') : 'none';
   const o = cp.options;
 
-  const sch = cardSchedule(s, txs, now);
+  const sch = cardSchedule(s, txs, now);          // the real balance, for the card section
   if (cp.balance > 0) {
     if (strat === 'spend') everyday = o.spend.newSpend;
     else if (strat === 'save') savings = o.save.newSave;
     else if (strat === 'split') { everyday = o.split.newSpend; savings = o.split.newSave; }
-    extra = sch.autoPerWeek;                                        // ongoing weekly card payment (skips a paid/zeroed week)
+    // The card gets what the strategy frees up; your standard leftover stays yours.
+    extra = strat === 'extra' ? Math.min(cp.perWeek, Math.max(0, sw.extra)) : cp.need;
     leftover = round(pay - bills - groceries - everyday - savings - extra);
   } else {
     extra = round(pay - bills - groceries - everyday - savings);     // just spare money
@@ -440,7 +477,9 @@ export function weekPlan(s, txs, now = new Date()) {
   return {
     standard: sw,
     rec: { pay, bills, groceries, everyday, savings, extra, leftover },
-    strategy: strat, cardBalance: cp.balance, cardPerWeek: cp.perWeek, stretchWeeks: cp.stretch.weeks,
+    strategy: strat, cardBalance: cp.balance, cardPerWeek: cp.perWeek, cardNeed: cp.need,
+    spendCut: round(Math.max(0, sw.everyday - everyday)), saveCut: round(Math.max(0, sw.savings - savings)),
+    stretchWeeks: cp.stretch.weeks,
     bt, sch, isCurrent: ms.isCurrent
   };
 }

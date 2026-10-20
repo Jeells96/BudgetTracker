@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=66';
-import { TRANSFERS } from './defaults.js?v=66';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=66';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=67';
+import { TRANSFERS } from './defaults.js?v=67';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=67';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -109,10 +109,10 @@ function home() {
       <div class="note" style="margin:8px 0 0">${n} purchase${n === 1 ? '' : 's'}${ms.income ? ` · ${money(ms.income)} income` : ''}</div></div>`;
   }
   const cardTrim = weekly && ws.trimmedByCard > 0
-    ? `<div class="rollover">Weekly ${money(ws.planBudget)} − ${money(ws.trimmedByCard)} to the card = <b>${money(ws.baseBudget)}</b> to spend this week.</div>`
+    ? `<div class="rollover">Weekly ${money(ws.planBudget)} − ${money(ws.trimmedByCard)} freed for the card = <b>${money(ws.baseBudget)}</b> to spend this week.</div>`
     : '';
-  const rollover = weekly && ws.carryover < 0
-    ? `<div class="rollover">You went ${money(-ws.carryover)} over last week, so this week is trimmed to ${money(ws.budget)}. <button class="link" data-act="overage-view">Review overages</button> · <button class="link" data-act="week-reset">Forgive all</button></div>`
+  const rollover = weekly && ws.overage > 0 && !ws.reset
+    ? `<div class="rollover">You went ${money(ws.overage)} over last week. It's on the card, spread across the paydays you have left. <button class="link" data-act="overage-view">Review</button> · <button class="link" data-act="week-reset">Forgive</button></div>`
     : '';
   const forgivenNote = weekly && ws.forgiven > 0
     ? `<div class="rollover info">Last week's ${money(ws.forgiven)} over-spend is forgiven — it isn't trimming this week. <button class="link" data-act="week-unreset">Bring the penalty back</button></div>`
@@ -416,8 +416,10 @@ function planTab() {
   const erow = (label, field, extra = '') => `<div class="trow"><span>${label}</span><span class="b">${money(stdVal[field])}</span><span class="n"><input class="plancell" data-plan="${field}" type="text" inputmode="decimal" placeholder="0" value="${fmtNum(p[field] || '')}">${resetBtn(field)}<button class="cellx" data-act="plan-clear" data-id="${field}" title="Clear">✕</button></span></div>${extra}`;
 
   const stratLabel = { extra: 'from leftover', spend: 'spending less', save: 'saving less', split: 'splitting the difference', stretch: 'stretching the payoff', none: '' }[wp.strategy];
-  const cardNote = sch.balance > 0
-    ? `Card ${money(sch.balance)} · <b>${money(rc.extra)}</b> this Friday${sch.multi ? ` · clear by ${moDay(sch.payoffDate)}` : ''}`
+  // Show what the card paydown is actually made of.
+  const cuts = [wp.spendCut > 0.005 ? `${money(wp.spendCut)} less spending` : '', wp.saveCut > 0.005 ? `${money(wp.saveCut)} less saving` : ''].filter(Boolean).join(' + ');
+  const cardNote = wp.cardBalance > 0
+    ? `Card paydown <b>${money(rc.extra)}</b>${cuts ? ` = ${cuts}` : ' from your leftover'} · balance ${money(sch.balance)}`
     : '';
 
   // Indented editable sub-row (used inside the merged Spending + card group).
@@ -441,7 +443,7 @@ function planTab() {
   // Where the trimmed spending number actually comes from.
   const pw = weekStats(s, store.txs);
   const trimNote = pw.trimmedByCard > 0
-    ? `<p class="note">Spending is trimmed for the card: weekly ${money(pw.planBudget)} − ${money(pw.trimmedByCard)} to the card = <b>${money(pw.baseBudget)}</b>${pw.carryover < 0 ? ` − ${money(-pw.carryover)} rolled over = <b>${money(pw.budget)}</b>` : ''} this week.</p>`
+    ? `<p class="note">Weekly ${money(pw.planBudget)} − ${money(pw.trimmedByCard)} freed for the card = <b>${money(pw.baseBudget)}</b> to spend.</p>`
     : '';
   const plannerBody = `
     <div class="card plan-table">
