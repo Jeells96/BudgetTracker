@@ -115,14 +115,18 @@ export function effectiveEveryday(s, txs = [], now = new Date()) {
   const strat = s.cc && s.cc.strategy;
   if (strat !== 'spend' && strat !== 'split') return base;
 
-  // Weekly spending is already accounted for by weekStats (including next-week
-  // carryover of any overspend). Don't count the same purchases again as extra
-  // card debt when calculating the weekly spending limit. Real card balances
-  // and scheduled card payments are unaffected.
-  const weeklyIds = new Set(s.categories.filter((c) => c.weekly).map((c) => c.id));
+  // The weekly limit exists to pay down the PRE-EXISTING card debt, not to react
+  // to what you spend this week. Any budgeted purchase charged to the card this
+  // period is money you'll cover with your normal spending — it is not new card
+  // debt, so it must not tighten the weekly limit. (Spend over the limit and that
+  // overage rolls into next week via weekStats carryover — the only thing that
+  // should ever change the plan, and only the following week.) So when sizing the
+  // trim, ignore every budgeted (non-cash, in-budget) card purchase since the
+  // baseline and plan off the starting balance ± corrections − payments. The real
+  // card balance and the Bills-tab payoff schedule still reflect every charge.
   const payoffTxs = txs.map((t) =>
     s.cc.mode !== 'manual' && t.type === 'expense' && !t.exBudget &&
-    t.pay !== 'cash' && weeklyIds.has(t.category)
+    t.pay !== 'cash' && t.date >= (s.cc.asOf || '')
       ? { ...t, amount: 0 }
       : t
   );
