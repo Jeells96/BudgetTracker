@@ -6,6 +6,12 @@ name: Deploy functions
 
 on:
   workflow_dispatch:
+    inputs:
+      plaid_env:
+        description: 'Which Plaid environment to talk to'
+        type: choice
+        default: sandbox
+        options: [sandbox, production]
 
 jobs:
   deploy:
@@ -18,6 +24,10 @@ jobs:
       - name: Install deps
         working-directory: functions
         run: npm install
+      # Picked from the dropdown when you start the run, so switching between
+      # fake sandbox data and your real accounts never needs a code change.
+      - name: Set Plaid environment
+        run: echo "PLAID_ENV=${{ inputs.plaid_env }}" > functions/.env
       - name: Write service account
         run: |
           cat > "$RUNNER_TEMP/sa.json" <<'JSON'

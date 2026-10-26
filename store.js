@@ -1,6 +1,6 @@
-import { firebaseConfig } from './firebase-config.js?v=67';
-import { DEFAULT_SETTINGS } from './defaults.js?v=67';
-import { HISTORY } from './history.js?v=67';
+import { firebaseConfig } from './firebase-config.js?v=68';
+import { DEFAULT_SETTINGS } from './defaults.js?v=68';
+import { HISTORY } from './history.js?v=68';
 
 const LS_KEY = 'budget-tracker-v2';
 const CDN = 'https://www.gstatic.com/firebasejs/11.0.2/';
@@ -98,6 +98,11 @@ export function reimportHistory() {
 
 export const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 
+// Banking reuses this exact Firestore handle. Resolves with null if Firebase
+// never came up, so a caller gets an answer instead of hanging forever.
+let _fbResolve;
+export const fbReady = new Promise((r) => { _fbResolve = r; });
+
 function fail(e) {
   console.error(e);
   store.sync = 'error';
@@ -142,6 +147,7 @@ export async function initFirebase() {
     const [{ initializeApp }, fs] = await Promise.all([import(CDN + 'firebase-app.js'), import(CDN + 'firebase-firestore.js')]);
     const db = fs.initializeFirestore(initializeApp(firebaseConfig), { localCache: fs.persistentLocalCache() });
     const fb = { ...fs, db };
+    _fbResolve(fb);
     const sref = fb.doc(db, 'budget', 'settings');
 
     // Settings: the cloud copy wins; if there isn't one yet, upload this device's.
@@ -160,5 +166,5 @@ export async function initFirebase() {
       first = false;
       store.txs = s.docs.map((d) => d.data()); persist(); store.onChange();
     }, fail);
-  } catch (e) { console.warn('Firebase unavailable, running local-only', e); store.sync = 'local'; store.onChange(); }
+  } catch (e) { console.warn('Firebase unavailable, running local-only', e); _fbResolve(null); store.sync = 'local'; store.onChange(); }
 }

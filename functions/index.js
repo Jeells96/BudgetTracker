@@ -20,9 +20,10 @@ const db = admin.firestore();
 const PLAID_CLIENT_ID = defineSecret('PLAID_CLIENT_ID');
 const PLAID_SECRET = defineSecret('PLAID_SECRET');
 
-// 'sandbox' to build against fake data, 'production' for your real accounts.
+// 'sandbox' is fake data, 'production' is your real accounts. Set by the
+// dropdown on the Deploy functions action, so switching needs no code change.
 // Plaid retired the old Development environment, so this is the whole switch.
-const PLAID_ENV = 'sandbox';
+const PLAID_ENV = process.env.PLAID_ENV === 'production' ? 'production' : 'sandbox';
 
 setGlobalOptions({ region: 'us-central1', maxInstances: 3 });
 const withSecrets = { secrets: [PLAID_CLIENT_ID, PLAID_SECRET] };
@@ -81,6 +82,38 @@ exports.exchangePublicToken = onCall(withSecrets, async (req) => {
     cursor: null, linkedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
   return { itemId, accounts };
+});
+
+/** What's linked, without ever handing the browser an access token. */
+exports.listItems = onCall(withSecrets, async (req) => {
+  const uid = uidOf(req);
+  const items = await itemsCol(uid).get();
+  return {
+    items: items.docs.map((d) => {
+      const v = d.data();
+      return {
+        itemId: v.itemId,
+        institution: v.institution || null,
+        accounts: v.accounts || [],
+        syncedAt: v.syncedAt ? v.syncedAt.toMillis() : null,
+      };
+    }),
+  };
+});
+
+/** Unlink a bank. Tells Plaid to stop syncing, then forgets the token. */
+exports.removeItem = onCall(withSecrets, async (req) => {
+  const uid = uidOf(req);
+  const itemId = req.data && req.data.itemId;
+  if (!itemId) throw new HttpsError('invalid-argument', 'Missing itemId.');
+  const ref = itemsCol(uid).doc(itemId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'No such linked bank.');
+  // Best effort: if Plaid already dropped it, forgetting our copy is what matters.
+  try { await plaid().itemRemove({ access_token: snap.data().accessToken }); }
+  catch (e) { console.warn('itemRemove failed, dropping locally anyway', e.message); }
+  await ref.delete();
+  return { removed: itemId };
 });
 
 /** Step 3 — pull new/changed/removed transactions and mirror them into the app. */

@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=67';
-import { TRANSFERS } from './defaults.js?v=67';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=67';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=68';
+import { TRANSFERS } from './defaults.js?v=68';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=68';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -655,7 +655,100 @@ function settings() {
     <h2>Sync &amp; data</h2><div class="card"><div class="field"><label>${syncText}</label></div>
       ${store.syncError ? `<div class="err">${esc(store.syncError)}</div>` : ''}
       <button class="btn block" data-act="reimport">Re-import spreadsheet history</button></div>
+    ${bankBlock()}
     `;
+}
+
+// ---------- Banking (Plaid) ----------
+// Strictly opt-in. The bank.js module, the Firebase Auth SDK and Plaid Link are
+// all fetched on demand, so until you tap in here the app loads and behaves
+// exactly as it always has. Imports wait in a review queue: nothing reaches the
+// weekly budget or the card plan until you give it a category and accept it.
+let bank = null;
+const bankUI = { on: false, busy: '', user: undefined, items: [], inbox: [], pick: {}, err: '' };
+const bankMod = async () => (bank ||= await import('./bank.js?v=68'));
+
+async function bankRun(key, fn) {
+  bankUI.busy = key; bankUI.err = ''; render();
+  try { await fn(); } catch (e) { bankUI.err = (e && e.message) || String(e); }
+  bankUI.busy = ''; render();
+}
+
+// Re-reads everything: who you are, what's linked, what's waiting.
+async function bankLoad(resume) {
+  const b = await bankMod();
+  if (resume) { const u = await b.resumeSignIn(); if (u) toast('Signed in'); }
+  bankUI.user = await b.user();
+  if (!bankUI.user) { bankUI.items = []; bankUI.inbox = []; return; }
+  if (resume) { const r = await b.resumeOAuth(); if (r) toast(`Linked ${r.accounts.length} account${r.accounts.length === 1 ? '' : 's'}`); }
+  const [res, box] = await Promise.all([b.listItems(), b.inbox()]);
+  bankUI.items = res.items || [];
+  bankUI.inbox = box;
+  box.forEach((it) => {
+    if (bankUI.pick[it.id] !== undefined) return;
+    const g = b.suggest(it, S().categories);
+    bankUI.pick[it.id] = g === 'income' ? 'i' : g === 'bills' ? 't:bills' : g ? 'e:' + g : '';
+  });
+}
+
+function bankBlock() {
+  const b = bankUI, err = b.err ? `<div class="err">${esc(b.err)}</div>` : '';
+  const off = (k) => (b.busy === k ? ' disabled style="opacity:.5"' : '');
+
+  if (!b.on) return `<h2>Banking</h2><div class="card">
+    <div class="note">Pull card and bank activity in automatically instead of typing every purchase. Imports wait in a review queue — nothing counts until you approve it.</div>
+    <button class="btn block" data-act="bank-open">🏦 Set up automatic import</button></div>`;
+
+  if (b.user === undefined) return `<h2>Banking</h2><div class="card">${err}<div class="field"><label class="muted">Checking…</label></div></div>`;
+
+  if (!b.user) return `<h2>Banking</h2><div class="card">${err}
+    <div class="note">Banking needs a sign-in so only you can reach your accounts. Everything else keeps working signed out, exactly as it does now.</div>
+    <button class="btn block primary" data-act="bank-signin"${off('signin')}>${b.busy === 'signin' ? 'Opening…' : 'Sign in with Google'}</button></div>`;
+
+  const accts = b.items.length
+    ? b.items.map((it) => `<div class="field"><label>${it.accounts.map((a) => esc(a.name + (a.mask ? ' ••' + a.mask : ''))).join('<br>')}</label>
+        <button class="x" data-act="bank-unlink" data-id="${esc(it.itemId)}" aria-label="Unlink">✕</button></div>`).join('')
+    : '<div class="note">No banks linked yet.</div>';
+
+  const opts = (picked) => '<option value="">Category…</option>'
+    + S().categories.map((c) => `<option value="e:${esc(c.id)}" ${picked === 'e:' + c.id ? 'selected' : ''}>${c.emoji} ${esc(c.name)}</option>`).join('')
+    + `<option value="i" ${picked === 'i' ? 'selected' : ''}>💰 Income</option>`
+    + TRANSFERS.map((t) => `<option value="t:${esc(t.id)}" ${picked === 't:' + t.id ? 'selected' : ''}>${t.emoji} ${esc(t.name)}</option>`).join('');
+
+  const rows = b.inbox.map((it) => `<div class="field">
+    <label style="flex:1">${esc(it.note || 'Purchase')}<br><span class="muted" style="font-size:.8rem">${esc(shortDate(parseYmd(it.date)))}${it.account ? ' · ' + esc(it.account) : ''}${it.pending ? ' · pending' : ''}</span></label>
+    <b style="width:84px;text-align:right">${money(it.amount)}</b>
+    <select data-inbox-cat="${esc(it.id)}" style="flex-basis:100%">${opts(bankUI.pick[it.id] || '')}</select>
+    <button class="btn mini" data-act="inbox-accept" data-id="${esc(it.id)}"${off('row-' + it.id)}>✓ Add</button>
+    <button class="x" data-act="inbox-drop" data-id="${esc(it.id)}" aria-label="Ignore">✕</button></div>`).join('');
+
+  return `<h2>Banking</h2><div class="card">${err}
+    <div class="field"><label>Signed in as ${esc(b.user.email || b.user.displayName || 'you')}</label>
+      <button class="btn mini" data-act="bank-signout"${off('signout')}>Sign out</button></div>
+    ${accts}
+    <button class="btn block" data-act="bank-connect"${off('connect')}>${b.busy === 'connect' ? 'Opening…' : '+ Connect a bank'}</button>
+    <button class="btn block" data-act="bank-sync"${off('sync')}>${b.busy === 'sync' ? 'Checking…' : '⟳ Check for new activity'}</button></div>
+    ${b.inbox.length ? `<h2>To review · ${b.inbox.length}</h2><div class="card">
+      <div class="note">Give each one a category to add it. Nothing here counts toward your budget yet.</div>
+      ${rows}</div>` : ''}`;
+}
+
+function inboxAccept(id) {
+  const it = bankUI.inbox.find((x) => x.id === id);
+  if (!it) return;
+  const v = bankUI.pick[id];
+  if (!v) return toast('Pick a category first');
+  const kind = v === 'i' ? { type: 'income', category: 'income' }
+    : v.startsWith('t:') ? { type: 'transfer', category: v.slice(2) }
+    : { type: 'expense', category: v.slice(2) };
+  bankRun('row-' + id, async () => {
+    const b = await bankMod();
+    addTx({ ...kind, amount: it.amount, date: it.date, note: it.note || '', pay: it.pay || 'credit' });
+    await b.dropInbox(id);
+    bankUI.inbox = bankUI.inbox.filter((x) => x.id !== id);
+    delete bankUI.pick[id];
+    toast('Added');
+  });
 }
 
 // ---------- the sheet (add flow + edit) ----------
@@ -1381,6 +1474,20 @@ document.addEventListener('click', (e) => {
       saveSettings(); return drawBillEdit();
     }
     case 'bh-del': { const b = S().bills[billEdit]; b.history = (b.history || []).filter((h) => h.id !== id); saveSettings(); return drawBillEdit(); }
+    case 'bank-open': bankUI.on = true; return bankRun('open', () => bankLoad(true));
+    case 'bank-signin': return bankRun('signin', async () => { const b = await bankMod(); if (await b.signIn()) toast('Signed in'); await bankLoad(false); });
+    case 'bank-signout': return bankRun('signout', async () => { const b = await bankMod(); await b.signOutNow(); bankUI.user = null; bankUI.items = []; bankUI.inbox = []; toast('Signed out'); });
+    case 'bank-connect': return bankRun('connect', async () => { const b = await bankMod(); const r = await b.connect(); if (r) { toast(`Linked ${r.accounts.length} account${r.accounts.length === 1 ? '' : 's'}`); await bankLoad(false); } });
+    case 'bank-sync': return bankRun('sync', async () => { const b = await bankMod(); const r = await b.syncNow(); await bankLoad(false); toast(r.added ? `${r.added} new to review` : 'Nothing new'); });
+    case 'bank-unlink': {
+      if (!confirm('Unlink this bank? Anything you already accepted stays in your log.')) return;
+      return bankRun('unlink', async () => { const b = await bankMod(); await b.unlink(id); await bankLoad(false); toast('Unlinked'); });
+    }
+    case 'inbox-accept': return inboxAccept(id);
+    case 'inbox-drop': return bankRun('row-' + id, async () => {
+      const b = await bankMod(); await b.dropInbox(id);
+      bankUI.inbox = bankUI.inbox.filter((x) => x.id !== id); delete bankUI.pick[id];
+    });
     case 'reimport': { const n = reimportHistory(); toast(n ? `Restored ${n} line items` : 'Everything is already imported'); return; }
   }
 });
@@ -1401,6 +1508,7 @@ document.addEventListener('input', (e) => {
 
 document.addEventListener('change', (e) => {
   const t = e.target, num = () => parseNum(t.value);
+  if (t.dataset.inboxCat) { bankUI.pick[t.dataset.inboxCat] = t.value; return; }
   if (t.id === 'sav-slider') { slideSavings(+t.value); saveSettings(); return; }
   if (t.dataset.set) { S()[t.dataset.set] = num(); saveSettings(); }
   else if (t.hasAttribute('data-billsbal')) { S().billsAcct = { bal: num(), asOf: today() }; saveSettings(); render(); return; }
