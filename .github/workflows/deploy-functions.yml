@@ -33,6 +33,24 @@ jobs:
           cat > "$RUNNER_TEMP/sa.json" <<'JSON'
           ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           JSON
+      # Keeps Secret Manager as the only home for the Plaid keys, while GitHub
+      # Secrets stays the only place you ever paste them. The deploy below then
+      # binds whatever version this just wrote.
+      - name: Sync Plaid keys into Secret Manager
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
+          CID: ${{ secrets.PLAID_CLIENT_ID }}
+          SEC: ${{ secrets.PLAID_SECRET }}
+        run: |
+          set -e
+          if [ -z "$CID" ] || [ -z "$SEC" ]; then
+            echo "::error::Add PLAID_CLIENT_ID and PLAID_SECRET under Settings -> Secrets and variables -> Actions, then run this again."
+            exit 1
+          fi
+          FB="npx --yes firebase-tools@latest"
+          printf '%s' "$CID" | $FB functions:secrets:set PLAID_CLIENT_ID --project bestball-fantasy --data-file - --non-interactive
+          printf '%s' "$SEC" | $FB functions:secrets:set PLAID_SECRET    --project bestball-fantasy --data-file - --non-interactive
+
       - name: Deploy
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
