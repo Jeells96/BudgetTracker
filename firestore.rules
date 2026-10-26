@@ -1,9 +1,22 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Open access — anyone with the site can read/write. Fine for a personal budget you aren't worried about.
-    match /{document=**} {
-      allow read, write: if true;
+
+    // Your data. Only you, signed in, can read or write it.
+    match /users/{uid}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
     }
+
+    // Plaid access tokens. No client may ever touch these — Cloud Functions use
+    // the Admin SDK, which bypasses rules entirely.
+    match /plaidItems/{document=**} {
+      allow read, write: if false;
+    }
+
+    // Pre-sign-in data, readable once so it can be migrated under your account.
+    match /budget/{doc}       { allow read: if request.auth != null; allow write: if false; }
+    match /transactions/{doc} { allow read: if request.auth != null; allow write: if false; }
+
+    match /{document=**} { allow read, write: if false; }
   }
 }

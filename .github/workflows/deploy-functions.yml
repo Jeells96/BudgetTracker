@@ -1,0 +1,29 @@
+# Deploys the Plaid Cloud Functions.
+# Manual-only for now (Actions tab -> Run workflow) so it can't fail-and-email
+# before Blaze + the secrets exist. Once the first run is green we add a push
+# trigger so deploys are automatic, like the site.
+name: Deploy functions
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install deps
+        working-directory: functions
+        run: npm install
+      - name: Write service account
+        run: |
+          cat > "$RUNNER_TEMP/sa.json" <<'JSON'
+          ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          JSON
+      - name: Deploy
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
+        run: npx --yes firebase-tools@latest deploy --only functions --project bestball-fantasy --non-interactive
