@@ -19,15 +19,17 @@ const db = admin.firestore();
 
 const PLAID_CLIENT_ID = defineSecret('PLAID_CLIENT_ID');
 const PLAID_SECRET = defineSecret('PLAID_SECRET');
-const PLAID_ENV = defineSecret('PLAID_ENV');            // 'sandbox' | 'production'
+
+// 'sandbox' to build against fake data, 'production' for your real accounts.
+// Plaid retired the old Development environment, so this is the whole switch.
+const PLAID_ENV = 'sandbox';
 
 setGlobalOptions({ region: 'us-central1', maxInstances: 3 });
-const withSecrets = { secrets: [PLAID_CLIENT_ID, PLAID_SECRET, PLAID_ENV] };
+const withSecrets = { secrets: [PLAID_CLIENT_ID, PLAID_SECRET] };
 
 function plaid() {
-  const env = (PLAID_ENV.value() || 'sandbox').trim();
   return new PlaidApi(new Configuration({
-    basePath: PlaidEnvironments[env] || PlaidEnvironments.sandbox,
+    basePath: PlaidEnvironments[PLAID_ENV],
     baseOptions: { headers: {
       'PLAID-CLIENT-ID': PLAID_CLIENT_ID.value(),
       'PLAID-SECRET': PLAID_SECRET.value(),
@@ -88,7 +90,9 @@ exports.syncTransactions = onCall(withSecrets, async (req) => {
   const items = await itemsCol(uid).get();
   if (items.empty) return { added: 0, modified: 0, removed: 0, accounts: 0 };
 
-  const txCol = db.collection('users').doc(uid).collection('transactions');
+  // Imports land in an inbox, NOT straight into your transactions. Nothing touches
+  // the weekly budget or the card plan until you accept and categorise it.
+  const txCol = db.collection('users').doc(uid).collection('inbox');
   let added = 0, modified = 0, removed = 0;
 
   for (const itemDoc of items.docs) {
@@ -117,9 +121,9 @@ exports.syncTransactions = onCall(withSecrets, async (req) => {
 });
 
 /**
- * Plaid's shape -> the app's. Amounts are positive for money out (Plaid's sign
- * convention already matches). Category is left null so it lands in the review
- * queue: you assign it, which is what keeps the weekly budget honest.
+ * Plaid's shape -> the app's. Plaid reports money out as positive, which already
+ * matches. Category is left null: you assign it when you accept the item, and
+ * that is what keeps the weekly budget and card trim honest.
  */
 function shape(t, item) {
   const acct = (item.accounts || []).find((a) => a.account_id === t.account_id);

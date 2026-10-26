@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Connecting…</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap">
+  <style>
+    body { margin:0; min-height:100vh; display:grid; place-items:center;
+      font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif; background:#FAF9F6; color:#14171A; }
+    @media (prefers-color-scheme: dark) { body { background:#0A0B0C; color:#F2F2F0; } }
+    .w { text-align:center; padding:24px; }
+    .d { width:28px; height:28px; margin:0 auto 16px; border-radius:50%;
+      border:2px solid rgba(128,128,128,.25); border-top-color:#0F7B5A; animation:s .8s linear infinite; }
+    @keyframes s { to { transform:rotate(360deg); } }
+    p { color:#8A8F98; font-size:.9rem; }
+  </style>
+</head>
+<body>
+  <div class="w">
+    <div class="d"></div>
+    <p>Finishing up with your bank…</p>
+  </div>
+  <script>
+    // Plaid sends the bank's OAuth redirect here. Link is resumed by the opener
+    // (or by this tab) using the oauth_state_id Plaid appends to the URL.
+    try {
+      if (window.opener) { window.opener.postMessage({ plaidOAuth: location.href }, location.origin); window.close(); }
+      else { sessionStorage.setItem('plaidOAuthRedirect', location.href); location.replace('./'); }
+    } catch (e) { location.replace('./'); }
+  </script>
+</body>
+</html>
