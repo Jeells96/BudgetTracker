@@ -20,7 +20,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
       - name: Install deps
         working-directory: functions
         run: npm install
@@ -54,4 +54,4 @@ jobs:
       - name: Deploy
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
-        run: npx --yes firebase-tools@latest deploy --only functions --project bestball-fantasy --non-interactive
+        run: npx --yes firebase-tools@latest deploy --only functions --project bestball-fantasy --non-interactive --force
