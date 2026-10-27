@@ -38,6 +38,19 @@ function plaid() {
   }));
 }
 
+/**
+ * Plaid puts the useful part in response.data. Without this it reaches the
+ * browser as a bare "internal", which hides the one thing worth knowing —
+ * INVALID_API_KEYS, INVALID_FIELD, and so on.
+ */
+function plaidError(e, what) {
+  const d = (e && e.response && e.response.data) || {};
+  const code = d.error_code || 'PLAID_ERROR';
+  const msg = d.error_message || e.message || 'request failed';
+  console.error(what, code, msg, JSON.stringify(d));
+  return new HttpsError('failed-precondition', `${what}: ${msg} (${code})`);
+}
+
 const uidOf = (req) => {
   if (!req.auth || !req.auth.uid) throw new HttpsError('unauthenticated', 'Sign in first.');
   return req.auth.uid;
@@ -77,11 +90,14 @@ exports.exchangePublicToken = onCall(withSecrets, async (req) => {
   if (!publicToken) throw new HttpsError('invalid-argument', 'Missing public_token.');
 
   const api = plaid();
-  const ex = await api.itemPublicTokenExchange({ public_token: publicToken });
+  let ex, inst;
+  try { ex = await api.itemPublicTokenExchange({ public_token: publicToken }); }
+  catch (e) { throw plaidError(e, 'Could not finish linking'); }
   const accessToken = ex.data.access_token;
   const itemId = ex.data.item_id;
 
-  const inst = await api.accountsGet({ access_token: accessToken });
+  try { inst = await api.accountsGet({ access_token: accessToken }); }
+  catch (e) { throw plaidError(e, 'Linked, but could not read the accounts'); }
   const accounts = inst.data.accounts.map((a) => ({
     account_id: a.account_id, name: a.name, mask: a.mask,
     type: a.type, subtype: a.subtype,
@@ -179,9 +195,10 @@ exports.syncTransactions = onCall(withSecrets, async (req) => {
     let more = true;
 
     while (more) {
-      const res = await api.transactionsSync({
-        access_token: item.accessToken, cursor, count: 250,
-      });
+      let res;
+      try {
+        res = await api.transactionsSync({ access_token: item.accessToken, cursor, count: 250 });
+      } catch (e) { throw plaidError(e, 'Could not read transactions'); }
       const d = res.data;
 
       const batch = db.batch();
