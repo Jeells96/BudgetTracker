@@ -35,6 +35,31 @@ jobs:
           echo "PLAID_ENV=${{ inputs.plaid_env }}" > functions/.env
           echo "PLAID_REDIRECT_URI=${{ inputs.redirect_uri }}" >> functions/.env
           cat functions/.env
+      # Asks Plaid which environment these keys are for, before anything is
+      # deployed. Cheaper than finding out from a broken Connect button.
+      - name: Check the keys match the chosen environment
+        env:
+          CID: ${{ secrets.PLAID_CLIENT_ID }}
+          SEC: ${{ secrets.PLAID_SECRET }}
+          WANT: ${{ inputs.plaid_env }}
+        run: |
+          probe () {
+            curl -s -o /tmp/p.json -w '%{http_code}' -X POST "https://$1.plaid.com/institutions/get" \
+              -H 'Content-Type: application/json' \
+              -d "{\"client_id\":\"$CID\",\"secret\":\"$SEC\",\"count\":1,\"offset\":0,\"country_codes\":[\"US\"]}"
+          }
+          if [ "$(probe "$WANT")" = "200" ]; then
+            echo "These keys are valid for $WANT."
+            exit 0
+          fi
+          OTHER=production; [ "$WANT" = "production" ] && OTHER=sandbox
+          if [ "$(probe "$OTHER")" = "200" ]; then
+            echo "::error::PLAID_SECRET is your $OTHER secret, but you chose $WANT. Either re-run choosing $OTHER, or replace PLAID_SECRET with your $WANT secret from Plaid -> Build -> Keys."
+          else
+            echo "::error::Plaid rejected these keys in BOTH environments ($(jq -r '.error_code // \"no code\"' /tmp/p.json)). Recheck PLAID_CLIENT_ID and PLAID_SECRET in repo Settings -> Secrets and variables -> Actions."
+          fi
+          exit 1
+
       - name: Write service account
         run: |
           cat > "$RUNNER_TEMP/sa.json" <<'JSON'
