@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=75';
-import { TRANSFERS } from './defaults.js?v=75';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=75';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=76';
+import { TRANSFERS } from './defaults.js?v=76';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=76';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -24,7 +24,7 @@ const ordinal = (n) => n + (['th', 'st', 'nd', 'rd'][(n % 100 >> 3) ^ 1 && n % 1
 const moDay = (s) => parseYmd(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 const moYr = (s) => parseYmd(s).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
 
-const ui = { tab: 'home', month: monthKey(new Date()), filter: 'all', all: false, q: '', planDraft: {}, planLive: true, openCat: null, openLoan: null };
+const ui = { tab: 'home', month: monthKey(new Date()), filter: 'all', all: false, q: '', planDraft: {}, planLive: true, openCat: null, openLoan: null, weekOff: 0 };
 try { ui.planDraft = JSON.parse(localStorage.getItem('plan-draft') || '{}') || {}; } catch { ui.planDraft = {}; }
 try { ui.planLive = JSON.parse(localStorage.getItem('plan-live') ?? 'true'); } catch { ui.planLive = true; }
 const savePlanDraft = () => { try { localStorage.setItem('plan-draft', JSON.stringify(ui.planDraft || {})); } catch {} };
@@ -310,6 +310,19 @@ function cardSection() {
   const cp = cardPlan(s, store.txs, now);
   const strat = cc.strategy || 'extra';
   const diff = round((cc.manual || 0) - det.computed);
+
+  // Does the log agree with the bank? Loose card charges count: the bank has
+  // already billed them, they just aren't categorised yet.
+  const rec = cardReconcile();
+  const agrees = rec && Math.abs(rec.diff) < 0.01;
+  const recStrip = !rec ? '' : `<div class="recstrip ${agrees ? 'ok' : ''}">
+    <div class="rs-n">
+      <div><b>${esc(rec.name || 'Your card')}</b> says ${money(rec.bank)}</div>
+      <div class="rs-m">Your log ${money(rec.computed)}${rec.loose ? ` + ${money(rec.loose)} not finished` : ''} = ${money(rec.ours)}</div>
+    </div>
+    ${agrees ? '<b class="rs-ok">In step ✓</b>'
+      : `<button class="btn tiny" data-act="cc-match">Off by ${money(Math.abs(rec.diff))} · Match</button>`}
+  </div>`;
   const hasEdits = cc.planEdits && Object.keys(cc.planEdits).length > 0;
 
   const planBlock = wp.cardBalance > 0 ? `
@@ -356,6 +369,7 @@ function cardSection() {
     <div class="retlist">${cardRets.map((r) => `<div><span>${esc(r.note || cat(r.category)?.name || 'Purchase')}</span><b>−${money(Math.abs(r.amount))}</b></div>`).join('')}</div>` : '';
 
   return `<div class="card">
+    ${recStrip}
     ${wp.cardBalance > 0 ? planBlock : '<div class="note" style="margin:0 0 8px">No balance to pay off right now.</div>'}
     ${retBlock}
     ${modeToggle}
@@ -378,11 +392,30 @@ function billsListHTML(s) {
 // Merge the (persisted) what-if draft over the computed recommendation.
 // Spending is "live": its recommended value is what you've actually spent this week
 // (so a reset snaps it to reality, freeing the rest of the budget to leftover).
+const planNow = () => addDays(new Date(), (ui.weekOff || 0) * 7);
+
+function planWeekLabel() {
+  const a = parseYmd(weekStart(planNow(), S().weekStartDay ?? 5));
+  const b = addDays(a, 6);
+  const sameYear = a.getFullYear() === b.getFullYear();
+  const f = (d, yr) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', ...(yr ? { year: 'numeric' } : {}) });
+  return `${f(a, !sameYear)} – ${f(b, true)}`;
+}
+
+function planWeekSub() {
+  const o = ui.weekOff || 0;
+  if (o === 0) return 'This week';
+  if (o === -1) return 'Last week';
+  if (o === 1) return 'Next week';
+  return o < 0 ? `${-o} weeks ago` : `In ${o} weeks`;
+}
+
 function planValues() {
-  const wp = weekPlan(S(), store.txs);
+  const now = planNow();
+  const wp = weekPlan(S(), store.txs, now);
   const rc = wp.rec, d = ui.planDraft || {};
   const hasCard = wp.cardBalance > 0;
-  const liveSpend = round(weekStats(S(), store.txs).spent);
+  const liveSpend = round(weekStats(S(), store.txs, now).spent);
   const live = ui.planLive !== false;
   const rec = live ? { ...rc, everyday: liveSpend } : rc;   // live = actual spent; off = budgeted
   const v = (f) => (d[f] !== undefined ? d[f] : rec[f]);
@@ -416,6 +449,12 @@ function planTab() {
   const resetBtn = (field) => `<button class="cellx" data-act="plan-reset-field" data-id="${field}" title="Reset to recommended">↺</button>`;
   const erow = (label, field, extra = '') => `<div class="trow"><span>${label}</span><span class="b">${money(stdVal[field])}</span><span class="n"><input class="plancell" data-plan="${field}" type="text" inputmode="decimal" placeholder="0" value="${fmtNum(p[field] || '')}">${resetBtn(field)}<button class="cellx" data-act="plan-clear" data-id="${field}" title="Clear">✕</button></span></div>${extra}`;
 
+  const weekNav = `<div class="weeknav">
+    <button data-act="plan-week" data-id="-1" aria-label="Previous week">‹</button>
+    <div class="wk"><div class="wk-r">${planWeekLabel()}</div><div class="wk-s">${planWeekSub()}</div></div>
+    <button data-act="plan-week" data-id="1" aria-label="Next week">›</button></div>
+    ${ui.weekOff ? '<button class="btn block" data-act="plan-week" data-id="0" style="margin:0 0 12px">Back to this week</button>' : ''}`;
+
   const stratLabel = { extra: 'from leftover', spend: 'spending less', save: 'saving less', split: 'splitting the difference', stretch: 'stretching the payoff', none: '' }[wp.strategy];
   // Show what the card paydown is actually made of.
   const cuts = [wp.spendCut > 0.005 ? `${money(wp.spendCut)} less spending` : '', wp.saveCut > 0.005 ? `${money(wp.saveCut)} less saving` : ''].filter(Boolean).join(' + ');
@@ -447,6 +486,7 @@ function planTab() {
     ? `<p class="note">Weekly ${money(pw.planBudget)} − ${money(pw.trimmedByCard)} freed for the card = <b>${money(pw.baseBudget)}</b> to spend.</p>`
     : '';
   const plannerBody = `
+    ${weekNav}
     <div class="card plan-table">
       <div class="trow head"><span></span><span class="b">Standard</span><span class="n">Recommended</span></div>
       ${erow('Paycheck', 'pay')}
@@ -688,7 +728,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=75'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=76'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -749,17 +789,37 @@ async function adoptCardCharges(b, loose) {
   if (add.length) toast(`${add.length} card charge${add.length === 1 ? '' : 's'} to finish`);
 }
 
-// A bills account also stands in for typing its balance in by hand.
+// Mirrors what the banks actually say: the bills balance stands in for typing it
+// by hand, and the card balance is kept beside the log so the two can be compared
+// rather than silently overwriting what you've recorded.
 function bankBalanceSync() {
-  let bal = null;
+  let bills = null, card = null, cardName = null;
   bankUI.items.forEach((it) => Object.entries(it.roles || {}).forEach(([acct, role]) => {
-    if (role !== 'bills') return;
     const v = (it.balances || {})[acct];
-    if (v && typeof v.current === 'number') bal = round((bal || 0) + v.current);
+    if (!v || typeof v.current !== 'number') return;
+    if (role === 'bills') bills = round((bills || 0) + v.current);
+    if (role === 'card') { card = round((card || 0) + v.current); cardName = v.name || cardName; }
   }));
-  if (bal == null || (S().billsAcct || {}).bal === bal) return;
-  S().billsAcct = { bal, asOf: today() };
-  saveSettings();
+  let dirty = false;
+  if (bills != null && (S().billsAcct || {}).bal !== bills) { S().billsAcct = { bal: bills, asOf: today() }; dirty = true; }
+  if (card != null && (S().cc.plaidBal || {}).amount !== card) {
+    S().cc = { ...S().cc, plaidBal: { amount: card, asOf: today(), name: cardName } };
+    dirty = true;
+  }
+  if (dirty) saveSettings();
+}
+
+// What the card should read if every loose card charge were finished. Those are
+// real charges the bank has already counted, so leaving them out would make the
+// log look permanently behind.
+function cardReconcile() {
+  const s = S();
+  const pb = s.cc.plaidBal;
+  if (!pb || typeof pb.amount !== 'number') return null;
+  const computed = cardDetail(s, store.txs).computed;
+  const loose = round((s.pending || []).filter((p) => p.source === 'plaid').reduce((n, p) => n + (+p.amount || 0), 0));
+  const ours = round(computed + loose);
+  return { bank: pb.amount, asOf: pb.asOf, name: pb.name, computed, loose, ours, diff: round(pb.amount - ours) };
 }
 
 const ROLE_OPTS = [
@@ -983,6 +1043,7 @@ function drawBillEdit() {
   const b = S().bills[billEdit];
   if (!b) return closeSheet();
   const hist = (b.history || []).slice().sort((a, c) => c.month.localeCompare(a.month));
+  const every = Math.max(1, Math.round(+b.everyMonths || 1));
   const avg = billAmount({ ...b, useAvg: true });
   const rows = hist.map((h) => `<div class="field">
     <input type="month" data-bh="${esc(h.id)}" data-f="month" value="${esc(h.month)}" max="${today().slice(0, 7)}">
@@ -990,10 +1051,16 @@ function drawBillEdit() {
     <button class="x" data-act="bh-del" data-id="${esc(h.id)}" aria-label="Remove">✕</button></div>`).join('') || '<div class="empty" style="padding:14px">No months logged yet.</div>';
   $('#sheet').innerHTML = `<div class="panel"><div class="head">
       <span style="width:40px"></span><span class="step">Edit ${esc(b.name)}</span><button data-act="bill-done" aria-label="Done">✕</button></div>
-    <label class="editlbl">Fixed amount</label>
+    <label class="editlbl">Amount each time it arrives</label>
     <input class="sheet-input" type="text" inputmode="decimal" value="${fmtNum(b.amount)}" data-billfix="amount" ${b.useAvg ? 'disabled' : ''}>
+    <label class="editlbl">How often it arrives</label>
+    <select class="sheet-input" data-billevery>
+      ${[[1, 'Every month'], [2, 'Every other month'], [3, 'Every 3 months'], [6, 'Every 6 months'], [12, 'Once a year']]
+        .map(([v, l]) => `<option value="${v}" ${every === v ? 'selected' : ''}>${l}</option>`).join('')}
+    </select>
+    ${every > 1 ? `<div class="note" style="margin:2px 2px 10px">Budgeted at <b>${money(billAmount(b))}</b> a month — ${money(b.useAvg ? billAmount({ ...b, everyMonths: 1 }) : b.amount)} spread over ${every} months.</div>` : ''}
     <label class="paytoggle" style="display:flex;align-items:center;gap:10px;margin:12px 2px 4px"><input type="checkbox" data-billavg ${b.useAvg ? 'checked' : ''}> Use 12-month average${b.history && b.history.length ? ` <b style="margin-left:auto">${money(avg)}</b>` : ''}</label>
-    <div class="note" style="margin:2px 2px 10px">${b.useAvg ? `Using the average of the last ${Math.min(12, hist.length)} month${hist.length === 1 ? '' : 's'}.` : 'Turn on to use the average of the months below instead of the fixed amount.'}</div>
+    <div class="note" style="margin:2px 2px 10px">${b.useAvg ? `Using the average of the last ${Math.min(Math.round(12 / every), hist.length)} statement${hist.length === 1 ? '' : 's'}${every > 1 ? ' — a year of service' : ''}.` : 'Turn on to use the average of the months below instead of the fixed amount.'}</div>
     <label class="editlbl">Past months</label>
     ${rows}
     <button class="btn block" data-act="bh-add">+ Add a month</button>
@@ -1579,6 +1646,13 @@ document.addEventListener('click', (e) => {
     case 'week-unreset': { S().weekResetAt = null; saveSettings(); closeSheet(); return render(); }
     case 'overage-view': return openOverage();
     case 'plan-clear': { (ui.planDraft ||= {})[id] = 0; savePlanDraft(); return render(); }
+    case 'cc-match': {
+      const r = cardReconcile();
+      if (!r || Math.abs(r.diff) < 0.01) return;
+      S().cc = { ...S().cc, chargesAdj: round((S().cc.chargesAdj || 0) + r.diff) };
+      saveSettings(); render();
+      return toast(`Card matched to ${money(r.bank)}`);
+    }
     case 'cc-reset': {
       const cur = cardDetail(S(), store.txs).computed;
       const v = prompt('Actual current card balance? (re-baselines, stays on auto)', cur);
@@ -1620,6 +1694,12 @@ document.addEventListener('click', (e) => {
     case 'finish-loose': return openPending();
     case 'finish-item': { const it = (S().pending || []).find((x) => x.id === id); closeSheet(); if (it) openFlow({ amt: String(it.amount), pendingId: it.id, amtLocked: true, note: it.note || '', date: it.date }); return; }
     case 'pending-del': { if (confirm('Discard this loose item without logging it?')) { S().pending = (S().pending || []).filter((x) => x.id !== id); saveSettings(); render(); if ((S().pending || []).length) openPending(); else closeSheet(); } return; }
+    case 'plan-week': {
+      const d = +id;
+      ui.weekOff = d === 0 ? 0 : (ui.weekOff || 0) + d;
+      ui.planDraft = {}; savePlanDraft();
+      return render();
+    }
     case 'plan-reset': ui.planDraft = {}; savePlanDraft(); return render();
     case 'plan-reset-field': { if (ui.planDraft) delete ui.planDraft[id]; savePlanDraft(); return render(); }
     case 'plan-bills-needed': { (ui.planDraft ||= {}).bills = round(parseFloat(id) || 0); savePlanDraft(); return render(); }
@@ -1730,6 +1810,7 @@ document.addEventListener('change', (e) => {
   else if (t.dataset.ovignore) { updateTx(t.dataset.ovignore, { exBudget: !t.checked }); openOverage(); render(); return; }
   else if (t.dataset.cc === 'charges') { const raw = cardDetail(S(), store.txs).rawCredit; S().cc = { ...S().cc, chargesAdj: round(num() - raw) }; saveSettings(); }
   else if (t.dataset.billfix) { S().bills[billEdit].amount = num(); saveSettings(); drawBillEdit(); return; }
+  else if (t.hasAttribute('data-billevery')) { S().bills[billEdit].everyMonths = Math.max(1, Math.round(+t.value || 1)); saveSettings(); drawBillEdit(); render(); return; }
   else if (t.hasAttribute('data-billavg')) { S().bills[billEdit].useAvg = t.checked; saveSettings(); drawBillEdit(); render(); return; }
   else if (t.dataset.bh) { const h = (S().bills[billEdit].history || []).find((x) => x.id === t.dataset.bh); if (h) { h[t.dataset.f] = t.dataset.f === 'amount' ? num() : (t.value || h.month); saveSettings(); drawBillEdit(); } return; }
   else if (t.dataset.loanextra) { const l = loanById(t.dataset.loanextra); if (l) { l.extra = Math.max(0, num()); saveSettings(); } }

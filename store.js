@@ -1,6 +1,6 @@
-import { firebaseConfig } from './firebase-config.js?v=75';
-import { DEFAULT_SETTINGS } from './defaults.js?v=75';
-import { HISTORY } from './history.js?v=75';
+import { firebaseConfig } from './firebase-config.js?v=76';
+import { DEFAULT_SETTINGS } from './defaults.js?v=76';
+import { HISTORY } from './history.js?v=76';
 
 const LS_KEY = 'budget-tracker-v2';
 const CDN = 'https://www.gstatic.com/firebasejs/11.0.2/';
@@ -22,7 +22,7 @@ export const store = {
 function normalize(s) {
   const out = { ...clone(DEFAULT_SETTINGS), ...s };
   if (s && s.weeklyPay == null && s.income) out.weeklyPay = round2(s.income / 4);
-  out.bills = out.bills.map((b) => ({ ...b, day: b.day || 1, history: Array.isArray(b.history) ? b.history : [], useAvg: !!b.useAvg }));
+  out.bills = out.bills.map((b) => ({ ...b, day: b.day || 1, everyMonths: Math.max(1, Math.round(+b.everyMonths || 1)), history: Array.isArray(b.history) ? b.history : [], useAvg: !!b.useAvg }));
   out.pending = Array.isArray(s && s.pending) ? s.pending : [];
   out.returns = Array.isArray(s && s.returns) ? s.returns : [];
   const cc = (s && s.cc) || {};
@@ -35,7 +35,9 @@ function normalize(s) {
     strategy: cc.strategy || 'extra',
     paidThrough: cc.paidThrough ?? null,
     payoffBy: cc.payoffBy ?? null,
-    planEdits: (cc.planEdits && typeof cc.planEdits === 'object') ? cc.planEdits : {}
+    planEdits: (cc.planEdits && typeof cc.planEdits === 'object') ? cc.planEdits : {},
+    // What the bank itself says, kept beside the log rather than replacing it.
+    plaidBal: (cc.plaidBal && typeof cc.plaidBal === 'object') ? cc.plaidBal : null
   };
   const ba = (s && s.billsAcct) || {};
   out.billsAcct = { bal: ba.bal ?? null, asOf: ba.asOf ?? null };

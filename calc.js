@@ -30,13 +30,21 @@ export function paydaysInMonth(month, startDay = 5) {
 export const monthlyIncome = (s, month = ymd(new Date()).slice(0, 7)) => round(s.weeklyPay * paydaysInMonth(month, s.weekStartDay ?? 5));
 // A bill's effective monthly cost: the 12-month average of logged amounts when
 // "use average" is on and there's history, otherwise its fixed amount.
+// Always returns the MONTHLY figure, whatever the billing cadence. A water bill
+// that arrives every other month is budgeted at half its statement each month,
+// so `amount` and the history are what the bill actually is when it lands, and
+// everyMonths turns that into the monthly share.
 export function billAmount(b) {
+  const every = Math.max(1, Math.round(+b.everyMonths || 1));
   const h = Array.isArray(b.history) ? b.history.filter((x) => x && x.month) : [];
   if (b.useAvg && h.length) {
-    const vals = [...h].sort((a, c) => a.month.localeCompare(c.month)).slice(-12).map((x) => +x.amount || 0);
-    return round(vals.reduce((a, v) => a + v, 0) / vals.length);
+    // A year of service, not a year of statements: 12 months of a bimonthly
+    // bill is its last 6.
+    const take = Math.max(1, Math.round(12 / every));
+    const vals = [...h].sort((a, c) => a.month.localeCompare(c.month)).slice(-take).map((x) => +x.amount || 0);
+    return round(vals.reduce((a, v) => a + v, 0) / vals.length / every);
   }
-  return b.amount || 0;
+  return round((b.amount || 0) / every);
 }
 export const billsTotal = (s) => sum(s.bills.map(billAmount));
 export const firstTotal = (s) => sum(s.bills.filter((b) => b.day === 1).map(billAmount));

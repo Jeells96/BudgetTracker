@@ -521,3 +521,19 @@ nav#tabs button.on { background:var(--ink); color:var(--canvas); }
 .acct.row { display:flex; align-items:center; gap:12px; }
 .acct.row .nm { flex:1; overflow-wrap:anywhere; }
 .btn.tiny { width:auto; height:auto; flex:none; padding:8px 12px; font-size:.8rem; border-radius:10px; }
+
+/* Plan: which week you're looking at */
+.weeknav { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
+.weeknav > button { width:40px; height:40px; flex:none; border-radius:12px; font-size:1.15rem;
+  background:var(--surface); border:1px solid var(--hair); color:var(--ink); }
+.weeknav .wk { flex:1; text-align:center; min-width:0; }
+.weeknav .wk-r { font-weight:600; font-size:.95rem; }
+.weeknav .wk-s { font-size:.76rem; color:var(--muted); margin-top:2px; }
+
+/* Card: does the log agree with the bank? */
+.recstrip { display:flex; align-items:center; gap:10px; border-radius:var(--r); padding:11px 13px;
+  margin:0 0 10px; font-size:.85rem; background:var(--raise); border:1px solid var(--hair); }
+.recstrip.ok { background:var(--accent-soft); border-color:color-mix(in srgb,var(--accent) 24%,transparent); }
+.recstrip .rs-n { flex:1; min-width:0; }
+.recstrip .rs-m { color:var(--muted); font-size:.78rem; margin-top:3px; }
+.recstrip .rs-ok { flex:none; color:var(--accent); font-weight:600; white-space:nowrap; }
