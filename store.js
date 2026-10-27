@@ -1,6 +1,6 @@
-import { firebaseConfig } from './firebase-config.js?v=77';
-import { DEFAULT_SETTINGS } from './defaults.js?v=77';
-import { HISTORY } from './history.js?v=77';
+import { firebaseConfig } from './firebase-config.js?v=78';
+import { DEFAULT_SETTINGS } from './defaults.js?v=78';
+import { HISTORY } from './history.js?v=78';
 
 const LS_KEY = 'budget-tracker-v2';
 const CDN = 'https://www.gstatic.com/firebasejs/11.0.2/';
@@ -41,7 +41,8 @@ function normalize(s) {
     payoffBy: cc.payoffBy ?? null,
     planEdits: (cc.planEdits && typeof cc.planEdits === 'object') ? cc.planEdits : {},
     // What the bank itself says, kept beside the log rather than replacing it.
-    plaidBal: (cc.plaidBal && typeof cc.plaidBal === 'object') ? cc.plaidBal : null
+    plaidBal: (cc.plaidBal && typeof cc.plaidBal === 'object')
+      ? { ...cc.plaidBal, pending: +cc.plaidBal.pending || 0 } : null
   };
   const ba = (s && s.billsAcct) || {};
   out.billsAcct = { bal: ba.bal ?? null, asOf: ba.asOf ?? null };

@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=77';
-import { TRANSFERS } from './defaults.js?v=77';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=77';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=78';
+import { TRANSFERS } from './defaults.js?v=78';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=78';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -324,7 +324,7 @@ function cardSection() {
   const agrees = rec && Math.abs(rec.diff) < 0.01;
   const recStrip = !rec ? '' : `<div class="recstrip ${agrees ? 'ok' : ''}">
     <div class="rs-n">
-      <div><b>${esc(rec.name || 'Your card')}</b> says ${money(rec.bank)}</div>
+      <div><b>${esc(rec.name || 'Your card')}</b> ${money(rec.posted)}${rec.pend ? ` + ${money(rec.pend)} pending` : ''} = <b>${money(rec.bank)}</b></div>
       <div class="rs-m">Your log ${money(rec.computed)}${rec.loose ? ` + ${money(rec.loose)} not finished` : ''} = ${money(rec.ours)}</div>
     </div>
     ${agrees ? '<b class="rs-ok">In step ✓</b>'
@@ -543,7 +543,7 @@ function planTab() {
 
   return `${header('Plan', false)}
     ${sec("This week's plan", plannerBody, true)}
-    ${sec(`Credit card · ${money(wp.cardBalance)}`, cardSection())}
+    ${sec(`Credit card · ${money(cardBalance(s, store.txs))}`, cardSection())}
     ${sec(`Bills account${baTag}`, billsAcctBody)}
     ${sec(`Monthly bills · ${money(billsTotal(s))}`, billsListHTML(s))}`;
 }
@@ -762,7 +762,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=77'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=78'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -827,17 +827,22 @@ async function adoptCardCharges(b, loose) {
 // by hand, and the card balance is kept beside the log so the two can be compared
 // rather than silently overwriting what you've recorded.
 function bankBalanceSync() {
-  let bills = null, card = null, cardName = null;
+  let bills = null, card = null, cardPend = null, cardName = null;
   bankUI.items.forEach((it) => Object.entries(it.roles || {}).forEach(([acct, role]) => {
     const v = (it.balances || {})[acct];
     if (!v || typeof v.current !== 'number') return;
     if (role === 'bills') bills = round((bills || 0) + v.current);
-    if (role === 'card') { card = round((card || 0) + v.current); cardName = v.name || cardName; }
+    if (role === 'card') {
+      card = round((card || 0) + v.current);
+      cardPend = round((cardPend || 0) + (+v.pending || 0));
+      cardName = v.name || cardName;
+    }
   }));
   let dirty = false;
   if (bills != null && (S().billsAcct || {}).bal !== bills) { S().billsAcct = { bal: bills, asOf: today() }; dirty = true; }
-  if (card != null && (S().cc.plaidBal || {}).amount !== card) {
-    S().cc = { ...S().cc, plaidBal: { amount: card, asOf: today(), name: cardName } };
+  const pb = S().cc.plaidBal || {};
+  if (card != null && (pb.amount !== card || pb.pending !== (cardPend || 0))) {
+    S().cc = { ...S().cc, plaidBal: { amount: card, pending: cardPend || 0, asOf: today(), name: cardName } };
     dirty = true;
   }
   if (dirty) saveSettings();
@@ -850,10 +855,16 @@ function cardReconcile() {
   const s = S();
   const pb = s.cc.plaidBal;
   if (!pb || typeof pb.amount !== 'number') return null;
+  // The bank's posted balance leaves pending out, while your loose logs include
+  // it, so the pending total has to be added back for the two sides to mean the
+  // same thing: everything charged, posted or not.
+  const posted = pb.amount;
+  const pend = +pb.pending || 0;
+  const bank = round(posted + pend);
   const computed = cardDetail(s, store.txs).computed;
   const loose = round((s.pending || []).filter((p) => p.source === 'plaid').reduce((n, p) => n + (+p.amount || 0), 0));
   const ours = round(computed + loose);
-  return { bank: pb.amount, asOf: pb.asOf, name: pb.name, computed, loose, ours, diff: round(pb.amount - ours) };
+  return { posted, pend, bank, asOf: pb.asOf, name: pb.name, computed, loose, ours, diff: round(bank - ours) };
 }
 
 const ROLE_OPTS = [

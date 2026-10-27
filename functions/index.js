@@ -70,6 +70,7 @@ const itemsCol = (uid) => db.collection('plaidItems').doc(uid).collection('items
  *   off     - ignored entirely
  */
 const ROLES = new Set(['card', 'review', 'bills', 'off']);
+const money2 = (n) => Math.round((+n || 0) * 100) / 100;
 const defaultRole = (a) => (a && a.type === 'credit' ? 'card' : a && a.type === 'depository' ? 'review' : 'off');
 
 /** Step 1 — hand Plaid Link a short-lived token so it can open. */
@@ -258,9 +259,32 @@ exports.syncTransactions = onCall(withSecrets, async (req) => {
         balances[a.account_id] = {
           name: a.name, mask: a.mask || null,
           current: a.balances.current, available: a.balances.available,
+          pending: 0,
         };
       });
     } catch (e) { console.warn('balance refresh failed', e.message); }
+
+    // A card's current balance leaves pending charges out — Capital One shows
+    // them in a separate list — so they have to be counted on their own or any
+    // comparison against the log is permanently off by whatever is pending.
+    try {
+      const to = new Date(), from = new Date(Date.now() - 60 * 86400000);
+      const d = (x) => x.toISOString().slice(0, 10);
+      let offset = 0, total = 1;
+      while (offset < total && offset < 500) {
+        const pr = await api.transactionsGet({
+          access_token: item.accessToken, start_date: d(from), end_date: d(to),
+          options: { count: 100, offset },
+        });
+        total = pr.data.total_transactions;
+        if (!pr.data.transactions.length) break;
+        pr.data.transactions.forEach((t) => {
+          if (!t.pending || !balances[t.account_id]) return;
+          balances[t.account_id].pending = money2(balances[t.account_id].pending + t.amount);
+        });
+        offset += pr.data.transactions.length;
+      }
+    } catch (e) { console.warn('pending scan failed', e.message); }
 
     let cursor = item.cursor || undefined;
     let more = true;
