@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=70';
-import { TRANSFERS } from './defaults.js?v=70';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=70';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=71';
+import { TRANSFERS } from './defaults.js?v=71';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=71';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -666,7 +666,7 @@ function settings() {
 // weekly budget or the card plan until you give it a category and accept it.
 let bank = null;
 const bankUI = { on: false, busy: '', user: undefined, items: [], inbox: [], pick: {}, billq: [], billpick: {}, err: '' };
-const bankMod = async () => (bank ||= await import('./bank.js?v=70'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=71'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -694,7 +694,8 @@ async function bankLoad(resume) {
   if (loose.length) await adoptCardCharges(b, loose);
   bankUI.billq = billsIn.length ? await adoptBillCharges(b, billsIn) : [];
   bankUI.billq.forEach((it) => {
-    if (bankUI.billpick[it.id] === undefined) bankUI.billpick[it.id] = guessBill(it.note);
+    const k = billKey(it.note) || it.id;
+    if (bankUI.billpick[k] === undefined) bankUI.billpick[k] = guessBill(it.note);
   });
   bankBalanceSync();
 
@@ -748,6 +749,18 @@ function guessBill(note) {
   if (!k) return '';
   const hit = S().bills.find((b) => { const bk = billKey(b.name); return bk && (k.startsWith(bk) || bk.startsWith(k)); });
   return hit ? hit.id : '';
+}
+
+// The first sync brings back every month at once, so the queue asks per
+// merchant, not per payment: one answer files years of it.
+function billGroups() {
+  const g = new Map();
+  bankUI.billq.forEach((it) => {
+    const k = billKey(it.note) || it.id;
+    if (!g.has(k)) g.set(k, { key: k, note: it.note || 'Payment', items: [] });
+    g.get(k).items.push(it);
+  });
+  return [...g.values()].sort((a, b) => b.items.length - a.items.length);
 }
 
 // One month of one bill, recorded so billAmount() can average the last 12.
@@ -818,12 +831,16 @@ function bankBlock() {
     + S().bills.map((x) => `<option value="${esc(x.id)}" ${picked === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')
     + `<option value="__skip" ${picked === '__skip' ? 'selected' : ''}>Not a bill — ignore these</option>`;
 
-  const billRows = b.billq.map((it) => `<div class="field">
-    <label style="flex:1">${esc(it.note || 'Payment')}<br><span class="muted" style="font-size:.8rem">${esc(shortDate(parseYmd(it.date)))}</span></label>
-    <b style="width:84px;text-align:right">${money(it.amount)}</b>
-    <select data-billq="${esc(it.id)}" style="flex-basis:100%">${billOpts(bankUI.billpick[it.id] || '')}</select>
-    <button class="btn mini" data-act="billq-save" data-id="${esc(it.id)}"${off('row-' + it.id)}>✓ Match</button>
-    <button class="x" data-act="billq-drop" data-id="${esc(it.id)}" aria-label="Skip">✕</button></div>`).join('');
+  const billRows = billGroups().map((g) => {
+    const amts = g.items.map((x) => x.amount);
+    const lo = Math.min(...amts), hi = Math.max(...amts);
+    const span = lo === hi ? money(lo) : `${money(lo)}–${money(hi)}`;
+    return `<div class="field">
+      <label style="flex:1">${esc(g.note)}<br><span class="muted" style="font-size:.8rem">${g.items.length} month${g.items.length === 1 ? '' : 's'} · ${span}</span></label>
+      <select data-billq="${esc(g.key)}" style="flex-basis:100%">${billOpts(bankUI.billpick[g.key] || '')}</select>
+      <button class="btn mini" data-act="billq-save" data-id="${esc(g.key)}"${off('row-' + g.key)}>✓ Match all</button>
+      <button class="x" data-act="billq-drop" data-id="${esc(g.key)}" aria-label="Ignore these">✕</button></div>`;
+  }).join('');
 
   return `<h2>Banking</h2><div class="card">${err}
     <div class="field"><label>Signed in as ${esc(b.user.email || b.user.displayName || 'you')}</label>
@@ -840,25 +857,23 @@ function bankBlock() {
       ${billRows}</div>` : ''}`;
 }
 
-function billqSave(id) {
-  const it = bankUI.billq.find((x) => x.id === id);
-  if (!it) return;
-  const pick = bankUI.billpick[id];
-  if (!pick) return toast('Pick a bill first');
-  bankRun('row-' + id, async () => {
+// Answering a merchant writes the rule; adoption then files every month of it,
+// here and in every sync from now on.
+function billqRule(key, pick) {
+  bankRun('row-' + key, async () => {
     const b = await bankMod();
-    const key = billKey(it.note);
-    if (key) S().billMatch = { ...(S().billMatch || {}), [key]: pick };
-    const filed = pick !== '__skip' && applyBillHistory(pick, it.date.slice(0, 7), it.amount);
+    S().billMatch = { ...(S().billMatch || {}), [key]: pick };
     saveSettings();
-    await b.dropInbox(id);
-    bankUI.billq = bankUI.billq.filter((x) => x.id !== id);
-    delete bankUI.billpick[id];
-    // The rule now exists, so every other queued month of the same merchant
-    // files itself on this pass.
     bankUI.billq = await adoptBillCharges(b, bankUI.billq);
-    toast(filed ? 'Matched — future months file themselves' : 'Ignoring these from now on');
+    delete bankUI.billpick[key];
+    toast(pick === '__skip' ? 'Ignoring these from now on' : 'Matched — future months file themselves');
   });
+}
+
+function billqSave(key) {
+  const pick = bankUI.billpick[key];
+  if (!pick) return toast('Pick a bill first');
+  billqRule(key, pick);
 }
 
 function inboxAccept(id) {
@@ -1612,10 +1627,7 @@ document.addEventListener('click', (e) => {
       return bankRun('unlink', async () => { const b = await bankMod(); await b.unlink(id); await bankLoad(false); toast('Unlinked'); });
     }
     case 'billq-save': return billqSave(id);
-    case 'billq-drop': return bankRun('row-' + id, async () => {
-      const b = await bankMod(); await b.dropInbox(id);
-      bankUI.billq = bankUI.billq.filter((x) => x.id !== id); delete bankUI.billpick[id];
-    });
+    case 'billq-drop': return billqRule(id, '__skip');
     case 'inbox-accept': return inboxAccept(id);
     case 'inbox-drop': return bankRun('row-' + id, async () => {
       const b = await bankMod(); await b.dropInbox(id);
