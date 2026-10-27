@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=71';
-import { TRANSFERS } from './defaults.js?v=71';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=71';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=72';
+import { TRANSFERS } from './defaults.js?v=72';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=72';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -666,12 +666,13 @@ function settings() {
 // weekly budget or the card plan until you give it a category and accept it.
 let bank = null;
 const bankUI = { on: false, busy: '', user: undefined, items: [], inbox: [], pick: {}, billq: [], billpick: {}, err: '' };
-const bankMod = async () => (bank ||= await import('./bank.js?v=71'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=72'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
   try { await fn(); } catch (e) { bankUI.err = (e && e.message) || String(e); }
   bankUI.busy = ''; render();
+  if (bankUI.err) toast(bankUI.err);
 }
 
 // Re-reads everything: who you are, what's linked, what's waiting.
@@ -680,7 +681,11 @@ async function bankLoad(resume) {
   if (resume) { const u = await b.resumeSignIn(); if (u) toast('Signed in'); }
   bankUI.user = await b.user();
   if (!bankUI.user) { bankUI.items = []; bankUI.inbox = []; return; }
-  if (resume) { const r = await b.resumeOAuth(); if (r) toast(`Linked ${r.accounts.length} account${r.accounts.length === 1 ? '' : 's'}`); }
+  if (resume) {
+    const r = await b.resumeOAuth();
+    if (r && r.linked) { const n = (r.linked.accounts || []).length; toast(`Linked ${n} account${n === 1 ? '' : 's'}`); }
+  }
+  b.preload();   // have Link's script ready before the tap, not after
   const [res, box] = await Promise.all([b.listItems(), b.inbox()]);
   bankUI.items = res.items || [];
 
@@ -1620,7 +1625,19 @@ document.addEventListener('click', (e) => {
     case 'bank-open': bankUI.on = true; return bankRun('open', () => bankLoad(true));
     case 'bank-signin': return bankRun('signin', async () => { const b = await bankMod(); if (await b.signIn()) toast('Signed in'); await bankLoad(false); });
     case 'bank-signout': return bankRun('signout', async () => { const b = await bankMod(); await b.signOutNow(); bankUI.user = null; bankUI.items = []; bankUI.inbox = []; toast('Signed out'); });
-    case 'bank-connect': return bankRun('connect', async () => { const b = await bankMod(); const r = await b.connect(); if (r) { toast(`Linked ${r.accounts.length} account${r.accounts.length === 1 ? '' : 's'}`); await bankLoad(false); } });
+    case 'bank-connect': return bankRun('connect', async () => {
+      const b = await bankMod();
+      const r = await b.connect();
+      if (r && r.linked) {
+        const n = (r.linked.accounts || []).length;
+        toast(`Linked ${n} account${n === 1 ? '' : 's'}`);
+        await bankLoad(false);
+      } else if (r && r.exited) {
+        bankUI.err = r.status === 'never opened'
+          ? "Plaid Link didn't open. If your browser blocked a pop-up, allow it for this site and try again."
+          : `Closed before a bank was linked (${r.status}).`;
+      }
+    });
     case 'bank-sync': return bankRun('sync', async () => { const b = await bankMod(); const r = await b.syncNow(); await bankLoad(false); toast(r.added ? `${r.added} new to review` : 'Nothing new'); });
     case 'bank-unlink': {
       if (!confirm('Unlink this bank? Anything you already accepted stays in your log.')) return;

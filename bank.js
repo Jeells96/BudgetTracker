@@ -8,8 +8,8 @@
  * Imported charges land in an inbox you review. Nothing reaches your weekly
  * budget or the card plan until you give it a category and accept it.
  */
-import { fbReady } from './store.js?v=71';
-import { firebaseConfig } from './firebase-config.js?v=71';
+import { fbReady } from './store.js?v=72';
+import { firebaseConfig } from './firebase-config.js?v=72';
 
 const FB = 'https://www.gstatic.com/firebasejs/11.0.2/';
 const LINK_JS = 'https://cdn.plaid.com/link/v2/stable/link-initialize.js';
@@ -102,20 +102,32 @@ function linkJs() {
 function openLink(Plaid, cfg) {
   return new Promise((resolve, reject) => {
     const done = (fn) => { try { sessionStorage.removeItem('plaidLinkToken'); } catch {} fn(); };
+    let opened = false;
     const handler = Plaid.create({
       ...cfg,
+      onLoad: () => { opened = true; },
+      onEvent: (name) => { if (name) opened = true; },
       onSuccess: async (public_token) => {
-        try { const r = await call('exchangePublicToken', { public_token }); done(() => resolve(r)); }
+        try { const r = await call('exchangePublicToken', { public_token }); done(() => resolve({ linked: r })); }
         catch (e) { done(() => reject(e)); }
       },
-      onExit: (err) => {
-        if (err) return done(() => reject(new Error(err.display_message || err.error_message || 'Your bank closed the connection.')));
-        done(() => resolve(null));   // you backed out — not an error
+      onExit: (err, meta) => {
+        if (err) {
+          const detail = err.display_message || err.error_message || err.error_code || 'Your bank closed the connection.';
+          return done(() => reject(new Error(detail + (err.error_code ? ` (${err.error_code})` : ''))));
+        }
+        // Backing out isn't an error, but it isn't silence either — say which.
+        done(() => resolve({ exited: true, status: (meta && meta.status) || (opened ? 'closed' : 'never opened') }));
       }
     });
     handler.open();
+    // If Link never paints, the tap looks like it did nothing. Say so instead.
+    setTimeout(() => { if (!opened) done(() => resolve({ exited: true, status: 'never opened' })); }, 12000);
   });
 }
+
+/** Fetch Link's script ahead of the tap, so opening is instant. */
+export function preload() { linkJs().catch(() => {}); }
 
 /** Opens Plaid Link. Resolves with {itemId, accounts}, or null if you backed out. */
 export async function connect() {
