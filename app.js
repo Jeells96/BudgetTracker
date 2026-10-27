@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=80';
-import { TRANSFERS } from './defaults.js?v=80';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=80';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=81';
+import { TRANSFERS } from './defaults.js?v=81';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=81';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -324,8 +324,11 @@ function cardSection() {
   const agrees = rec && Math.abs(rec.diff) < 0.01;
   const recStrip = !rec ? '' : `<div class="recstrip ${agrees ? 'ok' : ''}">
     <div class="rs-n">
-      <div><b>${esc(rec.name || 'Your card')}</b> ${money(rec.posted)}${rec.pend ? ` + ${money(rec.pend)} pending` : ''} = <b>${money(rec.bank)}</b></div>
-      <div class="rs-m">Your log ${money(rec.computed)}${rec.loose ? ` + ${money(rec.loose)} not finished` : ''} = ${money(rec.ours)}</div>
+      <div><b>${esc(rec.name || 'Your card')}</b> says <b>${money(rec.bank)}</b></div>
+      <div class="rs-m">Your log ${money(rec.computed)}${rec.loose ? ` + ${money(rec.loose)} not finished` : ''} = ${money(rec.ours)}${
+        rec.pend && Math.abs(Math.abs(rec.diff) - rec.pend) < 0.02
+          ? `<br>The ${money(rec.pend)} gap is exactly what's pending — the bank hasn't posted it yet, so this will settle itself.`
+          : ''}</div>
     </div>
     ${agrees ? '<b class="rs-ok">In step ✓</b>'
       : `<button class="btn tiny" data-act="cc-match">Off by ${money(Math.abs(rec.diff))} · Match</button>`}
@@ -741,7 +744,7 @@ function settings() {
 // weekly budget or the card plan until you give it a category and accept it.
 let bank = null;
 const bankUI = { on: false, booted: false, busy: '', user: undefined, items: [], inbox: [], pick: {}, billq: [], billpick: {}, err: '' };
-const SYNC_EVERY = 15 * 60 * 1000;   // don't re-ask Plaid on every page open
+const SYNC_EVERY = 3 * 60 * 1000;   // effectively every open; just not a reload loop
 
 // Once a bank is linked this runs by itself: the panel is already open and new
 // activity is pulled in the background. Kicked off from render() so it waits for
@@ -751,6 +754,7 @@ async function bankAuto() {
     await bankLoad(true);
     if (!bankUI.user || !bankUI.items.length) return render();
     if (Date.now() - (+S().bankSyncAt || 0) < SYNC_EVERY) return render();
+    bankUI.busy = 'sync'; render();
     const b = await bankMod();
     const r = await b.syncNow();
     S().bankSyncAt = Date.now(); saveSettings();
@@ -762,7 +766,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=80'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=81'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -789,10 +793,14 @@ async function bankLoad(resume) {
   // Card charges become loose logs by themselves — you turn each one into a real
   // transaction when you're ready, and nothing counts until you do. A refund or a
   // card payment isn't a purchase, so it goes to the review queue instead.
-  const loose = box.filter((it) => it.route === 'card' && it.type === 'expense');
+  const map = S().txMatch || {};
+  const known = (it) => !!map[billKey(it.note)] || looksLikeIncome(it);
+  // A card-routed account sends its purchases to loose logs; anything with a
+  // standing rule, and anything Plaid itself calls income, is handled instead.
+  const loose = box.filter((it) => it.route === 'card' && (it.type === 'expense' || known(it)));
   const billsIn = box.filter((it) => it.route === 'bills' && it.type === 'expense');
   bankUI.inbox = box.filter((it) => it.route !== 'bills'
-    && !(it.route === 'card' && it.type === 'expense'));
+    && !(it.route === 'card' && (it.type === 'expense' || known(it))));
   if (loose.length) await adoptCardCharges(b, loose);
   bankUI.billq = billsIn.length ? await adoptBillCharges(b, billsIn) : [];
   bankUI.billq.forEach((it) => {
@@ -808,16 +816,48 @@ async function bankLoad(resume) {
   });
 }
 
+/**
+ * A standing rule for one merchant, learned the first time you file it.
+ *   'i'        paycheque or other money in
+ *   't:<id>'   a transfer: bills, savings, card
+ *   '__skip'   never worth recording
+ * Purchases deliberately never make a rule — those are yours to categorise.
+ */
+function applyTxRule(rule, it) {
+  if (!rule || rule === '__skip') return false;
+  const base = { amount: it.amount, date: it.date, note: it.note || '' };
+  if (rule === 'i') { addTx({ ...base, type: 'income', category: 'income' }); return true; }
+  if (rule.startsWith('t:')) { addTx({ ...base, type: 'transfer', category: rule.slice(2) }); return true; }
+  if (rule.startsWith('e:')) { addTx({ ...base, type: 'expense', category: rule.slice(2), pay: it.pay || 'credit' }); return true; }
+  return false;
+}
+
+// A paycheque looks like a paycheque. Money arriving that Plaid itself calls
+// income needs no rule to be recognised.
+const looksLikeIncome = (it) => it.type === 'income'
+  && ['INCOME', 'TRANSFER_IN'].includes(String(it.plaidCategory || ''));
+
 // srcId keeps a charge from arriving twice if a sync overlaps.
 async function adoptCardCharges(b, loose) {
   const have = new Set((S().pending || []).map((p) => p.srcId).filter(Boolean));
-  const add = loose.filter((it) => !have.has(it.id));
+  const fresh = loose.filter((it) => !have.has(it.id));
+  const map = S().txMatch || {};
+
+  // Anything with a standing rule is filed now; the rest become loose logs.
+  const add = [];
+  let filed = 0;
+  for (const it of fresh) {
+    const rule = map[billKey(it.note)] || (looksLikeIncome(it) ? 'i' : null);
+    if (!rule) { add.push(it); continue; }
+    if (applyTxRule(rule, it)) filed++;
+  }
   if (add.length) {
     S().pending = [...(S().pending || []), ...add.map((it) => ({
       id: uid(), srcId: it.id, amount: it.amount, date: it.date, note: it.note || '', source: 'plaid'
     }))];
-    saveSettings();
   }
+  if (add.length || filed) saveSettings();
+  if (filed) toast(`Filed ${filed} by rule`);
   // Clear them from the inbox either way, so a retry can't duplicate them.
   await Promise.all(loose.map((it) => b.dropInbox(it.id).catch(() => {})));
   if (add.length) toast(`${add.length} card charge${add.length === 1 ? '' : 's'} to finish`);
@@ -848,7 +888,7 @@ function bankBalanceSync() {
     if (!v || typeof v.current !== 'number') return;
     if (role === 'bills') bills = round((bills || 0) + bankBalance(v, role));
     if (role === 'card') {
-      card = round((card || 0) + v.current);
+      card = round((card || 0) + (+v.current || 0));
       cardPend = round((cardPend || 0) + (+v.pending || 0));
       cardName = v.name || cardName;
     }
@@ -875,7 +915,7 @@ function cardReconcile() {
   // same thing: everything charged, posted or not.
   const posted = pb.amount;
   const pend = +pb.pending || 0;
-  const bank = round(posted + pend);
+  const bank = posted;
   const computed = cardDetail(s, store.txs).computed;
   const loose = round((s.pending || []).filter((p) => p.source === 'plaid').reduce((n, p) => n + (+p.amount || 0), 0));
   const ours = round(computed + loose);
@@ -1004,6 +1044,16 @@ function bankBlock() {
       </div></div>`;
   }).join('');
 
+  const rules = Object.entries(S().txMatch || {});
+  const ruleLabel = (r) => r === 'i' ? '💰 Income'
+    : r === '__skip' ? '🚫 Ignored'
+    : r.startsWith('t:') ? ((TRANSFERS.find((x) => x.id === r.slice(2)) || {}).emoji || '🏦') + ' ' + ((TRANSFERS.find((x) => x.id === r.slice(2)) || {}).name || r.slice(2))
+    : ((S().categories.find((c) => c.id === r.slice(2)) || {}).name || r.slice(2));
+  const ruleRows = !rules.length ? '' : `<h2>Automatic rules · ${rules.length}</h2><div class="card">
+    <div class="note">Learned when you filed one of these. Paycheques and transfers file themselves; purchases always wait for you.</div>
+    ${rules.map(([k, r]) => `<div class="acct row"><div class="nm">${esc(k)}<div class="sub">${ruleLabel(r)}</div></div>
+      <button class="btn tiny" data-act="rule-del" data-id="${esc(k)}">Forget</button></div>`).join('')}</div>`;
+
   return `<h2>Banking</h2><div class="card">${err}
     <div class="acct row"><div class="nm">Signed in as ${esc(b.user.email || b.user.displayName || 'you')}</div>
       <button class="btn tiny" data-act="bank-signout"${off('signout')}>Sign out</button></div>
@@ -1015,6 +1065,7 @@ function bankBlock() {
     <button class="btn block" data-act="bank-sync"${off('sync')}>${b.busy === 'sync' ? 'Checking…' : '⟳ Check for new activity'}</button>
     <button class="btn block" data-act="bank-activity">🔎 Browse all bank activity</button>
     ${synced ? `<div class="note">Imports on its own when you open the app. Last checked ${new Date(synced).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}.</div>` : ''}</div>
+    ${ruleRows}
     ${b.inbox.length ? `<h2>To review · ${b.inbox.length}</h2><div class="card">
       <div class="note">Give each one a category to add it. Nothing here counts toward your budget yet.</div>
       ${rows}</div>` : ''}
@@ -1133,7 +1184,8 @@ function trackClick(btn) {
 function openPending() {
   const pend = (S().pending || []).slice().sort((a, b) => b.date.localeCompare(a.date));
   if (!pend.length) return;
-  const rows = pend.map((x) => `<div class="loose-row">
+  const rows = pend.map((x) => `<div class="loose-row">${x.source === 'plaid' && x.note
+    ? `<button class="x" data-act="pending-ignore" data-id="${esc(x.id)}" title="Always ignore ${esc(x.note)}" aria-label="Always ignore">🚫</button>` : ''}
     <button class="loose" data-act="finish-item" data-id="${esc(x.id)}"><div class="emoji">🕗</div>
       <div class="body"><div class="t">${money(x.amount)}${x.note ? ` · ${esc(x.note)}` : ''}</div><div class="s">${x.source === 'plaid' ? 'from your card' : 'added'} ${parseYmd(x.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} · tap to finish</div></div><span class="chev">›</span></button>
     <button class="x" data-act="pending-del" data-id="${esc(x.id)}" aria-label="Discard">✕</button></div>`).join('');
@@ -1297,7 +1349,20 @@ function flowCommit() {
     result = mk(parseFloat(f.amt));
     addTx(result);
   }
-  if (f.pendingId) { S().pending = (S().pending || []).filter((x) => x.id !== f.pendingId); saveSettings(); }
+  if (f.pendingId) {
+    // Filing an imported paycheque or transfer teaches the rule, so the next one
+    // files itself. Purchases never do: those stay yours to categorise.
+    const src = (S().pending || []).find((x) => x.id === f.pendingId);
+    if (src && src.source === 'plaid' && src.note && (c.type === 'income' || c.type === 'transfer')) {
+      const k = billKey(src.note);
+      if (k) {
+        S().txMatch = { ...(S().txMatch || {}), [k]: c.type === 'income' ? 'i' : 't:' + c.id };
+        toast(`${src.note} will file itself from now on`);
+      }
+    }
+    S().pending = (S().pending || []).filter((x) => x.id !== f.pendingId);
+    saveSettings();
+  }
   ui.month = date.slice(0, 7);
   if (ui.tab === 'settings') ui.tab = 'home';
   return result;
@@ -1803,6 +1868,17 @@ document.addEventListener('click', (e) => {
     }
     case 'finish-loose': return openPending();
     case 'finish-item': { const it = (S().pending || []).find((x) => x.id === id); closeSheet(); if (it) openFlow({ amt: String(it.amount), pendingId: it.id, amtLocked: true, note: it.note || '', date: it.date }); return; }
+    case 'pending-ignore': {
+      const it = (S().pending || []).find((x) => x.id === id);
+      if (!it) return;
+      if (!confirm(`Ignore "${it.note}" from now on? It won't appear again.`)) return;
+      const k = billKey(it.note);
+      if (k) S().txMatch = { ...(S().txMatch || {}), [k]: '__skip' };
+      S().pending = (S().pending || []).filter((x) => x.id !== id);
+      saveSettings(); render();
+      if ((S().pending || []).length) openPending(); else closeSheet();
+      return toast(`Ignoring ${it.note} from now on`);
+    }
     case 'pending-del': { if (confirm('Discard this loose item without logging it?')) { S().pending = (S().pending || []).filter((x) => x.id !== id); saveSettings(); render(); if ((S().pending || []).length) openPending(); else closeSheet(); } return; }
     case 'plan-week': {
       const d = +id;
@@ -1870,6 +1946,12 @@ document.addEventListener('click', (e) => {
       return bankRun('unlink', async () => { const b = await bankMod(); await b.unlink(id); await bankLoad(false); toast('Unlinked'); });
     }
     case 'billq-drop': return billqRule(id, '__skip');
+    case 'rule-del': {
+      const m = { ...(S().txMatch || {}) };
+      delete m[id];
+      S().txMatch = m; saveSettings(); render();
+      return toast('Rule forgotten');
+    }
     case 'bank-activity': return openActivity(30);
     case 'activity-days': { if (activity) openActivity(+id, activity.acct); return; }
     case 'activity-acct': { if (activity) { activity.acct = id; drawActivity(); } return; }

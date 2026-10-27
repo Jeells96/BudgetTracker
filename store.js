@@ -1,6 +1,6 @@
-import { firebaseConfig } from './firebase-config.js?v=80';
-import { DEFAULT_SETTINGS } from './defaults.js?v=80';
-import { HISTORY } from './history.js?v=80';
+import { firebaseConfig } from './firebase-config.js?v=81';
+import { DEFAULT_SETTINGS } from './defaults.js?v=81';
+import { HISTORY } from './history.js?v=81';
 
 const LS_KEY = 'budget-tracker-v2';
 const CDN = 'https://www.gstatic.com/firebasejs/11.0.2/';
@@ -48,6 +48,8 @@ function normalize(s) {
   out.billsAcct = { bal: ba.bal ?? null, asOf: ba.asOf ?? null };
   // Learned "this merchant is that bill" matches, so a bill only gets mapped once.
   out.billMatch = (s && s.billMatch && typeof s.billMatch === 'object') ? s.billMatch : {};
+  // Standing rules for imported activity: paycheques, transfers, things to ignore.
+  out.txMatch = (s && s.txMatch && typeof s.txMatch === 'object') ? s.txMatch : {};
   out.bankOn = !!(s && s.bankOn);
   out.bankSyncAt = (s && +s.bankSyncAt) || 0;
   out.finance = normalizeFinance(s && s.finance);
