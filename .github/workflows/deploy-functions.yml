@@ -43,6 +43,9 @@ jobs:
           SEC: ${{ secrets.PLAID_SECRET }}
           WANT: ${{ inputs.plaid_env }}
         run: |
+          CID=$(printf '%s' "$CID" | tr -d '[:space:]')
+          SEC=$(printf '%s' "$SEC" | tr -d '[:space:]')
+          echo "client_id: ${#CID} chars, secret: ${#SEC} chars (Plaid uses 24 and 30)"
           probe () {
             curl -s -o /tmp/p.json -w '%{http_code}' -X POST "https://$1.plaid.com/institutions/get" \
               -H 'Content-Type: application/json' \
@@ -75,6 +78,8 @@ jobs:
           SEC: ${{ secrets.PLAID_SECRET }}
         run: |
           set -e
+          CID=$(printf '%s' "$CID" | tr -d '[:space:]')
+          SEC=$(printf '%s' "$SEC" | tr -d '[:space:]')
           if [ -z "$CID" ] || [ -z "$SEC" ]; then
             echo "::error::Add PLAID_CLIENT_ID and PLAID_SECRET under Settings -> Secrets and variables -> Actions, then run this again."
             exit 1
