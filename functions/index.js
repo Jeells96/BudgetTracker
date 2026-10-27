@@ -48,10 +48,11 @@ const itemsCol = (uid) => db.collection('plaidItems').doc(uid).collection('items
  * What each linked account is for:
  *   card    - charges arrive as loose "track later" logs, you finish them yourself
  *   review  - transactions wait in the review queue for a category
- *   balance - no transactions, just keep the account's balance up to date
+ *   bills    - matched to a bill to build its 12-month average, and keeps the
+ *              bills account balance current. Takes the full backfill on purpose.
  *   off     - ignored entirely
  */
-const ROLES = new Set(['card', 'review', 'balance', 'off']);
+const ROLES = new Set(['card', 'review', 'bills', 'off']);
 const defaultRole = (a) => (a && a.type === 'credit' ? 'card' : a && a.type === 'depository' ? 'review' : 'off');
 
 /** Step 1 — hand Plaid Link a short-lived token so it can open. */
@@ -91,6 +92,7 @@ exports.exchangePublicToken = onCall(withSecrets, async (req) => {
 
   await itemsCol(uid).doc(itemId).set({
     accessToken, itemId, accounts, roles,
+    startDate: new Date().toISOString().slice(0, 10),
     institution: (inst.data.item && inst.data.item.institution_id) || null,
     cursor: null, linkedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
@@ -160,8 +162,8 @@ exports.syncTransactions = onCall(withSecrets, async (req) => {
     const roleFor = (accountId) => roles[accountId]
       || defaultRole((item.accounts || []).find((a) => a.account_id === accountId));
 
-    // Balances first, so a 'balance' account can keep the bills account honest
-    // even when it has no new activity to report.
+    // Balances first, so the bills account stays honest even when it has no new
+    // activity to report.
     const balances = {};
     try {
       const bal = await api.accountsGet({ access_token: item.accessToken });
@@ -183,8 +185,16 @@ exports.syncTransactions = onCall(withSecrets, async (req) => {
       const d = res.data;
 
       const batch = db.batch();
-      // 'off' and 'balance' accounts never produce a line item.
-      const wanted = (t) => { const r = roleFor(t.account_id); return r === 'card' || r === 'review' ? r : null; };
+      // You were already up to date when you linked, so card and review accounts
+      // start from that day. A bills account is the exception: its whole job is
+      // the 12-month average, so it takes everything Plaid still has.
+      const wanted = (t) => {
+        const r = roleFor(t.account_id);
+        if (r === 'bills') return 'bills';
+        if (r !== 'card' && r !== 'review') return null;
+        if (item.startDate && t.date < item.startDate) return null;
+        return r;
+      };
       for (const t of d.added) { const r = wanted(t); if (!r) continue; batch.set(txCol.doc('plaid_' + t.transaction_id), shape(t, item, r), { merge: true }); added++; }
       for (const t of d.modified) { const r = wanted(t); if (!r) continue; batch.set(txCol.doc('plaid_' + t.transaction_id), shape(t, item, r), { merge: true }); modified++; }
       for (const r of d.removed) { batch.delete(txCol.doc('plaid_' + r.transaction_id)); removed++; }

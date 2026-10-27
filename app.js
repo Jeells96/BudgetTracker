@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=69';
-import { TRANSFERS } from './defaults.js?v=69';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=69';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=70';
+import { TRANSFERS } from './defaults.js?v=70';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=70';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -665,8 +665,8 @@ function settings() {
 // exactly as it always has. Imports wait in a review queue: nothing reaches the
 // weekly budget or the card plan until you give it a category and accept it.
 let bank = null;
-const bankUI = { on: false, busy: '', user: undefined, items: [], inbox: [], pick: {}, err: '' };
-const bankMod = async () => (bank ||= await import('./bank.js?v=69'));
+const bankUI = { on: false, busy: '', user: undefined, items: [], inbox: [], pick: {}, billq: [], billpick: {}, err: '' };
+const bankMod = async () => (bank ||= await import('./bank.js?v=70'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -688,8 +688,14 @@ async function bankLoad(resume) {
   // transaction when you're ready, and nothing counts until you do. A refund or a
   // card payment isn't a purchase, so it goes to the review queue instead.
   const loose = box.filter((it) => it.route === 'card' && it.type === 'expense');
-  bankUI.inbox = box.filter((it) => !(it.route === 'card' && it.type === 'expense'));
+  const billsIn = box.filter((it) => it.route === 'bills' && it.type === 'expense');
+  bankUI.inbox = box.filter((it) => it.route !== 'bills'
+    && !(it.route === 'card' && it.type === 'expense'));
   if (loose.length) await adoptCardCharges(b, loose);
+  bankUI.billq = billsIn.length ? await adoptBillCharges(b, billsIn) : [];
+  bankUI.billq.forEach((it) => {
+    if (bankUI.billpick[it.id] === undefined) bankUI.billpick[it.id] = guessBill(it.note);
+  });
   bankBalanceSync();
 
   bankUI.inbox.forEach((it) => {
@@ -714,11 +720,11 @@ async function adoptCardCharges(b, loose) {
   if (add.length) toast(`${add.length} card charge${add.length === 1 ? '' : 's'} to finish`);
 }
 
-// Accounts set to "balance only" stand in for typing the bills balance by hand.
+// A bills account also stands in for typing its balance in by hand.
 function bankBalanceSync() {
   let bal = null;
   bankUI.items.forEach((it) => Object.entries(it.roles || {}).forEach(([acct, role]) => {
-    if (role !== 'balance') return;
+    if (role !== 'bills') return;
     const v = (it.balances || {})[acct];
     if (v && typeof v.current === 'number') bal = round((bal || 0) + v.current);
   }));
@@ -730,9 +736,45 @@ function bankBalanceSync() {
 const ROLE_OPTS = [
   ['card', '🕗 Charges → loose logs'],
   ['review', '📥 Review queue'],
-  ['balance', '🏦 Balance only'],
+  ['bills', '🏦 Bills → 12-month averages'],
   ['off', '🚫 Ignore']
 ];
+
+// Merchant names wobble between months ("PG&E 10/01" vs "PGE"), so match on the
+// letters and digits alone.
+const billKey = (t) => String(t || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 18);
+function guessBill(note) {
+  const k = billKey(note);
+  if (!k) return '';
+  const hit = S().bills.find((b) => { const bk = billKey(b.name); return bk && (k.startsWith(bk) || bk.startsWith(k)); });
+  return hit ? hit.id : '';
+}
+
+// One month of one bill, recorded so billAmount() can average the last 12.
+function applyBillHistory(billId, ym, amount) {
+  const b = S().bills.find((x) => x.id === billId);
+  if (!b) return false;
+  b.history = Array.isArray(b.history) ? b.history : [];
+  const hit = b.history.find((h) => h.month === ym);
+  if (hit) hit.amount = round(amount);
+  else b.history.push({ id: uid(), month: ym, amount: round(amount) });
+  return true;
+}
+
+// Anything whose merchant you've already matched files itself; the rest queue up.
+async function adoptBillCharges(b, items) {
+  const map = S().billMatch || {};
+  const left = [];
+  let filed = 0;
+  for (const it of items) {
+    const target = map[billKey(it.note)];
+    if (!target) { left.push(it); continue; }
+    if (target !== '__skip' && applyBillHistory(target, it.date.slice(0, 7), it.amount)) filed++;
+    await b.dropInbox(it.id).catch(() => {});
+  }
+  if (filed) { saveSettings(); toast(`Filed ${filed} bill payment${filed === 1 ? '' : 's'}`); }
+  return left;
+}
 
 function bankBlock() {
   const b = bankUI, err = b.err ? `<div class="err">${esc(b.err)}</div>` : '';
@@ -772,6 +814,17 @@ function bankBlock() {
     <button class="btn mini" data-act="inbox-accept" data-id="${esc(it.id)}"${off('row-' + it.id)}>✓ Add</button>
     <button class="x" data-act="inbox-drop" data-id="${esc(it.id)}" aria-label="Ignore">✕</button></div>`).join('');
 
+  const billOpts = (picked) => '<option value="">Which bill?…</option>'
+    + S().bills.map((x) => `<option value="${esc(x.id)}" ${picked === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')
+    + `<option value="__skip" ${picked === '__skip' ? 'selected' : ''}>Not a bill — ignore these</option>`;
+
+  const billRows = b.billq.map((it) => `<div class="field">
+    <label style="flex:1">${esc(it.note || 'Payment')}<br><span class="muted" style="font-size:.8rem">${esc(shortDate(parseYmd(it.date)))}</span></label>
+    <b style="width:84px;text-align:right">${money(it.amount)}</b>
+    <select data-billq="${esc(it.id)}" style="flex-basis:100%">${billOpts(bankUI.billpick[it.id] || '')}</select>
+    <button class="btn mini" data-act="billq-save" data-id="${esc(it.id)}"${off('row-' + it.id)}>✓ Match</button>
+    <button class="x" data-act="billq-drop" data-id="${esc(it.id)}" aria-label="Skip">✕</button></div>`).join('');
+
   return `<h2>Banking</h2><div class="card">${err}
     <div class="field"><label>Signed in as ${esc(b.user.email || b.user.displayName || 'you')}</label>
       <button class="btn mini" data-act="bank-signout"${off('signout')}>Sign out</button></div>
@@ -781,7 +834,31 @@ function bankBlock() {
     <button class="btn block" data-act="bank-sync"${off('sync')}>${b.busy === 'sync' ? 'Checking…' : '⟳ Check for new activity'}</button></div>
     ${b.inbox.length ? `<h2>To review · ${b.inbox.length}</h2><div class="card">
       <div class="note">Give each one a category to add it. Nothing here counts toward your budget yet.</div>
-      ${rows}</div>` : ''}`;
+      ${rows}</div>` : ''}
+    ${b.billq.length ? `<h2>Which bill? · ${b.billq.length}</h2><div class="card">
+      <div class="note">Match a merchant once and every future month files itself. These build each bill's 12-month average — they never count as purchases.</div>
+      ${billRows}</div>` : ''}`;
+}
+
+function billqSave(id) {
+  const it = bankUI.billq.find((x) => x.id === id);
+  if (!it) return;
+  const pick = bankUI.billpick[id];
+  if (!pick) return toast('Pick a bill first');
+  bankRun('row-' + id, async () => {
+    const b = await bankMod();
+    const key = billKey(it.note);
+    if (key) S().billMatch = { ...(S().billMatch || {}), [key]: pick };
+    const filed = pick !== '__skip' && applyBillHistory(pick, it.date.slice(0, 7), it.amount);
+    saveSettings();
+    await b.dropInbox(id);
+    bankUI.billq = bankUI.billq.filter((x) => x.id !== id);
+    delete bankUI.billpick[id];
+    // The rule now exists, so every other queued month of the same merchant
+    // files itself on this pass.
+    bankUI.billq = await adoptBillCharges(b, bankUI.billq);
+    toast(filed ? 'Matched — future months file themselves' : 'Ignoring these from now on');
+  });
 }
 
 function inboxAccept(id) {
@@ -1534,6 +1611,11 @@ document.addEventListener('click', (e) => {
       if (!confirm('Unlink this bank? Anything you already accepted stays in your log.')) return;
       return bankRun('unlink', async () => { const b = await bankMod(); await b.unlink(id); await bankLoad(false); toast('Unlinked'); });
     }
+    case 'billq-save': return billqSave(id);
+    case 'billq-drop': return bankRun('row-' + id, async () => {
+      const b = await bankMod(); await b.dropInbox(id);
+      bankUI.billq = bankUI.billq.filter((x) => x.id !== id); delete bankUI.billpick[id];
+    });
     case 'inbox-accept': return inboxAccept(id);
     case 'inbox-drop': return bankRun('row-' + id, async () => {
       const b = await bankMod(); await b.dropInbox(id);
@@ -1560,6 +1642,7 @@ document.addEventListener('input', (e) => {
 document.addEventListener('change', (e) => {
   const t = e.target, num = () => parseNum(t.value);
   if (t.dataset.inboxCat) { bankUI.pick[t.dataset.inboxCat] = t.value; return; }
+  if (t.dataset.billq) { bankUI.billpick[t.dataset.billq] = t.value; return; }
   if (t.dataset.acctRole) {
     const [itemId, acct] = t.dataset.acctRole.split('|');
     const item = bankUI.items.find((x) => x.itemId === itemId);
