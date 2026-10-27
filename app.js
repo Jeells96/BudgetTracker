@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=76';
-import { TRANSFERS } from './defaults.js?v=76';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=76';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=77';
+import { TRANSFERS } from './defaults.js?v=77';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=77';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -26,6 +26,13 @@ const moYr = (s) => parseYmd(s).toLocaleDateString('en-US', { month: 'short', ye
 
 const ui = { tab: 'home', month: monthKey(new Date()), filter: 'all', all: false, q: '', planDraft: {}, planLive: true, openCat: null, openLoan: null, weekOff: 0 };
 try { ui.planDraft = JSON.parse(localStorage.getItem('plan-draft') || '{}') || {}; } catch { ui.planDraft = {}; }
+// Plans used to be one shared scratchpad; they are now kept per week. Anything
+// in the old flat shape belongs to whatever week it was typed in, i.e. this one.
+if (Object.values(ui.planDraft).some((v) => typeof v === 'number')) {
+  const old = {};
+  Object.entries(ui.planDraft).forEach(([k, v]) => { if (typeof v === 'number') old[k] = v; });
+  ui.planDraft = { [weekStart(new Date(), 5)]: old };
+}
 try { ui.planLive = JSON.parse(localStorage.getItem('plan-live') ?? 'true'); } catch { ui.planLive = true; }
 const savePlanDraft = () => { try { localStorage.setItem('plan-draft', JSON.stringify(ui.planDraft || {})); } catch {} };
 const savePlanLive = () => { try { localStorage.setItem('plan-live', JSON.stringify(!!ui.planLive)); } catch {} };
@@ -393,6 +400,24 @@ function billsListHTML(s) {
 // Spending is "live": its recommended value is what you've actually spent this week
 // (so a reset snaps it to reality, freeing the rest of the budget to leftover).
 const planNow = () => addDays(new Date(), (ui.weekOff || 0) * 7);
+const planKey = () => weekStart(planNow(), S().weekStartDay ?? 5);
+
+// The edits for the week on screen. Seeded from what was saved for that week, so
+// stepping back shows the plan that week actually had, not this week's numbers.
+function planEdits() {
+  const k = planKey();
+  if (!ui.planDraft[k]) ui.planDraft[k] = { ...((S().weekPlans || {})[k] || {}) };
+  return ui.planDraft[k];
+}
+
+// Committed on change rather than per keystroke: this syncs to every device.
+function commitPlan() {
+  const k = planKey(), e = { ...planEdits() };
+  const all = { ...(S().weekPlans || {}) };
+  if (Object.keys(e).length) all[k] = e; else delete all[k];
+  S().weekPlans = all;
+  saveSettings(false);   // no redraw: this fires on blur, mid-tap
+}
 
 function planWeekLabel() {
   const a = parseYmd(weekStart(planNow(), S().weekStartDay ?? 5));
@@ -413,7 +438,7 @@ function planWeekSub() {
 function planValues() {
   const now = planNow();
   const wp = weekPlan(S(), store.txs, now);
-  const rc = wp.rec, d = ui.planDraft || {};
+  const rc = wp.rec, d = planEdits();
   const hasCard = wp.cardBalance > 0;
   const liveSpend = round(weekStats(S(), store.txs, now).spent);
   const live = ui.planLive !== false;
@@ -442,12 +467,20 @@ function planRecalc() {
 
 function planTab() {
   const s = S(), p = planValues(), wp = p.wp, st = wp.standard, rc = wp.rec, sch = wp.sch, bt = wp.bt;
-  const edited = Object.keys(ui.planDraft || {}).length;
+  const edited = Object.keys(planEdits()).length;
   const stdVal = { pay: st.pay, bills: st.bills, groceries: st.groceries, everyday: st.everyday, savings: st.savings, extra: st.extra };
-  const edq = (field) => ui.planDraft[field] !== undefined;    // has a what-if edit?
+  const edq = (field) => planEdits()[field] !== undefined;    // has a what-if edit?
   // Always show the reset-to-recommended ↺ (consistent columns + resettable even with a custom value).
   const resetBtn = (field) => `<button class="cellx" data-act="plan-reset-field" data-id="${field}" title="Reset to recommended">↺</button>`;
   const erow = (label, field, extra = '') => `<div class="trow"><span>${label}</span><span class="b">${money(stdVal[field])}</span><span class="n"><input class="plancell" data-plan="${field}" type="text" inputmode="decimal" placeholder="0" value="${fmtNum(p[field] || '')}">${resetBtn(field)}<button class="cellx" data-act="plan-clear" data-id="${field}" title="Clear">✕</button></span></div>${extra}`;
+
+  const goal = weeklyGoal(s);
+  const goalRow = `<div class="goalrow ${goal != null ? 'on' : ''}">
+    <div class="g-n">Weekly spending goal<div class="g-s">${goal != null
+      ? 'Yours — overrides the card trim and every strategy'
+      : `Working it out for you · ${money(wp.rec.everyday)} this week`}</div></div>
+    <input type="text" inputmode="decimal" placeholder="auto" value="${goal != null ? fmtNum(goal) : ''}" data-weeklygoal>
+    ${goal != null ? '<button class="cellx" data-act="goal-clear" title="Back to automatic">↺</button>' : ''}</div>`;
 
   const weekNav = `<div class="weeknav">
     <button data-act="plan-week" data-id="-1" aria-label="Previous week">‹</button>
@@ -487,6 +520,7 @@ function planTab() {
     : '';
   const plannerBody = `
     ${weekNav}
+    ${goalRow}
     <div class="card plan-table">
       <div class="trow head"><span></span><span class="b">Standard</span><span class="n">Recommended</span></div>
       ${erow('Paycheck', 'pay')}
@@ -728,7 +762,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=76'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=77'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -944,6 +978,7 @@ function bankBlock() {
     ${b.items.length ? '<div class="note">Set your card to <b>Charges → loose logs</b>: each one lands in the 🕗 list on Home with its price and merchant, and only counts once you finish it. Set your bills account to <b>Bills → 12-month averages</b> — those payments never count as purchases, they just fill in each bill\'s history and keep the account balance current.</div>' : ''}
     <button class="btn block" data-act="bank-connect"${off('connect')}>${b.busy === 'connect' ? 'Opening…' : '+ Connect a bank'}</button>
     <button class="btn block" data-act="bank-sync"${off('sync')}>${b.busy === 'sync' ? 'Checking…' : '⟳ Check for new activity'}</button>
+    <button class="btn block" data-act="bank-activity">🔎 Browse all bank activity</button>
     ${synced ? `<div class="note">Imports on its own when you open the app. Last checked ${new Date(synced).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}.</div>` : ''}</div>
     ${b.inbox.length ? `<h2>To review · ${b.inbox.length}</h2><div class="card">
       <div class="note">Give each one a category to add it. Nothing here counts toward your budget yet.</div>
@@ -966,6 +1001,40 @@ function billqRule(key, pick) {
   });
 }
 
+// Everything the banks have, whatever its account is set to do. Read-only until
+// you tap a row, which opens the normal log flow already filled in.
+let activity = null;
+function openActivity(days) {
+  activity = { days: days || 30, rows: null, err: '' };
+  drawActivity();
+  $('#sheet').hidden = false;
+  bankRun('activity', async () => {
+    const b = await bankMod();
+    try { activity.rows = (await b.recentActivity(activity.days)).transactions || []; }
+    catch (e) { activity.err = (e && e.message) || String(e); }
+    drawActivity();
+  });
+}
+
+function drawActivity() {
+  const a = activity;
+  if (!a) return;
+  const pick = [7, 30, 90, 365].map((d) => `<button class="chip ${a.days === d ? 'on' : ''}" data-act="activity-days" data-id="${d}">${d === 365 ? '1 year' : d + ' days'}</button>`).join('');
+  const body = a.err ? `<div class="err">${esc(a.err)}</div>`
+    : !a.rows ? '<div class="empty" style="padding:22px">Loading…</div>'
+    : !a.rows.length ? '<div class="empty" style="padding:22px">Nothing in this period.</div>'
+    : a.rows.map((t) => `<button class="actrow" data-act="activity-log" data-id="${esc(t.id)}">
+        <div class="ar-b"><div class="ar-t">${esc(t.name || 'Transaction')}</div>
+          <div class="ar-s">${esc(shortDate(parseYmd(t.date)))} · ${esc(t.account)}${t.pending ? ' · pending' : ''}</div></div>
+        <b class="ar-a ${t.outgoing ? '' : 'in'}">${t.outgoing ? '' : '+'}${money(t.amount)}</b></button>`).join('');
+  $('#sheet').innerHTML = `<div class="panel"><div class="head">
+      <span style="width:40px"></span><span class="step">All bank activity</span><button data-act="sheet-close" aria-label="Close">✕</button></div>
+    <div class="chips">${pick}</div>
+    <p class="note" style="margin:0 0 8px">${a.rows ? `${a.rows.length} transaction${a.rows.length === 1 ? '' : 's'} · ` : ''}Tap one to log it. Looking here never changes what gets imported.</p>
+    ${body}</div>`;
+  $('#sheet').className = 'sheet';
+}
+
 function inboxAccept(id) {
   const it = bankUI.inbox.find((x) => x.id === id);
   if (!it) return;
@@ -986,7 +1055,7 @@ function inboxAccept(id) {
 
 // ---------- the sheet (add flow + edit) ----------
 let flow = null, edit = null, billEdit = null, track = null, avgCat = null, returnPlan = null;
-function closeSheet() { const el = $('#sheet'); el.hidden = true; el.className = 'sheet'; el.innerHTML = ''; flow = null; edit = null; billEdit = null; track = null; returnPlan = null; resetSel(); }
+function closeSheet() { const el = $('#sheet'); el.hidden = true; el.className = 'sheet'; el.innerHTML = ''; flow = null; edit = null; billEdit = null; track = null; returnPlan = null; activity = null; resetSel(); }
 
 // ----- "track later": capture a price only, to finish with category/description later -----
 const keypad = () => `<div class="pad">${['1','2','3','4','5','6','7','8','9','.','0','⌫'].map((k) => `<button data-${track ? 'track' : 'flow'}="key" data-v="${k}">${k}</button>`).join('')}</div>`;
@@ -1645,7 +1714,7 @@ document.addEventListener('click', (e) => {
     case 'week-reset': { S().weekResetAt = weekStats(S(), store.txs).start; saveSettings(); closeSheet(); return render(); }
     case 'week-unreset': { S().weekResetAt = null; saveSettings(); closeSheet(); return render(); }
     case 'overage-view': return openOverage();
-    case 'plan-clear': { (ui.planDraft ||= {})[id] = 0; savePlanDraft(); return render(); }
+    case 'plan-clear': { planEdits()[id] = 0; savePlanDraft(); commitPlan(); return render(); }
     case 'cc-match': {
       const r = cardReconcile();
       if (!r || Math.abs(r.diff) < 0.01) return;
@@ -1697,13 +1766,13 @@ document.addEventListener('click', (e) => {
     case 'plan-week': {
       const d = +id;
       ui.weekOff = d === 0 ? 0 : (ui.weekOff || 0) + d;
-      ui.planDraft = {}; savePlanDraft();
-      return render();
+      return render();   // each week keeps its own plan now, so nothing to clear
     }
-    case 'plan-reset': ui.planDraft = {}; savePlanDraft(); return render();
-    case 'plan-reset-field': { if (ui.planDraft) delete ui.planDraft[id]; savePlanDraft(); return render(); }
-    case 'plan-bills-needed': { (ui.planDraft ||= {}).bills = round(parseFloat(id) || 0); savePlanDraft(); return render(); }
-    case 'plan-live': { ui.planLive = !ui.planLive; savePlanLive(); if (ui.planDraft) delete ui.planDraft.everyday; savePlanDraft(); return render(); }
+    case 'goal-clear': S().weeklyGoal = null; saveSettings(); return render();
+    case 'plan-reset': ui.planDraft[planKey()] = {}; savePlanDraft(); commitPlan(); return render();
+    case 'plan-reset-field': { delete planEdits()[id]; savePlanDraft(); commitPlan(); return render(); }
+    case 'plan-bills-needed': { planEdits().bills = round(parseFloat(id) || 0); savePlanDraft(); commitPlan(); return render(); }
+    case 'plan-live': { ui.planLive = !ui.planLive; savePlanLive(); delete planEdits().everyday; savePlanDraft(); commitPlan(); return render(); }
     case 'trends': return openTrends();
     case 'sheet-close': return closeSheet();
     case 'goto': ui.tab = id; scrollTo(0, 0); return render();
@@ -1760,6 +1829,14 @@ document.addEventListener('click', (e) => {
       return bankRun('unlink', async () => { const b = await bankMod(); await b.unlink(id); await bankLoad(false); toast('Unlinked'); });
     }
     case 'billq-drop': return billqRule(id, '__skip');
+    case 'bank-activity': return openActivity(30);
+    case 'activity-days': { if (activity) openActivity(+id); return; }
+    case 'activity-log': {
+      const t = (activity && activity.rows || []).find((x) => x.id === id);
+      if (!t) return;
+      closeSheet();
+      return openFlow({ amt: String(t.amount), note: t.name || '', date: t.date });
+    }
     case 'inbox-accept': return inboxAccept(id);
     case 'inbox-drop': return bankRun('row-' + id, async () => {
       const b = await bankMod(); await b.dropInbox(id);
@@ -1780,11 +1857,27 @@ document.addEventListener('focusin', (e) => {
 document.addEventListener('input', (e) => {
   if (e.target.id === 'q') { ui.q = e.target.value; $('#actlist').innerHTML = activityList(); }
   else if (e.target.id === 'sav-slider') slideSavings(+e.target.value);
-  else if (e.target.dataset.plan) { (ui.planDraft ||= {})[e.target.dataset.plan] = parseNum(e.target.value); savePlanDraft(); planRecalc(); }
+  else if (e.target.dataset.plan) { planEdits()[e.target.dataset.plan] = parseNum(e.target.value); savePlanDraft(); planRecalc(); }
 });
 
 document.addEventListener('change', (e) => {
   const t = e.target, num = () => parseNum(t.value);
+  if (t.hasAttribute('data-weeklygoal')) {
+    const v = String(t.value).trim();
+    S().weeklyGoal = v === '' ? null : Math.max(0, parseNum(v));
+    saveSettings(false);
+    planRecalc();
+    // Refresh the row in place rather than redrawing the page under the tap.
+    const row = $('.goalrow');
+    if (row) {
+      const on = weeklyGoal(S()) != null;
+      row.classList.toggle('on', on);
+      const sub = row.querySelector('.g-s');
+      if (sub) sub.textContent = on ? 'Yours — overrides the card trim and every strategy' : 'Working it out for you';
+    }
+    return;
+  }
+  if (t.dataset.plan) { planEdits()[t.dataset.plan] = parseNum(t.value); savePlanDraft(); commitPlan(); return; }
   if (t.dataset.inboxCat) { bankUI.pick[t.dataset.inboxCat] = t.value; return; }
   if (t.dataset.billq) {
     bankUI.billpick[t.dataset.billq] = t.value;

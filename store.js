@@ -1,6 +1,6 @@
-import { firebaseConfig } from './firebase-config.js?v=76';
-import { DEFAULT_SETTINGS } from './defaults.js?v=76';
-import { HISTORY } from './history.js?v=76';
+import { firebaseConfig } from './firebase-config.js?v=77';
+import { DEFAULT_SETTINGS } from './defaults.js?v=77';
+import { HISTORY } from './history.js?v=77';
 
 const LS_KEY = 'budget-tracker-v2';
 const CDN = 'https://www.gstatic.com/firebasejs/11.0.2/';
@@ -24,6 +24,10 @@ function normalize(s) {
   if (s && s.weeklyPay == null && s.income) out.weeklyPay = round2(s.income / 4);
   out.bills = out.bills.map((b) => ({ ...b, day: b.day || 1, everyMonths: Math.max(1, Math.round(+b.everyMonths || 1)), history: Array.isArray(b.history) ? b.history : [], useAvg: !!b.useAvg }));
   out.pending = Array.isArray(s && s.pending) ? s.pending : [];
+  // Your own weekly spending goal (null = let the app work it out).
+  out.weeklyGoal = (s && s.weeklyGoal != null && s.weeklyGoal !== '') ? +s.weeklyGoal : null;
+  // What was planned for each week, keyed by that week's start date.
+  out.weekPlans = (s && s.weekPlans && typeof s.weekPlans === 'object') ? s.weekPlans : {};
   out.returns = Array.isArray(s && s.returns) ? s.returns : [];
   const cc = (s && s.cc) || {};
   out.cc = {
@@ -119,8 +123,11 @@ function fail(e) {
 }
 function cloudSet(tx) { const fb = store._fb; if (fb) fb.setDoc(fb.doc(fb.db, 'transactions', tx.id), tx).catch(fail); }
 
-export function saveSettings() {
-  persist(); store.onChange();
+// rerender=false persists and syncs without redrawing. Redrawing from a field's
+// change event destroys whatever the user was reaching for, so the tap that
+// caused the blur lands on nothing.
+export function saveSettings(rerender = true) {
+  persist(); if (rerender) store.onChange();
   const fb = store._fb;
   if (fb) fb.setDoc(fb.doc(fb.db, 'budget', 'settings'), store.settings).catch(fail);
 }

@@ -104,6 +104,16 @@ exports.exchangePublicToken = onCall(withSecrets, async (req) => {
 
   try { inst = await api.accountsGet({ access_token: accessToken }); }
   catch (e) { throw plaidError(e, 'Linked, but could not read the accounts'); }
+
+  // Capture balances now. They used to be written only by a sync, so a card
+  // linked minutes ago had nothing for the log to be compared against.
+  const balances = {};
+  inst.data.accounts.forEach((a) => {
+    balances[a.account_id] = {
+      name: a.name, mask: a.mask || null,
+      current: a.balances.current, available: a.balances.available,
+    };
+  });
   const accounts = inst.data.accounts.map((a) => ({
     account_id: a.account_id, name: a.name, mask: a.mask,
     type: a.type, subtype: a.subtype,
@@ -113,7 +123,7 @@ exports.exchangePublicToken = onCall(withSecrets, async (req) => {
   accounts.forEach((a) => { roles[a.account_id] = defaultRole(a); });
 
   await itemsCol(uid).doc(itemId).set({
-    accessToken, itemId, accounts, roles,
+    accessToken, itemId, accounts, roles, balances,
     startDate: new Date().toISOString().slice(0, 10),
     institution: (inst.data.item && inst.data.item.institution_id) || null,
     cursor: null, linkedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -153,6 +163,56 @@ exports.removeItem = onCall(withSecrets, async (req) => {
   catch (e) { console.warn('itemRemove failed, dropping locally anyway', e.message); }
   await ref.delete();
   return { removed: itemId };
+});
+
+/**
+ * Every transaction across every linked account, for looking through. Uses
+ * /transactions/get rather than the sync cursor, so browsing can never cost you
+ * an import or skip one.
+ */
+exports.recentActivity = onCall(withSecrets, async (req) => {
+  const uid = uidOf(req);
+  const days = Math.min(365, Math.max(1, +(req.data && req.data.days) || 30));
+  const end = new Date();
+  const start = new Date(end.getTime() - days * 86400000);
+  const day = (d) => d.toISOString().slice(0, 10);
+
+  const api = plaid();
+  const items = await itemsCol(uid).get();
+  const out = [];
+
+  for (const doc of items.docs) {
+    const item = doc.data();
+    const names = {};
+    (item.accounts || []).forEach((a) => { names[a.account_id] = a.name + (a.mask ? ' \u2022\u2022' + a.mask : ''); });
+    try {
+      let offset = 0, total = 1;
+      while (offset < total && out.length < 500) {
+        const res = await api.transactionsGet({
+          access_token: item.accessToken, start_date: day(start), end_date: day(end),
+          options: { count: 100, offset },
+        });
+        total = res.data.total_transactions;
+        if (!res.data.transactions.length) break;
+        res.data.transactions.forEach((t) => out.push({
+          id: t.transaction_id,
+          date: t.date,
+          name: t.merchant_name || t.name || '',
+          amount: Math.abs(t.amount),
+          outgoing: t.amount >= 0,
+          pending: !!t.pending,
+          account: names[t.account_id] || 'Account',
+          role: (item.roles || {})[t.account_id] || null,
+        }));
+        offset += res.data.transactions.length;
+      }
+    } catch (e) {
+      const d = (e && e.response && e.response.data) || {};
+      console.error('recentActivity failed for', doc.id, d.error_code || e.message);
+    }
+  }
+  out.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  return { days, transactions: out };
 });
 
 /** Point each account at what it's for. No Plaid call, so no secrets needed. */

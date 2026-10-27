@@ -187,6 +187,16 @@ export function effectiveEveryday(s, txs = [], now = new Date()) {
   return adjustedFrom(s, planTxsFor(s, txs, now), now);
 }
 
+// A spending goal you set yourself. It beats the card trim and every strategy:
+// the whole point is to say "this is what I'm spending this week" and have the
+// rest of the plan arrange itself around that. null means work it out for me.
+export function weeklyGoal(s) {
+  const g = s && s.weeklyGoal;
+  if (g == null || g === '') return null;
+  const n = +g;
+  return isFinite(n) && n >= 0 ? round(n) : null;
+}
+
 export function weekStats(s, txs, now = new Date()) {
   const startDay = s.weekStartDay ?? 5;
   const ws = weekStart(now, startDay);
@@ -196,8 +206,12 @@ export function weekStats(s, txs, now = new Date()) {
   // themselves) — but they never add room either.
   const spentBetween = (from, to) => sum(txs.filter((t) => t.type === 'expense' && !t.exBudget && t.date >= from && t.date < to && ids.includes(t.category)).map(txNet));
   const spent = round(spentBetween(ws, end));
-  const base = effectiveEveryday(s, txs, now);               // budget after the card trim
-  const trimmedByCard = Math.max(0, round(s.weeklyBudget - base));
+  const goal = weeklyGoal(s);
+  const auto = effectiveEveryday(s, txs, now);               // budget after the card trim
+  const base = goal != null ? goal : auto;
+  // A goal replaces the trim rather than stacking with it, so the note explaining
+  // "trimmed for the card" doesn't appear next to a number you chose yourself.
+  const trimmedByCard = goal != null ? 0 : Math.max(0, round(s.weeklyBudget - auto));
   // Last week's over-spend was charged to the card, so the payoff plan already
   // spreads it across the paydays you have left. Docking this week's spending too
   // would charge you for it twice, so the week's budget stands as planned.
@@ -208,7 +222,7 @@ export function weekStats(s, txs, now = new Date()) {
   const overage = prevLeft < 0 ? round(-prevLeft) : 0;        // last week's over-spend
   const forgiven = reset && overage > 0 ? overage : 0;
   const budget = round(base);
-  return { start: ws, end, ids, spent, baseBudget: base, planBudget: s.weeklyBudget, trimmedByCard, carryover, overage, forgiven, budget, left: round(budget - spent), reset };
+  return { start: ws, end, ids, spent, baseBudget: base, goal, planBudget: goal != null ? goal : s.weeklyBudget, trimmedByCard, carryover, overage, forgiven, budget, left: round(budget - spent), reset };
 }
 
 // ---- credit card ----
@@ -482,9 +496,16 @@ export function weekPlan(s, txs, now = new Date()) {
     leftover = 0;
   }
 
+  const goal = weeklyGoal(s);
+  if (goal != null) {
+    everyday = goal;
+    leftover = round(pay - bills - groceries - everyday - savings - extra);
+  }
+
   return {
     standard: sw,
     rec: { pay, bills, groceries, everyday, savings, extra, leftover },
+    goal: weeklyGoal(s),
     strategy: strat, cardBalance: cp.balance, cardPerWeek: cp.perWeek, cardNeed: cp.need,
     spendCut: round(Math.max(0, sw.everyday - everyday)), saveCut: round(Math.max(0, sw.savings - savings)),
     stretchWeeks: cp.stretch.weeks,
