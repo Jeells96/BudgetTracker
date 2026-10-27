@@ -496,3 +496,28 @@ nav#tabs button.on { background:var(--ink); color:var(--canvas); }
 .retstrip { width:100%; text-align:left; }
 .retstrip:active { opacity:.8; }
 .ex-tag.ret { background:var(--accent-soft); color:var(--accent); }
+
+/* ---------- banking: accounts and the two queues ----------
+   These rows stack (name, detail, control) instead of sharing one flex line —
+   a role name and a merchant are both too long to sit beside a control on a
+   phone, which is what .field assumes. */
+.acct, .qrow { padding:13px 0; border-top:1px solid var(--hair); }
+.acct:first-child, .qrow:first-child { border-top:0; }
+.acct .nm, .qrow .nm { font-size:.92rem; font-weight:500; min-width:0; overflow-wrap:anywhere; }
+.acct .sub, .qrow .sub { font-size:.78rem; color:var(--muted); margin-top:3px; }
+.acct select, .qrow select {
+  display:block; width:100%; margin-top:9px; padding:11px 12px; font-size:.88rem;
+  text-align:left; background:var(--raise); border:1px solid var(--hair); border-radius:10px; }
+
+.qrow .top { display:flex; align-items:baseline; gap:12px; }
+.qrow .top .nm { flex:1; }
+.qrow .amt { flex:none; font-weight:600; font-variant-numeric:tabular-nums; }
+.qrow .acts { display:flex; gap:8px; margin-top:9px; }
+.qrow .acts .btn { flex:1; padding:10px; font-size:.86rem; }
+
+.unlink { display:block; width:100%; margin-top:12px; padding:10px; border-radius:10px;
+  background:none; border:1px solid var(--hair); color:var(--muted); font-size:.82rem; }
+.bankgrp + .bankgrp { margin-top:6px; padding-top:6px; border-top:1px solid var(--hair); }
+.acct.row { display:flex; align-items:center; gap:12px; }
+.acct.row .nm { flex:1; overflow-wrap:anywhere; }
+.btn.tiny { width:auto; height:auto; flex:none; padding:8px 12px; font-size:.8rem; border-radius:10px; }

@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=73';
-import { TRANSFERS } from './defaults.js?v=73';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=73';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=74';
+import { TRANSFERS } from './defaults.js?v=74';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=74';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -666,7 +666,7 @@ function settings() {
 // weekly budget or the card plan until you give it a category and accept it.
 let bank = null;
 const bankUI = { on: false, busy: '', user: undefined, items: [], inbox: [], pick: {}, billq: [], billpick: {}, err: '' };
-const bankMod = async () => (bank ||= await import('./bank.js?v=73'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=74'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -809,15 +809,16 @@ function bankBlock() {
     <button class="btn block primary" data-act="bank-signin"${off('signin')}>${b.busy === 'signin' ? 'Opening…' : 'Sign in with Google'}</button></div>`;
 
   const accts = b.items.length
-    ? b.items.map((it) => (it.accounts || []).map((a) => {
+    ? b.items.map((it) => `<div class="bankgrp">${(it.accounts || []).map((a) => {
         const role = (it.roles || {})[a.account_id] || 'off';
         const bal = (it.balances || {})[a.account_id];
-        return `<div class="field">
-          <label style="flex:1">${esc(a.name)}${a.mask ? ` <span class="muted">••${esc(a.mask)}</span>` : ''}${bal && typeof bal.current === 'number' ? `<br><span class="muted" style="font-size:.8rem">balance ${money(bal.current)}</span>` : ''}</label>
-          <select data-acct-role="${esc(it.itemId)}|${esc(a.account_id)}" style="flex-basis:100%">
+        return `<div class="acct">
+          <div class="nm">${esc(a.name)}${a.mask ? ` ••${esc(a.mask)}` : ''}</div>
+          ${bal && typeof bal.current === 'number' ? `<div class="sub">balance ${money(bal.current)}</div>` : ''}
+          <select data-acct-role="${esc(it.itemId)}|${esc(a.account_id)}">
             ${ROLE_OPTS.map(([v, l]) => `<option value="${v}" ${role === v ? 'selected' : ''}>${l}</option>`).join('')}
           </select></div>`;
-      }).join('') + `<button class="btn mini" data-act="bank-unlink" data-id="${esc(it.itemId)}">Unlink this bank</button>`).join('')
+      }).join('')}<button class="unlink" data-act="bank-unlink" data-id="${esc(it.itemId)}">Unlink this bank</button></div>`).join('')
     : '<div class="note">No banks linked yet.</div>';
 
   const opts = (picked) => '<option value="">Category…</option>'
@@ -825,12 +826,14 @@ function bankBlock() {
     + `<option value="i" ${picked === 'i' ? 'selected' : ''}>💰 Income</option>`
     + TRANSFERS.map((t) => `<option value="t:${esc(t.id)}" ${picked === 't:' + t.id ? 'selected' : ''}>${t.emoji} ${esc(t.name)}</option>`).join('');
 
-  const rows = b.inbox.map((it) => `<div class="field">
-    <label style="flex:1">${esc(it.note || 'Purchase')}<br><span class="muted" style="font-size:.8rem">${esc(shortDate(parseYmd(it.date)))}${it.account ? ' · ' + esc(it.account) : ''}${it.pending ? ' · pending' : ''}</span></label>
-    <b style="width:84px;text-align:right">${money(it.amount)}</b>
-    <select data-inbox-cat="${esc(it.id)}" style="flex-basis:100%">${opts(bankUI.pick[it.id] || '')}</select>
-    <button class="btn mini" data-act="inbox-accept" data-id="${esc(it.id)}"${off('row-' + it.id)}>✓ Add</button>
-    <button class="x" data-act="inbox-drop" data-id="${esc(it.id)}" aria-label="Ignore">✕</button></div>`).join('');
+  const rows = b.inbox.map((it) => `<div class="qrow">
+    <div class="top"><span class="nm">${esc(it.note || 'Purchase')}</span><span class="amt">${money(it.amount)}</span></div>
+    <div class="sub">${esc(shortDate(parseYmd(it.date)))}${it.account ? ' · ' + esc(it.account) : ''}${it.pending ? ' · pending' : ''}</div>
+    <select data-inbox-cat="${esc(it.id)}">${opts(bankUI.pick[it.id] || '')}</select>
+    <div class="acts">
+      <button class="btn" data-act="inbox-accept" data-id="${esc(it.id)}"${off('row-' + it.id)}>✓ Add</button>
+      <button class="btn" data-act="inbox-drop" data-id="${esc(it.id)}">Ignore</button>
+    </div></div>`).join('');
 
   const billOpts = (picked) => '<option value="">Which bill?…</option>'
     + S().bills.map((x) => `<option value="${esc(x.id)}" ${picked === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')
@@ -840,18 +843,21 @@ function bankBlock() {
     const amts = g.items.map((x) => x.amount);
     const lo = Math.min(...amts), hi = Math.max(...amts);
     const span = lo === hi ? money(lo) : `${money(lo)}–${money(hi)}`;
-    return `<div class="field">
-      <label style="flex:1">${esc(g.note)}<br><span class="muted" style="font-size:.8rem">${g.items.length} month${g.items.length === 1 ? '' : 's'} · ${span}</span></label>
-      <select data-billq="${esc(g.key)}" style="flex-basis:100%">${billOpts(bankUI.billpick[g.key] || '')}</select>
-      <button class="btn mini" data-act="billq-save" data-id="${esc(g.key)}"${off('row-' + g.key)}>✓ Match all</button>
-      <button class="x" data-act="billq-drop" data-id="${esc(g.key)}" aria-label="Ignore these">✕</button></div>`;
+    return `<div class="qrow">
+      <div class="top"><span class="nm">${esc(g.note)}</span><span class="amt">${span}</span></div>
+      <div class="sub">${g.items.length} month${g.items.length === 1 ? '' : 's'}</div>
+      <select data-billq="${esc(g.key)}">${billOpts(bankUI.billpick[g.key] || '')}</select>
+      <div class="acts">
+        <button class="btn" data-act="billq-save" data-id="${esc(g.key)}"${off('row-' + g.key)}>✓ Match all</button>
+        <button class="btn" data-act="billq-drop" data-id="${esc(g.key)}">Ignore these</button>
+      </div></div>`;
   }).join('');
 
   return `<h2>Banking</h2><div class="card">${err}
-    <div class="field"><label>Signed in as ${esc(b.user.email || b.user.displayName || 'you')}</label>
-      <button class="btn mini" data-act="bank-signout"${off('signout')}>Sign out</button></div>
+    <div class="acct row"><div class="nm">Signed in as ${esc(b.user.email || b.user.displayName || 'you')}</div>
+      <button class="btn tiny" data-act="bank-signout"${off('signout')}>Sign out</button></div>
     ${accts}
-    ${b.items.length ? '<div class="note">Loose logs are the 🕗 list on Home — a charge lands there with its price and merchant, and only becomes a real transaction once you finish it. Balance only skips transactions and keeps your bills account balance current instead.</div>' : ''}
+    ${b.items.length ? '<div class="note">Set your card to <b>Charges → loose logs</b>: each one lands in the 🕗 list on Home with its price and merchant, and only counts once you finish it. Set your bills account to <b>Bills → 12-month averages</b> — those payments never count as purchases, they just fill in each bill\'s history and keep the account balance current.</div>' : ''}
     <button class="btn block" data-act="bank-connect"${off('connect')}>${b.busy === 'connect' ? 'Opening…' : '+ Connect a bank'}</button>
     <button class="btn block" data-act="bank-sync"${off('sync')}>${b.busy === 'sync' ? 'Checking…' : '⟳ Check for new activity'}</button></div>
     ${b.inbox.length ? `<h2>To review · ${b.inbox.length}</h2><div class="card">
