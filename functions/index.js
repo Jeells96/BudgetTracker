@@ -25,6 +25,10 @@ const PLAID_SECRET = defineSecret('PLAID_SECRET');
 // Plaid retired the old Development environment, so this is the whole switch.
 const PLAID_ENV = process.env.PLAID_ENV === 'production' ? 'production' : 'sandbox';
 
+// Blank means "don't send one". Sending a redirect_uri Plaid hasn't got on file
+// fails /link/token/create outright, so it has to be clearable without a deploy.
+const REDIRECT_URI = (process.env.PLAID_REDIRECT_URI || '').trim();
+
 setGlobalOptions({ region: 'us-central1', maxInstances: 3 });
 const withSecrets = { secrets: [PLAID_CLIENT_ID, PLAID_SECRET] };
 
@@ -71,16 +75,18 @@ const defaultRole = (a) => (a && a.type === 'credit' ? 'card' : a && a.type === 
 /** Step 1 — hand Plaid Link a short-lived token so it can open. */
 exports.createLinkToken = onCall(withSecrets, async (req) => {
   const uid = uidOf(req);
-  const res = await plaid().linkTokenCreate({
-    user: { client_user_id: uid },
-    client_name: 'Budget',
-    products: ['transactions'],
-    country_codes: ['US'],
-    language: 'en',
-    // Required for OAuth banks (US Bank is one). Must match the dashboard entry.
-    redirect_uri: 'https://jeells96.github.io/BudgetTracker/plaid-oauth.html',
-  });
-  return { link_token: res.data.link_token };
+  let res;
+  try {
+    res = await plaid().linkTokenCreate({
+      user: { client_user_id: uid },
+      client_name: 'Budget',
+      products: ['transactions'],
+      country_codes: ['US'],
+      language: 'en',
+      ...(REDIRECT_URI ? { redirect_uri: REDIRECT_URI } : {}),
+    });
+  } catch (e) { throw plaidError(e, 'Could not start Plaid Link'); }
+  return { link_token: res.data.link_token, env: PLAID_ENV, redirect: REDIRECT_URI || null };
 });
 
 /** Step 2 — swap the one-time public_token for a lasting access_token we keep. */

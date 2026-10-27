@@ -12,6 +12,10 @@ on:
         type: choice
         default: sandbox
         options: [sandbox, production]
+      redirect_uri:
+        description: 'OAuth redirect URI (blank = send none; OAuth still works on web)'
+        type: string
+        default: 'https://jeells96.github.io/BudgetTracker/plaid-oauth.html'
 
 jobs:
   deploy:
@@ -27,7 +31,10 @@ jobs:
       # Picked from the dropdown when you start the run, so switching between
       # fake sandbox data and your real accounts never needs a code change.
       - name: Set Plaid environment
-        run: echo "PLAID_ENV=${{ inputs.plaid_env }}" > functions/.env
+        run: |
+          echo "PLAID_ENV=${{ inputs.plaid_env }}" > functions/.env
+          echo "PLAID_REDIRECT_URI=${{ inputs.redirect_uri }}" >> functions/.env
+          cat functions/.env
       - name: Write service account
         run: |
           cat > "$RUNNER_TEMP/sa.json" <<'JSON'
