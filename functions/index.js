@@ -177,8 +177,13 @@ exports.syncTransactions = onCall(withSecrets, async (req) => {
   // the weekly budget or the card plan until you accept and categorise it.
   const txCol = db.collection('users').doc(uid).collection('inbox');
   let added = 0, modified = 0, removed = 0;
+  const failed = [];
 
   for (const itemDoc of items.docs) {
+   // One dead item must not stop the others. Switching between sandbox and
+   // production invalidates the tokens from the environment you left, and those
+   // banks are still listed until you unlink them.
+   try {
     const item = itemDoc.data();
     const roles = item.roles || {};
     const roleFor = (accountId) => roles[accountId]
@@ -227,8 +232,13 @@ exports.syncTransactions = onCall(withSecrets, async (req) => {
       more = d.has_more;
     }
     await itemDoc.ref.update({ cursor: cursor || null, balances, syncedAt: admin.firestore.FieldValue.serverTimestamp() });
+   } catch (e) {
+     const d = (e && e.response && e.response.data) || {};
+     console.error('item sync failed', itemDoc.id, d.error_code || e.message);
+     failed.push({ itemId: itemDoc.id, code: d.error_code || 'SYNC_FAILED', message: d.error_message || e.message });
+   }
   }
-  return { added, modified, removed, accounts: items.size };
+  return { added, modified, removed, accounts: items.size, failed };
 });
 
 /**

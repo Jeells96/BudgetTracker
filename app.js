@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=72';
-import { TRANSFERS } from './defaults.js?v=72';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=72';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=73';
+import { TRANSFERS } from './defaults.js?v=73';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=73';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -666,7 +666,7 @@ function settings() {
 // weekly budget or the card plan until you give it a category and accept it.
 let bank = null;
 const bankUI = { on: false, busy: '', user: undefined, items: [], inbox: [], pick: {}, billq: [], billpick: {}, err: '' };
-const bankMod = async () => (bank ||= await import('./bank.js?v=72'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=73'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -1638,7 +1638,17 @@ document.addEventListener('click', (e) => {
           : `Closed before a bank was linked (${r.status}).`;
       }
     });
-    case 'bank-sync': return bankRun('sync', async () => { const b = await bankMod(); const r = await b.syncNow(); await bankLoad(false); toast(r.added ? `${r.added} new to review` : 'Nothing new'); });
+    case 'bank-sync': return bankRun('sync', async () => {
+      const b = await bankMod();
+      const r = await b.syncNow();
+      await bankLoad(false);
+      const bad = r.failed || [];
+      if (bad.length) {
+        bankUI.err = `${bad.length} bank${bad.length === 1 ? '' : 's'} couldn't be read: ${bad.map((f) => f.code).join(', ')}. `
+          + 'A bank linked in the other Plaid environment has to be unlinked and connected again.';
+      }
+      toast(r.added ? `${r.added} new to review` : 'Nothing new');
+    });
     case 'bank-unlink': {
       if (!confirm('Unlink this bank? Anything you already accepted stays in your log.')) return;
       return bankRun('unlink', async () => { const b = await bankMod(); await b.unlink(id); await bankLoad(false); toast('Unlinked'); });
