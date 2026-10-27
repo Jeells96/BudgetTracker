@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=68';
-import { TRANSFERS } from './defaults.js?v=68';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=68';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=69';
+import { TRANSFERS } from './defaults.js?v=69';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=69';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -666,7 +666,7 @@ function settings() {
 // weekly budget or the card plan until you give it a category and accept it.
 let bank = null;
 const bankUI = { on: false, busy: '', user: undefined, items: [], inbox: [], pick: {}, err: '' };
-const bankMod = async () => (bank ||= await import('./bank.js?v=68'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=69'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -683,13 +683,56 @@ async function bankLoad(resume) {
   if (resume) { const r = await b.resumeOAuth(); if (r) toast(`Linked ${r.accounts.length} account${r.accounts.length === 1 ? '' : 's'}`); }
   const [res, box] = await Promise.all([b.listItems(), b.inbox()]);
   bankUI.items = res.items || [];
-  bankUI.inbox = box;
-  box.forEach((it) => {
+
+  // Card charges become loose logs by themselves — you turn each one into a real
+  // transaction when you're ready, and nothing counts until you do. A refund or a
+  // card payment isn't a purchase, so it goes to the review queue instead.
+  const loose = box.filter((it) => it.route === 'card' && it.type === 'expense');
+  bankUI.inbox = box.filter((it) => !(it.route === 'card' && it.type === 'expense'));
+  if (loose.length) await adoptCardCharges(b, loose);
+  bankBalanceSync();
+
+  bankUI.inbox.forEach((it) => {
     if (bankUI.pick[it.id] !== undefined) return;
     const g = b.suggest(it, S().categories);
     bankUI.pick[it.id] = g === 'income' ? 'i' : g === 'bills' ? 't:bills' : g ? 'e:' + g : '';
   });
 }
+
+// srcId keeps a charge from arriving twice if a sync overlaps.
+async function adoptCardCharges(b, loose) {
+  const have = new Set((S().pending || []).map((p) => p.srcId).filter(Boolean));
+  const add = loose.filter((it) => !have.has(it.id));
+  if (add.length) {
+    S().pending = [...(S().pending || []), ...add.map((it) => ({
+      id: uid(), srcId: it.id, amount: it.amount, date: it.date, note: it.note || '', source: 'plaid'
+    }))];
+    saveSettings();
+  }
+  // Clear them from the inbox either way, so a retry can't duplicate them.
+  await Promise.all(loose.map((it) => b.dropInbox(it.id).catch(() => {})));
+  if (add.length) toast(`${add.length} card charge${add.length === 1 ? '' : 's'} to finish`);
+}
+
+// Accounts set to "balance only" stand in for typing the bills balance by hand.
+function bankBalanceSync() {
+  let bal = null;
+  bankUI.items.forEach((it) => Object.entries(it.roles || {}).forEach(([acct, role]) => {
+    if (role !== 'balance') return;
+    const v = (it.balances || {})[acct];
+    if (v && typeof v.current === 'number') bal = round((bal || 0) + v.current);
+  }));
+  if (bal == null || (S().billsAcct || {}).bal === bal) return;
+  S().billsAcct = { bal, asOf: today() };
+  saveSettings();
+}
+
+const ROLE_OPTS = [
+  ['card', '🕗 Charges → loose logs'],
+  ['review', '📥 Review queue'],
+  ['balance', '🏦 Balance only'],
+  ['off', '🚫 Ignore']
+];
 
 function bankBlock() {
   const b = bankUI, err = b.err ? `<div class="err">${esc(b.err)}</div>` : '';
@@ -706,8 +749,15 @@ function bankBlock() {
     <button class="btn block primary" data-act="bank-signin"${off('signin')}>${b.busy === 'signin' ? 'Opening…' : 'Sign in with Google'}</button></div>`;
 
   const accts = b.items.length
-    ? b.items.map((it) => `<div class="field"><label>${it.accounts.map((a) => esc(a.name + (a.mask ? ' ••' + a.mask : ''))).join('<br>')}</label>
-        <button class="x" data-act="bank-unlink" data-id="${esc(it.itemId)}" aria-label="Unlink">✕</button></div>`).join('')
+    ? b.items.map((it) => (it.accounts || []).map((a) => {
+        const role = (it.roles || {})[a.account_id] || 'off';
+        const bal = (it.balances || {})[a.account_id];
+        return `<div class="field">
+          <label style="flex:1">${esc(a.name)}${a.mask ? ` <span class="muted">••${esc(a.mask)}</span>` : ''}${bal && typeof bal.current === 'number' ? `<br><span class="muted" style="font-size:.8rem">balance ${money(bal.current)}</span>` : ''}</label>
+          <select data-acct-role="${esc(it.itemId)}|${esc(a.account_id)}" style="flex-basis:100%">
+            ${ROLE_OPTS.map(([v, l]) => `<option value="${v}" ${role === v ? 'selected' : ''}>${l}</option>`).join('')}
+          </select></div>`;
+      }).join('') + `<button class="btn mini" data-act="bank-unlink" data-id="${esc(it.itemId)}">Unlink this bank</button>`).join('')
     : '<div class="note">No banks linked yet.</div>';
 
   const opts = (picked) => '<option value="">Category…</option>'
@@ -726,6 +776,7 @@ function bankBlock() {
     <div class="field"><label>Signed in as ${esc(b.user.email || b.user.displayName || 'you')}</label>
       <button class="btn mini" data-act="bank-signout"${off('signout')}>Sign out</button></div>
     ${accts}
+    ${b.items.length ? '<div class="note">Loose logs are the 🕗 list on Home — a charge lands there with its price and merchant, and only becomes a real transaction once you finish it. Balance only skips transactions and keeps your bills account balance current instead.</div>' : ''}
     <button class="btn block" data-act="bank-connect"${off('connect')}>${b.busy === 'connect' ? 'Opening…' : '+ Connect a bank'}</button>
     <button class="btn block" data-act="bank-sync"${off('sync')}>${b.busy === 'sync' ? 'Checking…' : '⟳ Check for new activity'}</button></div>
     ${b.inbox.length ? `<h2>To review · ${b.inbox.length}</h2><div class="card">
@@ -792,7 +843,7 @@ function openPending() {
   if (!pend.length) return;
   const rows = pend.map((x) => `<div class="loose-row">
     <button class="loose" data-act="finish-item" data-id="${esc(x.id)}"><div class="emoji">🕗</div>
-      <div class="body"><div class="t">${money(x.amount)}</div><div class="s">added ${parseYmd(x.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} · tap to finish</div></div><span class="chev">›</span></button>
+      <div class="body"><div class="t">${money(x.amount)}${x.note ? ` · ${esc(x.note)}` : ''}</div><div class="s">${x.source === 'plaid' ? 'from your card' : 'added'} ${parseYmd(x.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} · tap to finish</div></div><span class="chev">›</span></button>
     <button class="x" data-act="pending-del" data-id="${esc(x.id)}" aria-label="Discard">✕</button></div>`).join('');
   $('#sheet').innerHTML = `<div class="panel"><div class="head"><span style="width:40px"></span><span class="step">Loose logs to finish</span><button data-act="sheet-close" aria-label="Later">✕</button></div>
     <p class="note" style="margin:0 0 10px">${pend.length} item${pend.length === 1 ? '' : 's'} to finish</p>
@@ -839,7 +890,7 @@ const logCat = (id) => logCats().find((c) => c.id === id);
 
 // ----- add entries (category first, then amount → description; Save or Add another) -----
 function openFlow(opts = {}) {
-  flow = { step: opts.category ? 2 : 1, category: opts.category || null, amt: opts.amt || '', note: '', date: today(), pay: 'credit', count: 0, pendingId: opts.pendingId || null, amtLocked: !!opts.amtLocked, splitting: false, hasTotal: true, total: '', splits: [], vehicle: null };
+  flow = { step: opts.category ? 2 : 1, category: opts.category || null, amt: opts.amt || '', note: opts.note || '', date: opts.date || today(), pay: 'credit', count: 0, pendingId: opts.pendingId || null, amtLocked: !!opts.amtLocked, splitting: false, hasTotal: true, total: '', splits: [], vehicle: null };
   drawFlow(); $('#sheet').hidden = false;
 }
 
@@ -1445,7 +1496,7 @@ document.addEventListener('click', (e) => {
       render(); openReturns(); toast('Back in your spending'); return;
     }
     case 'finish-loose': return openPending();
-    case 'finish-item': { const it = (S().pending || []).find((x) => x.id === id); closeSheet(); if (it) openFlow({ amt: String(it.amount), pendingId: it.id, amtLocked: true }); return; }
+    case 'finish-item': { const it = (S().pending || []).find((x) => x.id === id); closeSheet(); if (it) openFlow({ amt: String(it.amount), pendingId: it.id, amtLocked: true, note: it.note || '', date: it.date }); return; }
     case 'pending-del': { if (confirm('Discard this loose item without logging it?')) { S().pending = (S().pending || []).filter((x) => x.id !== id); saveSettings(); render(); if ((S().pending || []).length) openPending(); else closeSheet(); } return; }
     case 'plan-reset': ui.planDraft = {}; savePlanDraft(); return render();
     case 'plan-reset-field': { if (ui.planDraft) delete ui.planDraft[id]; savePlanDraft(); return render(); }
@@ -1509,6 +1560,15 @@ document.addEventListener('input', (e) => {
 document.addEventListener('change', (e) => {
   const t = e.target, num = () => parseNum(t.value);
   if (t.dataset.inboxCat) { bankUI.pick[t.dataset.inboxCat] = t.value; return; }
+  if (t.dataset.acctRole) {
+    const [itemId, acct] = t.dataset.acctRole.split('|');
+    const item = bankUI.items.find((x) => x.itemId === itemId);
+    if (item) {
+      item.roles = { ...(item.roles || {}), [acct]: t.value };
+      bankRun('roles', async () => { const b = await bankMod(); await b.setRoles(itemId, item.roles); await bankLoad(false); });
+    }
+    return;
+  }
   if (t.id === 'sav-slider') { slideSavings(+t.value); saveSettings(); return; }
   if (t.dataset.set) { S()[t.dataset.set] = num(); saveSettings(); }
   else if (t.hasAttribute('data-billsbal')) { S().billsAcct = { bal: num(), asOf: today() }; saveSettings(); render(); return; }

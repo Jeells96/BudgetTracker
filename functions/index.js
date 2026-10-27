@@ -44,6 +44,16 @@ const uidOf = (req) => {
 };
 const itemsCol = (uid) => db.collection('plaidItems').doc(uid).collection('items');
 
+/**
+ * What each linked account is for:
+ *   card    - charges arrive as loose "track later" logs, you finish them yourself
+ *   review  - transactions wait in the review queue for a category
+ *   balance - no transactions, just keep the account's balance up to date
+ *   off     - ignored entirely
+ */
+const ROLES = new Set(['card', 'review', 'balance', 'off']);
+const defaultRole = (a) => (a && a.type === 'credit' ? 'card' : a && a.type === 'depository' ? 'review' : 'off');
+
 /** Step 1 — hand Plaid Link a short-lived token so it can open. */
 exports.createLinkToken = onCall(withSecrets, async (req) => {
   const uid = uidOf(req);
@@ -76,12 +86,15 @@ exports.exchangePublicToken = onCall(withSecrets, async (req) => {
     type: a.type, subtype: a.subtype,
   }));
 
+  const roles = {};
+  accounts.forEach((a) => { roles[a.account_id] = defaultRole(a); });
+
   await itemsCol(uid).doc(itemId).set({
-    accessToken, itemId, accounts,
+    accessToken, itemId, accounts, roles,
     institution: (inst.data.item && inst.data.item.institution_id) || null,
     cursor: null, linkedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
-  return { itemId, accounts };
+  return { itemId, accounts, roles };
 });
 
 /** What's linked, without ever handing the browser an access token. */
@@ -95,6 +108,8 @@ exports.listItems = onCall(withSecrets, async (req) => {
         itemId: v.itemId,
         institution: v.institution || null,
         accounts: v.accounts || [],
+        roles: v.roles || {},
+        balances: v.balances || {},
         syncedAt: v.syncedAt ? v.syncedAt.toMillis() : null,
       };
     }),
@@ -116,6 +131,17 @@ exports.removeItem = onCall(withSecrets, async (req) => {
   return { removed: itemId };
 });
 
+/** Point each account at what it's for. No Plaid call, so no secrets needed. */
+exports.setAccountRoles = onCall(async (req) => {
+  const uid = uidOf(req);
+  const { itemId, roles } = req.data || {};
+  if (!itemId || !roles || typeof roles !== 'object') throw new HttpsError('invalid-argument', 'Missing itemId or roles.');
+  const clean = {};
+  for (const [acct, role] of Object.entries(roles)) if (ROLES.has(role)) clean[acct] = role;
+  await itemsCol(uid).doc(itemId).update({ roles: clean });
+  return { roles: clean };
+});
+
 /** Step 3 — pull new/changed/removed transactions and mirror them into the app. */
 exports.syncTransactions = onCall(withSecrets, async (req) => {
   const uid = uidOf(req);
@@ -130,6 +156,23 @@ exports.syncTransactions = onCall(withSecrets, async (req) => {
 
   for (const itemDoc of items.docs) {
     const item = itemDoc.data();
+    const roles = item.roles || {};
+    const roleFor = (accountId) => roles[accountId]
+      || defaultRole((item.accounts || []).find((a) => a.account_id === accountId));
+
+    // Balances first, so a 'balance' account can keep the bills account honest
+    // even when it has no new activity to report.
+    const balances = {};
+    try {
+      const bal = await api.accountsGet({ access_token: item.accessToken });
+      bal.data.accounts.forEach((a) => {
+        balances[a.account_id] = {
+          name: a.name, mask: a.mask || null,
+          current: a.balances.current, available: a.balances.available,
+        };
+      });
+    } catch (e) { console.warn('balance refresh failed', e.message); }
+
     let cursor = item.cursor || undefined;
     let more = true;
 
@@ -140,15 +183,17 @@ exports.syncTransactions = onCall(withSecrets, async (req) => {
       const d = res.data;
 
       const batch = db.batch();
-      for (const t of d.added) { batch.set(txCol.doc('plaid_' + t.transaction_id), shape(t, item), { merge: true }); added++; }
-      for (const t of d.modified) { batch.set(txCol.doc('plaid_' + t.transaction_id), shape(t, item), { merge: true }); modified++; }
+      // 'off' and 'balance' accounts never produce a line item.
+      const wanted = (t) => { const r = roleFor(t.account_id); return r === 'card' || r === 'review' ? r : null; };
+      for (const t of d.added) { const r = wanted(t); if (!r) continue; batch.set(txCol.doc('plaid_' + t.transaction_id), shape(t, item, r), { merge: true }); added++; }
+      for (const t of d.modified) { const r = wanted(t); if (!r) continue; batch.set(txCol.doc('plaid_' + t.transaction_id), shape(t, item, r), { merge: true }); modified++; }
       for (const r of d.removed) { batch.delete(txCol.doc('plaid_' + r.transaction_id)); removed++; }
       await batch.commit();
 
       cursor = d.next_cursor;
       more = d.has_more;
     }
-    await itemDoc.ref.update({ cursor: cursor || null, syncedAt: admin.firestore.FieldValue.serverTimestamp() });
+    await itemDoc.ref.update({ cursor: cursor || null, balances, syncedAt: admin.firestore.FieldValue.serverTimestamp() });
   }
   return { added, modified, removed, accounts: items.size };
 });
@@ -158,12 +203,13 @@ exports.syncTransactions = onCall(withSecrets, async (req) => {
  * matches. Category is left null: you assign it when you accept the item, and
  * that is what keeps the weekly budget and card trim honest.
  */
-function shape(t, item) {
+function shape(t, item, route) {
   const acct = (item.accounts || []).find((a) => a.account_id === t.account_id);
   const isCard = acct && acct.type === 'credit';
   return {
     id: 'plaid_' + t.transaction_id,
     plaidId: t.transaction_id,
+    route,                                // 'card' -> track later, 'review' -> queue
     type: t.amount >= 0 ? 'expense' : 'income',
     amount: Math.abs(t.amount),
     date: t.date,
