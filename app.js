@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=74';
-import { TRANSFERS } from './defaults.js?v=74';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=74';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=75';
+import { TRANSFERS } from './defaults.js?v=75';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=75';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -67,6 +67,7 @@ function maybePendingPrompt() {
   openPending();
 }
 function render() {
+  if (!bankUI.booted && S().bankOn) { bankUI.booted = true; bankUI.on = true; setTimeout(bankAuto, 0); }
   document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === ui.tab));
   $('#app').innerHTML = ({ home, plan: planTab, finance, settings }[ui.tab] || home)();
 }
@@ -665,8 +666,29 @@ function settings() {
 // exactly as it always has. Imports wait in a review queue: nothing reaches the
 // weekly budget or the card plan until you give it a category and accept it.
 let bank = null;
-const bankUI = { on: false, busy: '', user: undefined, items: [], inbox: [], pick: {}, billq: [], billpick: {}, err: '' };
-const bankMod = async () => (bank ||= await import('./bank.js?v=74'));
+const bankUI = { on: false, booted: false, busy: '', user: undefined, items: [], inbox: [], pick: {}, billq: [], billpick: {}, err: '' };
+const SYNC_EVERY = 15 * 60 * 1000;   // don't re-ask Plaid on every page open
+
+// Once a bank is linked this runs by itself: the panel is already open and new
+// activity is pulled in the background. Kicked off from render() so it waits for
+// settings to arrive from the cloud, and never blocks the first paint.
+async function bankAuto() {
+  try {
+    await bankLoad(true);
+    if (!bankUI.user || !bankUI.items.length) return render();
+    if (Date.now() - (+S().bankSyncAt || 0) < SYNC_EVERY) return render();
+    const b = await bankMod();
+    const r = await b.syncNow();
+    S().bankSyncAt = Date.now(); saveSettings();
+    await bankLoad(false);
+    if (r.added) toast(`${r.added} new from your bank`);
+  } catch (e) {
+    // Never let a banking problem disturb the rest of the app.
+    bankUI.err = (e && e.message) || String(e);
+  }
+  render();
+}
+const bankMod = async () => (bank ||= await import('./bank.js?v=75'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -688,6 +710,7 @@ async function bankLoad(resume) {
   b.preload();   // have Link's script ready before the tap, not after
   const [res, box] = await Promise.all([b.listItems(), b.inbox()]);
   bankUI.items = res.items || [];
+  if (bankUI.items.length && !S().bankOn) { S().bankOn = true; saveSettings(); }
 
   // Card charges become loose logs by themselves — you turn each one into a real
   // transaction when you're ready, and nothing counts until you do. A refund or a
@@ -802,6 +825,8 @@ function bankBlock() {
     <div class="note">Pull card and bank activity in automatically instead of typing every purchase. Imports wait in a review queue — nothing counts until you approve it.</div>
     <button class="btn block" data-act="bank-open">🏦 Set up automatic import</button></div>`;
 
+  const synced = +S().bankSyncAt || 0;
+
   if (b.user === undefined) return `<h2>Banking</h2><div class="card">${err}<div class="field"><label class="muted">Checking…</label></div></div>`;
 
   if (!b.user) return `<h2>Banking</h2><div class="card">${err}
@@ -848,8 +873,7 @@ function bankBlock() {
       <div class="sub">${g.items.length} month${g.items.length === 1 ? '' : 's'}</div>
       <select data-billq="${esc(g.key)}">${billOpts(bankUI.billpick[g.key] || '')}</select>
       <div class="acts">
-        <button class="btn" data-act="billq-save" data-id="${esc(g.key)}"${off('row-' + g.key)}>✓ Match all</button>
-        <button class="btn" data-act="billq-drop" data-id="${esc(g.key)}">Ignore these</button>
+        <button class="btn" data-act="billq-drop" data-id="${esc(g.key)}">Not a bill — ignore these</button>
       </div></div>`;
   }).join('');
 
@@ -859,7 +883,8 @@ function bankBlock() {
     ${accts}
     ${b.items.length ? '<div class="note">Set your card to <b>Charges → loose logs</b>: each one lands in the 🕗 list on Home with its price and merchant, and only counts once you finish it. Set your bills account to <b>Bills → 12-month averages</b> — those payments never count as purchases, they just fill in each bill\'s history and keep the account balance current.</div>' : ''}
     <button class="btn block" data-act="bank-connect"${off('connect')}>${b.busy === 'connect' ? 'Opening…' : '+ Connect a bank'}</button>
-    <button class="btn block" data-act="bank-sync"${off('sync')}>${b.busy === 'sync' ? 'Checking…' : '⟳ Check for new activity'}</button></div>
+    <button class="btn block" data-act="bank-sync"${off('sync')}>${b.busy === 'sync' ? 'Checking…' : '⟳ Check for new activity'}</button>
+    ${synced ? `<div class="note">Imports on its own when you open the app. Last checked ${new Date(synced).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}.</div>` : ''}</div>
     ${b.inbox.length ? `<h2>To review · ${b.inbox.length}</h2><div class="card">
       <div class="note">Give each one a category to add it. Nothing here counts toward your budget yet.</div>
       ${rows}</div>` : ''}
@@ -879,12 +904,6 @@ function billqRule(key, pick) {
     delete bankUI.billpick[key];
     toast(pick === '__skip' ? 'Ignoring these from now on' : 'Matched — future months file themselves');
   });
-}
-
-function billqSave(key) {
-  const pick = bankUI.billpick[key];
-  if (!pick) return toast('Pick a bill first');
-  billqRule(key, pick);
 }
 
 function inboxAccept(id) {
@@ -1647,6 +1666,7 @@ document.addEventListener('click', (e) => {
     case 'bank-sync': return bankRun('sync', async () => {
       const b = await bankMod();
       const r = await b.syncNow();
+      S().bankSyncAt = Date.now(); saveSettings();
       await bankLoad(false);
       const bad = r.failed || [];
       if (bad.length) {
@@ -1659,7 +1679,6 @@ document.addEventListener('click', (e) => {
       if (!confirm('Unlink this bank? Anything you already accepted stays in your log.')) return;
       return bankRun('unlink', async () => { const b = await bankMod(); await b.unlink(id); await bankLoad(false); toast('Unlinked'); });
     }
-    case 'billq-save': return billqSave(id);
     case 'billq-drop': return billqRule(id, '__skip');
     case 'inbox-accept': return inboxAccept(id);
     case 'inbox-drop': return bankRun('row-' + id, async () => {
@@ -1687,7 +1706,11 @@ document.addEventListener('input', (e) => {
 document.addEventListener('change', (e) => {
   const t = e.target, num = () => parseNum(t.value);
   if (t.dataset.inboxCat) { bankUI.pick[t.dataset.inboxCat] = t.value; return; }
-  if (t.dataset.billq) { bankUI.billpick[t.dataset.billq] = t.value; return; }
+  if (t.dataset.billq) {
+    bankUI.billpick[t.dataset.billq] = t.value;
+    if (t.value) billqRule(t.dataset.billq, t.value);   // saves on pick, no second tap
+    return;
+  }
   if (t.dataset.acctRole) {
     const [itemId, acct] = t.dataset.acctRole.split('|');
     const item = bankUI.items.find((x) => x.itemId === itemId);
