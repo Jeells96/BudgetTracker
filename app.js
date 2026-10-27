@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=79';
-import { TRANSFERS } from './defaults.js?v=79';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=79';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=80';
+import { TRANSFERS } from './defaults.js?v=80';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=80';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -762,7 +762,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=79'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=80'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -823,6 +823,21 @@ async function adoptCardCharges(b, loose) {
   if (add.length) toast(`${add.length} card charge${add.length === 1 ? '' : 's'} to finish`);
 }
 
+/**
+ * What the bank would call this account's balance.
+ *
+ * Pending cuts both ways: a pending charge on a card ADDS to what you owe, a
+ * pending debit on a checking account TAKES AWAY from what you have. Treating
+ * them the same puts a chequing balance out by double the pending.
+ */
+function bankBalance(v, role) {
+  const cur = +v.current || 0, pend = +v.pending || 0;
+  if (role === 'card' || v.type === 'credit') return round(cur + pend);
+  // Depository: the bank's own headline figure already nets pending off.
+  if (typeof v.available === 'number') return round(v.available);
+  return round(cur - pend);
+}
+
 // Mirrors what the banks actually say: the bills balance stands in for typing it
 // by hand, and the card balance is kept beside the log so the two can be compared
 // rather than silently overwriting what you've recorded.
@@ -831,7 +846,7 @@ function bankBalanceSync() {
   bankUI.items.forEach((it) => Object.entries(it.roles || {}).forEach(([acct, role]) => {
     const v = (it.balances || {})[acct];
     if (!v || typeof v.current !== 'number') return;
-    if (role === 'bills') bills = round((bills || 0) + v.current);
+    if (role === 'bills') bills = round((bills || 0) + bankBalance(v, role));
     if (role === 'card') {
       card = round((card || 0) + v.current);
       cardPend = round((cardPend || 0) + (+v.pending || 0));
@@ -944,10 +959,13 @@ function bankBlock() {
         const bal = (it.balances || {})[a.account_id];
         const hasBal = bal && typeof bal.current === 'number';
         const pend = bal && +bal.pending || 0;
+        const owes = role === 'card' || (bal && bal.type === 'credit');
+        const net = hasBal ? bankBalance(bal, role) : 0;
+        const sum = !pend ? '' : ` ${owes ? '+' : '−'} ${money(pend)} pending`;
         return `<div class="acct">
           <div class="nm">${esc(a.name)}${a.mask ? ` ••${esc(a.mask)}` : ''}</div>
           <div class="sub">${hasBal
-            ? `bank says ${money(bal.current)}${pend ? ` + ${money(pend)} pending = <b>${money(round(bal.current + pend))}</b>` : ''}`
+            ? `bank says ${money(bal.current)}${sum} = <b>${money(net)}</b>${bal.scanned === false ? ' · pending not read' : ''}`
             : 'no balance yet — tap “Check for new activity”'}</div>
           <select data-acct-role="${esc(it.itemId)}|${esc(a.account_id)}">
             ${ROLE_OPTS.map(([v, l]) => `<option value="${v}" ${role === v ? 'selected' : ''}>${l}</option>`).join('')}

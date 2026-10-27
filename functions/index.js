@@ -103,7 +103,7 @@ exports.exchangePublicToken = onCall(withSecrets, async (req) => {
   const accessToken = ex.data.access_token;
   const itemId = ex.data.item_id;
 
-  try { inst = await api.accountsGet({ access_token: accessToken }); }
+  try { inst = await api.accountsBalanceGet({ access_token: accessToken }); }
   catch (e) { throw plaidError(e, 'Linked, but could not read the accounts'); }
 
   // Capture balances now. They used to be written only by a sync, so a card
@@ -111,8 +111,9 @@ exports.exchangePublicToken = onCall(withSecrets, async (req) => {
   const balances = {};
   inst.data.accounts.forEach((a) => {
     balances[a.account_id] = {
-      name: a.name, mask: a.mask || null,
+      name: a.name, mask: a.mask || null, type: a.type, subtype: a.subtype,
       current: a.balances.current, available: a.balances.available,
+      pending: 0, scanned: false,
     };
   });
   const accounts = inst.data.accounts.map((a) => ({
@@ -254,12 +255,12 @@ exports.syncTransactions = onCall(withSecrets, async (req) => {
     // activity to report.
     const balances = {};
     try {
-      const bal = await api.accountsGet({ access_token: item.accessToken });
+      const bal = await api.accountsBalanceGet({ access_token: item.accessToken });
       bal.data.accounts.forEach((a) => {
         balances[a.account_id] = {
-          name: a.name, mask: a.mask || null,
+          name: a.name, mask: a.mask || null, type: a.type, subtype: a.subtype,
           current: a.balances.current, available: a.balances.available,
-          pending: 0,
+          pending: 0, scanned: false,
         };
       });
     } catch (e) { console.warn('balance refresh failed', e.message); }
@@ -284,7 +285,11 @@ exports.syncTransactions = onCall(withSecrets, async (req) => {
         });
         offset += pr.data.transactions.length;
       }
-    } catch (e) { console.warn('pending scan failed', e.message); }
+      Object.values(balances).forEach((b) => { b.scanned = true; });
+    } catch (e) {
+      const d = (e && e.response && e.response.data) || {};
+      console.warn('pending scan failed', d.error_code || e.message);
+    }
 
     let cursor = item.cursor || undefined;
     let more = true;
