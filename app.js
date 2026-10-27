@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=78';
-import { TRANSFERS } from './defaults.js?v=78';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=78';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=79';
+import { TRANSFERS } from './defaults.js?v=79';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=79';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -762,7 +762,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=78'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=79'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -942,9 +942,13 @@ function bankBlock() {
     ? b.items.map((it) => `<div class="bankgrp">${(it.accounts || []).map((a) => {
         const role = (it.roles || {})[a.account_id] || 'off';
         const bal = (it.balances || {})[a.account_id];
+        const hasBal = bal && typeof bal.current === 'number';
+        const pend = bal && +bal.pending || 0;
         return `<div class="acct">
           <div class="nm">${esc(a.name)}${a.mask ? ` ••${esc(a.mask)}` : ''}</div>
-          ${bal && typeof bal.current === 'number' ? `<div class="sub">balance ${money(bal.current)}</div>` : ''}
+          <div class="sub">${hasBal
+            ? `bank says ${money(bal.current)}${pend ? ` + ${money(pend)} pending = <b>${money(round(bal.current + pend))}</b>` : ''}`
+            : 'no balance yet — tap “Check for new activity”'}</div>
           <select data-acct-role="${esc(it.itemId)}|${esc(a.account_id)}">
             ${ROLE_OPTS.map(([v, l]) => `<option value="${v}" ${role === v ? 'selected' : ''}>${l}</option>`).join('')}
           </select></div>`;
@@ -986,6 +990,8 @@ function bankBlock() {
     <div class="acct row"><div class="nm">Signed in as ${esc(b.user.email || b.user.displayName || 'you')}</div>
       <button class="btn tiny" data-act="bank-signout"${off('signout')}>Sign out</button></div>
     ${accts}
+    ${b.items.length && !b.items.some((it) => Object.values(it.roles || {}).includes('bills'))
+      ? '<div class="note">No account is set to <b>Bills → 12-month averages</b> yet, so nothing is filling in your bills account balance or their averages.</div>' : ''}
     ${b.items.length ? '<div class="note">Set your card to <b>Charges → loose logs</b>: each one lands in the 🕗 list on Home with its price and merchant, and only counts once you finish it. Set your bills account to <b>Bills → 12-month averages</b> — those payments never count as purchases, they just fill in each bill\'s history and keep the account balance current.</div>' : ''}
     <button class="btn block" data-act="bank-connect"${off('connect')}>${b.busy === 'connect' ? 'Opening…' : '+ Connect a bank'}</button>
     <button class="btn block" data-act="bank-sync"${off('sync')}>${b.busy === 'sync' ? 'Checking…' : '⟳ Check for new activity'}</button>
@@ -1015,8 +1021,8 @@ function billqRule(key, pick) {
 // Everything the banks have, whatever its account is set to do. Read-only until
 // you tap a row, which opens the normal log flow already filled in.
 let activity = null;
-function openActivity(days) {
-  activity = { days: days || 30, rows: null, err: '' };
+function openActivity(days, acct) {
+  activity = { days: days || 30, acct: acct || 'all', rows: null, err: '' };
   drawActivity();
   $('#sheet').hidden = false;
   bankRun('activity', async () => {
@@ -1031,17 +1037,23 @@ function drawActivity() {
   const a = activity;
   if (!a) return;
   const pick = [7, 30, 90, 365].map((d) => `<button class="chip ${a.days === d ? 'on' : ''}" data-act="activity-days" data-id="${d}">${d === 365 ? '1 year' : d + ' days'}</button>`).join('');
+  const names = [...new Set((a.rows || []).map((t) => t.account))].sort();
+  const accts = names.length < 2 ? '' : `<div class="chips">${
+    [['all', 'All accounts'], ...names.map((n) => [n, n])]
+      .map(([v, l]) => `<button class="chip ${a.acct === v ? 'on' : ''}" data-act="activity-acct" data-id="${esc(v)}">${esc(l)}</button>`).join('')}</div>`;
+  const rows = (a.rows || []).filter((t) => a.acct === 'all' || t.account === a.acct);
   const body = a.err ? `<div class="err">${esc(a.err)}</div>`
     : !a.rows ? '<div class="empty" style="padding:22px">Loading…</div>'
-    : !a.rows.length ? '<div class="empty" style="padding:22px">Nothing in this period.</div>'
-    : a.rows.map((t) => `<button class="actrow" data-act="activity-log" data-id="${esc(t.id)}">
+    : !rows.length ? '<div class="empty" style="padding:22px">Nothing here in this period.</div>'
+    : rows.map((t) => `<button class="actrow" data-act="activity-log" data-id="${esc(t.id)}">
         <div class="ar-b"><div class="ar-t">${esc(t.name || 'Transaction')}</div>
           <div class="ar-s">${esc(shortDate(parseYmd(t.date)))} · ${esc(t.account)}${t.pending ? ' · pending' : ''}</div></div>
         <b class="ar-a ${t.outgoing ? '' : 'in'}">${t.outgoing ? '' : '+'}${money(t.amount)}</b></button>`).join('');
   $('#sheet').innerHTML = `<div class="panel"><div class="head">
       <span style="width:40px"></span><span class="step">All bank activity</span><button data-act="sheet-close" aria-label="Close">✕</button></div>
     <div class="chips">${pick}</div>
-    <p class="note" style="margin:0 0 8px">${a.rows ? `${a.rows.length} transaction${a.rows.length === 1 ? '' : 's'} · ` : ''}Tap one to log it. Looking here never changes what gets imported.</p>
+    ${accts}
+    <p class="note" style="margin:0 0 8px">${a.rows ? `${rows.length} transaction${rows.length === 1 ? '' : 's'} · ` : ''}Tap one to log it. Looking here never changes what gets imported.</p>
     ${body}</div>`;
   $('#sheet').className = 'sheet';
 }
@@ -1841,7 +1853,8 @@ document.addEventListener('click', (e) => {
     }
     case 'billq-drop': return billqRule(id, '__skip');
     case 'bank-activity': return openActivity(30);
-    case 'activity-days': { if (activity) openActivity(+id); return; }
+    case 'activity-days': { if (activity) openActivity(+id, activity.acct); return; }
+    case 'activity-acct': { if (activity) { activity.acct = id; drawActivity(); } return; }
     case 'activity-log': {
       const t = (activity && activity.rows || []).find((x) => x.id === id);
       if (!t) return;
