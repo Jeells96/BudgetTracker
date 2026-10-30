@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=81';
-import { TRANSFERS } from './defaults.js?v=81';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=81';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=83';
+import { TRANSFERS } from './defaults.js?v=83';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=83';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -744,7 +744,7 @@ function settings() {
 // weekly budget or the card plan until you give it a category and accept it.
 let bank = null;
 const bankUI = { on: false, booted: false, busy: '', user: undefined, items: [], inbox: [], pick: {}, billq: [], billpick: {}, err: '' };
-const SYNC_EVERY = 3 * 60 * 1000;   // effectively every open; just not a reload loop
+const SYNC_EVERY = 45 * 1000;   // every open; the guard is only against a reload loop
 
 // Once a bank is linked this runs by itself: the panel is already open and new
 // activity is pulled in the background. Kicked off from render() so it waits for
@@ -766,7 +766,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=81'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=83'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -853,7 +853,8 @@ async function adoptCardCharges(b, loose) {
   }
   if (add.length) {
     S().pending = [...(S().pending || []), ...add.map((it) => ({
-      id: uid(), srcId: it.id, amount: it.amount, date: it.date, note: it.note || '', source: 'plaid'
+      id: uid(), srcId: it.id, amount: it.amount, date: it.date, note: it.note || '',
+      source: 'plaid', account: it.account || null, pend: !!it.pending
     }))];
   }
   if (add.length || filed) saveSettings();
@@ -1187,7 +1188,9 @@ function openPending() {
   const rows = pend.map((x) => `<div class="loose-row">${x.source === 'plaid' && x.note
     ? `<button class="x" data-act="pending-ignore" data-id="${esc(x.id)}" title="Always ignore ${esc(x.note)}" aria-label="Always ignore">🚫</button>` : ''}
     <button class="loose" data-act="finish-item" data-id="${esc(x.id)}"><div class="emoji">🕗</div>
-      <div class="body"><div class="t">${money(x.amount)}${x.note ? ` · ${esc(x.note)}` : ''}</div><div class="s">${x.source === 'plaid' ? 'from your card' : 'added'} ${parseYmd(x.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} · tap to finish</div></div><span class="chev">›</span></button>
+      <div class="body"><div class="t">${money(x.amount)}${x.note ? ` · ${esc(x.note)}` : ''}</div><div class="s">${
+        x.source === 'plaid' ? esc(x.account || 'from your bank') : 'added'
+      } · ${parseYmd(x.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}${x.pend ? ' · pending' : ''} · tap to finish</div></div><span class="chev">›</span></button>
     <button class="x" data-act="pending-del" data-id="${esc(x.id)}" aria-label="Discard">✕</button></div>`).join('');
   $('#sheet').innerHTML = `<div class="panel"><div class="head"><span style="width:40px"></span><span class="step">Loose logs to finish</span><button data-act="sheet-close" aria-label="Later">✕</button></div>
     <p class="note" style="margin:0 0 10px">${pend.length} item${pend.length === 1 ? '' : 's'} to finish</p>

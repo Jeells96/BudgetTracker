@@ -32,7 +32,10 @@ html, body {
   -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
   overscroll-behavior-y:none;
 }
-body { overflow-x:clip; }
+body { overflow-x:visible; }
+/* Zoomed in, every gesture has to be able to reach the page: no container may
+   keep panning to itself, and double-tap zoom stays available. */
+.sheet, .panel, #app, body { touch-action:auto; }
 button { font:inherit; color:inherit; cursor:pointer; border:0; background:none; touch-action:manipulation; }
 input, select, textarea { font:inherit; color:inherit; }
 [hidden] { display:none !important; }
@@ -428,7 +431,7 @@ hr.sep { border:0; border-top:1px solid var(--hair); margin:18px 0; }
   display:flex; align-items:flex-end; justify-content:center; animation:fade .2s; }
 .panel { background:var(--surface); width:100%; max-width:560px; border-radius:var(--r3) var(--r3) 0 0;
   padding:0 18px calc(20px + env(safe-area-inset-bottom)); animation:up .26s cubic-bezier(.3,.9,.3,1);
-  max-height:92vh; overflow-y:auto; overflow-x:hidden; overscroll-behavior:contain; -webkit-overflow-scrolling:touch; }
+  max-height:92vh; overflow-y:auto; overflow-x:hidden; -webkit-overflow-scrolling:touch; }
 .panel > .head { position:sticky; top:0; z-index:6; background:var(--surface); display:flex; align-items:center;
   justify-content:space-between; margin:0 -18px 10px; padding:15px 18px 11px; border-bottom:1px solid var(--hair); }
 .panel .head button { width:38px; height:38px; border-radius:999px; font-size:1.1rem; color:var(--muted); display:grid; place-items:center; }

@@ -241,7 +241,12 @@ exports.syncTransactions = onCall(withSecrets, async (req) => {
   let added = 0, modified = 0, removed = 0;
   const failed = [];
 
-  for (const itemDoc of items.docs) {
+  const ordered = items.docs.slice().sort((a, b) => {
+    const card = (d) => (Object.values(d.data().roles || {}).includes('card') ? 0 : 1);
+    return card(a) - card(b);
+  });
+
+  for (const itemDoc of ordered) {
    // One dead item must not stop the others. Switching between sandbox and
    // production invalidates the tokens from the environment you left, and those
    // banks are still listed until you unlink them.
@@ -309,7 +314,9 @@ exports.syncTransactions = onCall(withSecrets, async (req) => {
         const r = roleFor(t.account_id);
         if (r === 'bills') return 'bills';
         if (r !== 'card' && r !== 'review') return null;
-        if (item.startDate && t.date < item.startDate) return null;
+        // A pending charge is current by definition, whatever date it carries, so
+        // the "only from the day you linked" cut must not swallow it.
+        if (item.startDate && !t.pending && t.date < item.startDate) return null;
         return r;
       };
       for (const t of d.added) { const r = wanted(t); if (!r) continue; batch.set(txCol.doc('plaid_' + t.transaction_id), shape(t, item, r), { merge: true }); added++; }
