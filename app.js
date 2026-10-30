@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=86';
-import { TRANSFERS } from './defaults.js?v=86';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=86';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=87';
+import { TRANSFERS } from './defaults.js?v=87';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=87';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -834,7 +834,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=86'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=87'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -861,13 +861,14 @@ async function bankLoad(resume) {
   // Card charges become loose logs by themselves — you turn each one into a real
   // transaction when you're ready, and nothing counts until you do. A refund or a
   // card payment isn't a purchase, so it goes to the review queue instead.
+  const box2 = await autoFile(b, box);
   const map = S().txMatch || {};
   const known = (it) => !!map[billKey(it.note)] || looksLikeIncome(it);
   // A card-routed account sends its purchases to loose logs; anything with a
   // standing rule, and anything Plaid itself calls income, is handled instead.
-  const loose = box.filter((it) => it.route === 'card' && (it.type === 'expense' || known(it)));
-  const billsIn = box.filter((it) => it.route === 'bills' && it.type === 'expense');
-  bankUI.inbox = box.filter((it) => it.route !== 'bills'
+  const loose = box2.filter((it) => it.route === 'card' && (it.type === 'expense' || known(it)));
+  const billsIn = box2.filter((it) => it.route === 'bills' && it.type === 'expense');
+  bankUI.inbox = box2.filter((it) => it.route !== 'bills'
     && !(it.route === 'card' && (it.type === 'expense' || known(it))));
   if (loose.length) await adoptCardCharges(b, loose);
   bankUI.billq = billsIn.length ? await adoptBillCharges(b, billsIn) : [];
@@ -902,6 +903,67 @@ function applyTxRule(rule, it) {
 
 // A paycheque looks like a paycheque. Money arriving that Plaid itself calls
 // income needs no rule to be recognised.
+const sameMoney = (a, b) => Math.abs((+a || 0) - (+b || 0)) < 0.01;
+const nearDate = (a, b, days) => Math.abs(parseYmd(a) - parseYmd(b)) <= days * 86400000;
+
+// Did you already log this yourself, before the bank caught up? Same money,
+// within a few days, and going the same way. A transfer can match either
+// direction, since one movement shows up as out of one account and into another.
+function matchExisting(it, used) {
+  return store.txs.find((t) => {
+    if (t.plaidId || used.has(t.id)) return false;
+    if (!sameMoney(t.amount, it.amount) || !nearDate(t.date, it.date, 4)) return false;
+    if (t.type === 'transfer') return true;
+    return (t.type === 'income') === (it.type === 'income');
+  });
+}
+
+/**
+ * Handles what the app can work out for itself, before anything reaches a queue.
+ *
+ * Money ARRIVING is the clearest signal there is: onto the card it's a payment,
+ * into the bills account it's a bills transfer. The matching withdrawal is
+ * dropped with it, so one movement between two of your own accounts is recorded
+ * once rather than twice.
+ *
+ * Returns what's left for the normal routing.
+ */
+async function autoFile(b, box) {
+  const used = new Set(), handled = [], rest = [];
+
+  for (const it of box) {
+    const hit = matchExisting(it, used);
+    if (hit) {
+      used.add(hit.id);
+      updateTx(hit.id, { plaidId: it.plaidId || it.id });
+      handled.push(it);
+    } else rest.push(it);
+  }
+  const alreadyLogged = handled.length;
+
+  const arrivals = [], others = [];
+  for (const it of rest) {
+    if (it.type !== 'income') { others.push(it); continue; }
+    if (it.pay === 'credit') arrivals.push({ it, cat: 'card' });
+    else if (it.route === 'bills') arrivals.push({ it, cat: 'bills' });
+    else others.push(it);
+  }
+
+  let filed = 0;
+  for (const a of arrivals) {
+    addTx({ type: 'transfer', category: a.cat, amount: a.it.amount, date: a.it.date, note: a.it.note || '' });
+    handled.push(a.it);
+    filed++;
+    const i = others.findIndex((o) => o.type === 'expense' && sameMoney(o.amount, a.it.amount) && nearDate(o.date, a.it.date, 3));
+    if (i >= 0) handled.push(others.splice(i, 1)[0]);
+  }
+
+  if (handled.length) await Promise.all(handled.map((it) => b.dropInbox(it.id).catch(() => {})));
+  if (alreadyLogged) toast(`${alreadyLogged} already logged by you`);
+  if (filed) toast(`${filed} transfer${filed === 1 ? '' : 's'} recognised`);
+  return others;
+}
+
 const payerKeys = () => (S().incomePayers || []).map(billKey).filter(Boolean);
 const fromPayer = (note) => { const k = billKey(note); return !!k && payerKeys().some((p) => k.includes(p) || p.includes(k)); };
 
@@ -1563,13 +1625,18 @@ function flowClick(btn) {
 function openCardAsk(tx) {
   flow = null;
   const bal = cardBalance(S(), store.txs);
+  // Name the week, otherwise "this week" means nothing when you're logging a
+  // payment dated a few days back.
+  const ws = parseYmd(weekStart(parseYmd(tx.date), S().weekStartDay ?? 5));
+  const we = addDays(ws, 6);
+  const span = `${ws.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${we.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
   const el = $('#sheet');
   el.className = 'sheet';
   el.innerHTML = `<div class="panel"><div class="head"><span style="width:40px"></span><span class="step">Card payment</span><button data-act="cc-ask" data-id="more" aria-label="Close">✕</button></div>
     <div class="q">Paid ${money(tx.amount)} · ${money(bal)} left</div>
-    <p class="note" style="margin:0 0 14px">Is that your payment for this week, or will you make more?</p>
-    <button class="btn primary block" data-act="cc-ask" data-id="week">That's this week's payment</button>
-    <button class="btn block" data-act="cc-ask" data-id="more" style="margin-top:8px">I'll make more this week</button></div>`;
+    <p class="note" style="margin:0 0 14px">Is that the whole payment for the week of <b>${span}</b>, or will you put more towards the card before ${we.toLocaleDateString('en-US', { weekday: 'long' })}?</p>
+    <button class="btn primary block" data-act="cc-ask" data-id="week">That's the whole payment for this week</button>
+    <button class="btn block" data-act="cc-ask" data-id="more" style="margin-top:8px">I'll put more towards it</button></div>`;
   el.hidden = false;
 }
 
