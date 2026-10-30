@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=83';
-import { TRANSFERS } from './defaults.js?v=83';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=83';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=84';
+import { TRANSFERS } from './defaults.js?v=84';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=84';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -760,13 +760,14 @@ async function bankAuto() {
     S().bankSyncAt = Date.now(); saveSettings();
     await bankLoad(false);
     if (r.added) toast(`${r.added} new from your bank`);
+    else if (r.failed && r.failed.length) bankUI.err = `Couldn't read ${r.failed.map((f) => f.code).join(', ')}.`;
   } catch (e) {
     // Never let a banking problem disturb the rest of the app.
     bankUI.err = (e && e.message) || String(e);
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=83'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=84'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -1091,14 +1092,15 @@ function billqRule(key, pick) {
 // Everything the banks have, whatever its account is set to do. Read-only until
 // you tap a row, which opens the normal log flow already filled in.
 let activity = null;
-function openActivity(days, acct) {
-  activity = { days: days || 30, acct: acct || 'all', rows: null, err: '' };
+function openActivity(days, acct, fresh) {
+  activity = { days: days || 30, acct: acct || 'all', rows: null, err: '', fresh: !!fresh };
   drawActivity();
   $('#sheet').hidden = false;
   bankRun('activity', async () => {
     const b = await bankMod();
-    try { activity.rows = (await b.recentActivity(activity.days)).transactions || []; }
+    try { activity.rows = (await b.recentActivity(activity.days, fresh)).transactions || []; }
     catch (e) { activity.err = (e && e.message) || String(e); }
+    activity.fresh = false;
     drawActivity();
   });
 }
@@ -1113,7 +1115,7 @@ function drawActivity() {
       .map(([v, l]) => `<button class="chip ${a.acct === v ? 'on' : ''}" data-act="activity-acct" data-id="${esc(v)}">${esc(l)}</button>`).join('')}</div>`;
   const rows = (a.rows || []).filter((t) => a.acct === 'all' || t.account === a.acct);
   const body = a.err ? `<div class="err">${esc(a.err)}</div>`
-    : !a.rows ? '<div class="empty" style="padding:22px">Loading…</div>'
+    : !a.rows ? `<div class="empty" style="padding:22px">${a.fresh ? 'Asking your bank for the latest…' : 'Loading…'}</div>`
     : !rows.length ? '<div class="empty" style="padding:22px">Nothing here in this period.</div>'
     : rows.map((t) => `<button class="actrow" data-act="activity-log" data-id="${esc(t.id)}">
         <div class="ar-b"><div class="ar-t">${esc(t.name || 'Transaction')}</div>
@@ -1124,6 +1126,7 @@ function drawActivity() {
     <div class="chips">${pick}</div>
     ${accts}
     <p class="note" style="margin:0 0 8px">${a.rows ? `${rows.length} transaction${rows.length === 1 ? '' : 's'} · ` : ''}Tap one to log it. Looking here never changes what gets imported.</p>
+    <button class="btn block" data-act="activity-fresh" style="margin:0 0 10px">↻ Ask the bank for the latest</button>
     ${body}</div>`;
   $('#sheet').className = 'sheet';
 }
@@ -1957,6 +1960,7 @@ document.addEventListener('click', (e) => {
     }
     case 'bank-activity': return openActivity(30);
     case 'activity-days': { if (activity) openActivity(+id, activity.acct); return; }
+    case 'activity-fresh': { if (activity) openActivity(activity.days, activity.acct, true); return; }
     case 'activity-acct': { if (activity) { activity.acct = id; drawActivity(); } return; }
     case 'activity-log': {
       const t = (activity && activity.rows || []).find((x) => x.id === id);

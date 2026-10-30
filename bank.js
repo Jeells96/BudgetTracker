@@ -8,8 +8,8 @@
  * Imported charges land in an inbox you review. Nothing reaches your weekly
  * budget or the card plan until you give it a category and accept it.
  */
-import { fbReady } from './store.js?v=83';
-import { firebaseConfig } from './firebase-config.js?v=83';
+import { fbReady } from './store.js?v=84';
+import { firebaseConfig } from './firebase-config.js?v=84';
 
 const FB = 'https://www.gstatic.com/firebasejs/11.0.2/';
 const LINK_JS = 'https://cdn.plaid.com/link/v2/stable/link-initialize.js';
@@ -161,7 +161,7 @@ if (typeof window !== 'undefined') {
 // ---------- accounts & imports ----------
 export const listItems = () => call('listItems');
 export const setRoles = (itemId, roles) => call('setAccountRoles', { itemId, roles });
-export const recentActivity = (days) => call('recentActivity', { days });
+export const recentActivity = (days, refresh) => call('recentActivity', { days, refresh: !!refresh });
 export const unlink = (itemId) => call('removeItem', { itemId });
 export const syncNow = () => call('syncTransactions');
 

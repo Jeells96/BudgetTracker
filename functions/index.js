@@ -29,7 +29,7 @@ const PLAID_ENV = process.env.PLAID_ENV === 'production' ? 'production' : 'sandb
 // fails /link/token/create outright, so it has to be clearable without a deploy.
 const REDIRECT_URI = (process.env.PLAID_REDIRECT_URI || '').trim();
 
-setGlobalOptions({ region: 'us-central1', maxInstances: 3 });
+setGlobalOptions({ region: 'us-central1', maxInstances: 3, timeoutSeconds: 180 });
 const withSecrets = { secrets: [PLAID_CLIENT_ID, PLAID_SECRET] };
 
 function plaid() {
@@ -71,6 +71,28 @@ const itemsCol = (uid) => db.collection('plaidItems').doc(uid).collection('items
  */
 const ROLES = new Set(['card', 'review', 'bills', 'off']);
 const money2 = (n) => Math.round((+n || 0) * 100) / 100;
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Plaid serves whatever it last pulled from the bank, which can be hours old —
+ * that is how a posted charge and every pending one go missing. /transactions/refresh
+ * makes it go and fetch now. It's rate limited, so not more than once a minute
+ * per bank, and the extraction needs a moment before the new rows are readable.
+ */
+async function refreshItem(api, itemDoc, item, pause) {
+  const last = item.refreshedAt ? item.refreshedAt.toMillis() : 0;
+  if (Date.now() - last < 60000) return false;
+  try {
+    await api.transactionsRefresh({ access_token: item.accessToken });
+    await itemDoc.ref.update({ refreshedAt: admin.firestore.FieldValue.serverTimestamp() });
+    if (pause) await wait(pause);
+    return true;
+  } catch (e) {
+    const d = (e && e.response && e.response.data) || {};
+    console.warn('refresh skipped', d.error_code || e.message);
+    return false;
+  }
+}
 const defaultRole = (a) => (a && a.type === 'credit' ? 'card' : a && a.type === 'depository' ? 'review' : 'off');
 
 /** Step 1 — hand Plaid Link a short-lived token so it can open. */
@@ -183,6 +205,12 @@ exports.recentActivity = onCall(withSecrets, async (req) => {
   const items = await itemsCol(uid).get();
   const out = [];
 
+  if (req.data && req.data.refresh) {
+    let any = false;
+    for (const doc of items.docs) any = (await refreshItem(api, doc, doc.data(), 0)) || any;
+    if (any) await wait(5000);
+  }
+
   for (const doc of items.docs) {
     const item = doc.data();
     const names = {};
@@ -238,7 +266,7 @@ exports.syncTransactions = onCall(withSecrets, async (req) => {
   // Imports land in an inbox, NOT straight into your transactions. Nothing touches
   // the weekly budget or the card plan until you accept and categorise it.
   const txCol = db.collection('users').doc(uid).collection('inbox');
-  let added = 0, modified = 0, removed = 0;
+  let added = 0, modified = 0, removed = 0, refreshed = 0;
   const failed = [];
 
   const ordered = items.docs.slice().sort((a, b) => {
@@ -253,6 +281,9 @@ exports.syncTransactions = onCall(withSecrets, async (req) => {
    try {
     const item = itemDoc.data();
     const roles = item.roles || {};
+    // The card is what you look at first, so it gets the longer settle.
+    const isCard = Object.values(roles).includes('card');
+    refreshed += (await refreshItem(api, itemDoc, item, isCard ? 5000 : 2500)) ? 1 : 0;
     const roleFor = (accountId) => roles[accountId]
       || defaultRole((item.accounts || []).find((a) => a.account_id === accountId));
 
@@ -334,7 +365,7 @@ exports.syncTransactions = onCall(withSecrets, async (req) => {
      failed.push({ itemId: itemDoc.id, code: d.error_code || 'SYNC_FAILED', message: d.error_message || e.message });
    }
   }
-  return { added, modified, removed, accounts: items.size, failed };
+  return { added, modified, removed, refreshed, accounts: items.size, failed };
 });
 
 /**
