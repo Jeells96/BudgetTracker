@@ -560,3 +560,16 @@ nav#tabs button.on { background:var(--ink); color:var(--canvas); }
 .actrow .ar-s { font-size:.76rem; color:var(--muted); margin-top:3px; }
 .actrow .ar-a { flex:none; font-weight:600; font-variant-numeric:tabular-nums; }
 .actrow .ar-a.in { color:var(--good); }
+
+/* "It's working": one row per bank, in the order they're asked */
+.syncbox { border:1px solid var(--hair); border-radius:var(--r); padding:4px 12px; margin:0 0 12px; background:var(--raise); }
+.syncrow { display:flex; align-items:center; gap:10px; padding:9px 0; font-size:.85rem; border-top:1px solid var(--hair); }
+.syncrow:first-child { border-top:0; }
+.syncrow .sr-n { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.syncrow .sr-s { flex:none; color:var(--muted); font-size:.78rem; }
+.spin, .pdot, .pok, .pbad { width:16px; height:16px; flex:none; display:grid; place-items:center; font-size:.8rem; }
+.spin { border-radius:50%; border:2px solid var(--hair); border-top-color:var(--accent); animation:spin .8s linear infinite; }
+.pdot { border-radius:50%; background:var(--hair); width:8px; height:8px; margin:0 4px; }
+.pok { color:var(--accent); font-weight:700; }
+.pbad { color:var(--bad); font-weight:700; }
+@keyframes spin { to { transform:rotate(360deg); } }

@@ -262,6 +262,9 @@ exports.syncTransactions = onCall(withSecrets, async (req) => {
   const api = plaid();
   const items = await itemsCol(uid).get();
   if (items.empty) return { added: 0, modified: 0, removed: 0, accounts: 0 };
+  // One bank at a time when asked, so the app can say which it is working on
+  // instead of showing one long unexplained wait.
+  const only = req.data && req.data.itemId;
 
   // Imports land in an inbox, NOT straight into your transactions. Nothing touches
   // the weekly budget or the card plan until you accept and categorise it.
@@ -269,10 +272,12 @@ exports.syncTransactions = onCall(withSecrets, async (req) => {
   let added = 0, modified = 0, removed = 0, refreshed = 0;
   const failed = [];
 
-  const ordered = items.docs.slice().sort((a, b) => {
-    const card = (d) => (Object.values(d.data().roles || {}).includes('card') ? 0 : 1);
-    return card(a) - card(b);
-  });
+  const ordered = items.docs
+    .filter((d) => !only || d.id === only)
+    .sort((a, b) => {
+      const card = (d) => (Object.values(d.data().roles || {}).includes('card') ? 0 : 1);
+      return card(a) - card(b);
+    });
 
   for (const itemDoc of ordered) {
    // One dead item must not stop the others. Switching between sandbox and
@@ -365,7 +370,7 @@ exports.syncTransactions = onCall(withSecrets, async (req) => {
      failed.push({ itemId: itemDoc.id, code: d.error_code || 'SYNC_FAILED', message: d.error_message || e.message });
    }
   }
-  return { added, modified, removed, refreshed, accounts: items.size, failed };
+  return { added, modified, removed, refreshed, accounts: ordered.length, failed };
 });
 
 /**

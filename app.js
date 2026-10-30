@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=84';
-import { TRANSFERS } from './defaults.js?v=84';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=84';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=85';
+import { TRANSFERS } from './defaults.js?v=85';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=85';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -69,7 +69,8 @@ const pct = (a, b) => (b > 0 ? Math.max(0, Math.min(100, (a / b) * 100)) : 0);
 // ---------- rendering ----------
 let pendingPromptShown = false;
 function maybePendingPrompt() {
-  if (pendingPromptShown || !(S().pending || []).length || !$('#sheet').hidden) return;
+  if (pendingPromptShown || !$('#sheet').hidden) return;
+  if (!(S().pending || []).length && !bankUI.progress.length) return;
   pendingPromptShown = true;
   openPending();
 }
@@ -743,7 +744,63 @@ function settings() {
 // exactly as it always has. Imports wait in a review queue: nothing reaches the
 // weekly budget or the card plan until you give it a category and accept it.
 let bank = null;
-const bankUI = { on: false, booted: false, busy: '', user: undefined, items: [], inbox: [], pick: {}, billq: [], billpick: {}, err: '' };
+const bankUI = { on: false, booted: false, busy: '', user: undefined, items: [], inbox: [], pick: {}, billq: [], billpick: {}, err: '', progress: [] };
+
+// What each linked bank is called, card first — that's the order they're asked
+// in, so the list reads top to bottom as it works.
+function syncQueue() {
+  return bankUI.items.slice()
+    .map((it) => ({
+      itemId: it.itemId,
+      card: Object.values(it.roles || {}).includes('card'),
+      name: (it.accounts || []).map((a) => a.name).join(', ') || 'Bank',
+    }))
+    .sort((a, b) => (a.card ? 0 : 1) - (b.card ? 0 : 1));
+}
+
+// Re-draw whatever is on screen that shows progress.
+function progressTick() {
+  render();
+  if (pendingOpen) drawPending();
+}
+
+// Ask each bank in turn so the app can name the one it's waiting on.
+async function syncAll(b) {
+  bankUI.progress = syncQueue().map((q) => ({ ...q, state: 'waiting', added: 0 }));
+  progressTick();
+  let total = 0;
+  for (const step of bankUI.progress) {
+    step.state = 'working';
+    progressTick();
+    try {
+      const r = await b.syncNow(step.itemId);
+      step.added = r.added || 0;
+      step.state = (r.failed && r.failed.length) ? 'failed' : 'done';
+      total += step.added;
+      // Show what arrived from this bank before asking the next one.
+      await bankLoad(false);
+    } catch (e) {
+      step.state = 'failed';
+      step.err = (e && e.message) || String(e);
+    }
+    progressTick();
+  }
+  setTimeout(() => { bankUI.progress = []; progressTick(); }, 2500);
+  return total;
+}
+
+// The strip that shows it working, used on the loose-logs sheet and in Settings.
+function progressHTML() {
+  if (!bankUI.progress.length) return '';
+  const icon = { waiting: '<span class="pdot"></span>', working: '<span class="spin"></span>',
+                 done: '<span class="pok">✓</span>', failed: '<span class="pbad">!</span>' };
+  return `<div class="syncbox">${bankUI.progress.map((p) => `<div class="syncrow">
+    ${icon[p.state]}<span class="sr-n">${esc(p.name)}</span>
+    <span class="sr-s">${p.state === 'working' ? 'checking…'
+      : p.state === 'waiting' ? 'queued'
+      : p.state === 'failed' ? (p.err ? 'failed' : 'failed')
+      : p.added ? `${p.added} new` : 'up to date'}</span></div>`).join('')}</div>`;
+}
 const SYNC_EVERY = 45 * 1000;   // every open; the guard is only against a reload loop
 
 // Once a bank is linked this runs by itself: the panel is already open and new
@@ -754,20 +811,18 @@ async function bankAuto() {
     await bankLoad(true);
     if (!bankUI.user || !bankUI.items.length) return render();
     if (Date.now() - (+S().bankSyncAt || 0) < SYNC_EVERY) return render();
-    bankUI.busy = 'sync'; render();
+    bankUI.busy = 'sync';
     const b = await bankMod();
-    const r = await b.syncNow();
+    const added = await syncAll(b);
     S().bankSyncAt = Date.now(); saveSettings();
-    await bankLoad(false);
-    if (r.added) toast(`${r.added} new from your bank`);
-    else if (r.failed && r.failed.length) bankUI.err = `Couldn't read ${r.failed.map((f) => f.code).join(', ')}.`;
+    if (added) toast(`${added} new from your bank`);
   } catch (e) {
     // Never let a banking problem disturb the rest of the app.
     bankUI.err = (e && e.message) || String(e);
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=84'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=85'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -1064,6 +1119,7 @@ function bankBlock() {
       ? '<div class="note">No account is set to <b>Bills → 12-month averages</b> yet, so nothing is filling in your bills account balance or their averages.</div>' : ''}
     ${b.items.length ? '<div class="note">Set your card to <b>Charges → loose logs</b>: each one lands in the 🕗 list on Home with its price and merchant, and only counts once you finish it. Set your bills account to <b>Bills → 12-month averages</b> — those payments never count as purchases, they just fill in each bill\'s history and keep the account balance current.</div>' : ''}
     <button class="btn block" data-act="bank-connect"${off('connect')}>${b.busy === 'connect' ? 'Opening…' : '+ Connect a bank'}</button>
+    ${progressHTML()}
     <button class="btn block" data-act="bank-sync"${off('sync')}>${b.busy === 'sync' ? 'Checking…' : '⟳ Check for new activity'}</button>
     <button class="btn block" data-act="bank-activity">🔎 Browse all bank activity</button>
     ${synced ? `<div class="note">Imports on its own when you open the app. Last checked ${new Date(synced).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}.</div>` : ''}</div>
@@ -1151,7 +1207,7 @@ function inboxAccept(id) {
 
 // ---------- the sheet (add flow + edit) ----------
 let flow = null, edit = null, billEdit = null, track = null, avgCat = null, returnPlan = null;
-function closeSheet() { const el = $('#sheet'); el.hidden = true; el.className = 'sheet'; el.innerHTML = ''; flow = null; edit = null; billEdit = null; track = null; returnPlan = null; activity = null; resetSel(); }
+function closeSheet() { const el = $('#sheet'); el.hidden = true; el.className = 'sheet'; el.innerHTML = ''; flow = null; edit = null; billEdit = null; track = null; returnPlan = null; activity = null; pendingOpen = false; resetSel(); }
 
 // ----- "track later": capture a price only, to finish with category/description later -----
 const keypad = () => `<div class="pad">${['1','2','3','4','5','6','7','8','9','.','0','⌫'].map((k) => `<button data-${track ? 'track' : 'flow'}="key" data-v="${k}">${k}</button>`).join('')}</div>`;
@@ -1185,10 +1241,18 @@ function trackClick(btn) {
 }
 
 // ----- the list of loose logs to finish (also the first-open reminder) -----
+let pendingOpen = false;
 function openPending() {
+  if (!(S().pending || []).length && !bankUI.progress.length) return;
+  pendingOpen = true;
+  drawPending();
+  $('#sheet').hidden = false;
+}
+
+function drawPending() {
   const pend = (S().pending || []).slice().sort((a, b) => b.date.localeCompare(a.date));
-  if (!pend.length) return;
-  const rows = pend.map((x) => `<div class="loose-row">${x.source === 'plaid' && x.note
+  if (!pend.length && !bankUI.progress.length) return closeSheet();
+  const rows = !pend.length ? '' : pend.map((x) => `<div class="loose-row">${x.source === 'plaid' && x.note
     ? `<button class="x" data-act="pending-ignore" data-id="${esc(x.id)}" title="Always ignore ${esc(x.note)}" aria-label="Always ignore">🚫</button>` : ''}
     <button class="loose" data-act="finish-item" data-id="${esc(x.id)}"><div class="emoji">🕗</div>
       <div class="body"><div class="t">${money(x.amount)}${x.note ? ` · ${esc(x.note)}` : ''}</div><div class="s">${
@@ -1196,11 +1260,11 @@ function openPending() {
       } · ${parseYmd(x.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}${x.pend ? ' · pending' : ''} · tap to finish</div></div><span class="chev">›</span></button>
     <button class="x" data-act="pending-del" data-id="${esc(x.id)}" aria-label="Discard">✕</button></div>`).join('');
   $('#sheet').innerHTML = `<div class="panel"><div class="head"><span style="width:40px"></span><span class="step">Loose logs to finish</span><button data-act="sheet-close" aria-label="Later">✕</button></div>
-    <p class="note" style="margin:0 0 10px">${pend.length} item${pend.length === 1 ? '' : 's'} to finish</p>
+    ${progressHTML()}
+    <p class="note" style="margin:0 0 10px">${pend.length ? `${pend.length} item${pend.length === 1 ? '' : 's'} to finish` : 'Nothing to finish yet.'}</p>
     ${rows}
     <button class="btn block" data-act="sheet-close" style="margin-top:12px">Later</button></div>`;
   $('#sheet').className = 'sheet';
-  $('#sheet').hidden = false;
 }
 
 // ----- edit a bill: fixed amount, past-month history, 12-month average -----
@@ -1937,15 +2001,11 @@ document.addEventListener('click', (e) => {
     });
     case 'bank-sync': return bankRun('sync', async () => {
       const b = await bankMod();
-      const r = await b.syncNow();
+      const added = await syncAll(b);
       S().bankSyncAt = Date.now(); saveSettings();
-      await bankLoad(false);
-      const bad = r.failed || [];
-      if (bad.length) {
-        bankUI.err = `${bad.length} bank${bad.length === 1 ? '' : 's'} couldn't be read: ${bad.map((f) => f.code).join(', ')}. `
-          + 'A bank linked in the other Plaid environment has to be unlinked and connected again.';
-      }
-      toast(r.added ? `${r.added} new to review` : 'Nothing new');
+      const bad = bankUI.progress.filter((p) => p.state === 'failed');
+      if (bad.length) bankUI.err = `${bad.map((p) => p.name).join(', ')} couldn't be read.`;
+      toast(added ? `${added} new to review` : 'Nothing new');
     });
     case 'bank-unlink': {
       if (!confirm('Unlink this bank? Anything you already accepted stays in your log.')) return;
