@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=85';
-import { TRANSFERS } from './defaults.js?v=85';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=85';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=86';
+import { TRANSFERS } from './defaults.js?v=86';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=86';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -34,6 +34,10 @@ if (Object.values(ui.planDraft).some((v) => typeof v === 'number')) {
   ui.planDraft = { [weekStart(new Date(), 5)]: old };
 }
 try { ui.planLive = JSON.parse(localStorage.getItem('plan-live') ?? 'true'); } catch { ui.planLive = true; }
+// Paycheck row: the spending account's real balance by default, the planned
+// figure on request. What's actually in the account is the more useful number.
+try { ui.payLive = JSON.parse(localStorage.getItem('pay-live') ?? 'true'); } catch { ui.payLive = true; }
+const savePayLive = () => { try { localStorage.setItem('pay-live', JSON.stringify(!!ui.payLive)); } catch {} };
 const savePlanDraft = () => { try { localStorage.setItem('plan-draft', JSON.stringify(ui.planDraft || {})); } catch {} };
 const savePlanLive = () => { try { localStorage.setItem('plan-live', JSON.stringify(!!ui.planLive)); } catch {} };
 
@@ -446,11 +450,17 @@ function planValues() {
   const hasCard = wp.cardBalance > 0;
   const liveSpend = round(weekStats(S(), store.txs, now).spent);
   const live = ui.planLive !== false;
-  const rec = live ? { ...rc, everyday: liveSpend } : rc;   // live = actual spent; off = budgeted
+  let rec = live ? { ...rc, everyday: liveSpend } : rc;   // live = actual spent; off = budgeted
+  // Only this week can show a live balance; a past or future week has none.
+  const sa = S().spendAcct || {};
+  const liveBal = (ui.weekOff === 0 && typeof sa.bal === 'number') ? round(sa.bal) : null;
+  const payLive = ui.payLive !== false && liveBal != null;
+  if (payLive) rec = { ...rec, pay: liveBal };
   const v = (f) => (d[f] !== undefined ? d[f] : rec[f]);
   const pay = v('pay'), bills = v('bills'), groceries = v('groceries'), everyday = v('everyday'), savings = v('savings'), extra = v('extra');
   const leftover = round(pay - bills - groceries - everyday - savings - extra);
-  return { wp, hasCard, live, liveSpend, budgetSpend: rc.everyday, pay, bills, groceries, everyday, savings, extra, leftover };
+  return { wp, hasCard, live, liveSpend, budgetSpend: rc.everyday, payLive, liveBal, spendName: sa.name,
+    pay, bills, groceries, everyday, savings, extra, leftover };
 }
 
 function calloutHTML(leftover) {
@@ -527,7 +537,9 @@ function planTab() {
     ${goalRow}
     <div class="card plan-table">
       <div class="trow head"><span></span><span class="b">Standard</span><span class="n">Recommended</span></div>
-      ${erow('Paycheck', 'pay')}
+      ${erow('Paycheck', 'pay', p.liveBal == null ? '' : `<div class="rowact"><button class="chipbtn ${p.payLive ? 'on' : ''}" data-act="pay-live">${
+        p.payLive ? `🏦 ${esc(p.spendName || 'Spending')} · ${money(p.liveBal)} — tap for your paycheck`
+                  : `📋 Paycheck · ${money(st.pay)} — tap for the account balance`}</button></div>`)}
       ${erow('To bills account', 'bills', bt.hasBal ? `<div class="rowact"><button class="chipbtn" data-act="plan-bills-needed" data-id="${bt.weeklyNeeded}">Use needed · ${money(bt.weeklyNeeded)}</button></div>` : '')}
       ${erow('Groceries', 'groceries')}
       ${spendCardGroup}
@@ -822,7 +834,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=85'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=86'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -890,8 +902,14 @@ function applyTxRule(rule, it) {
 
 // A paycheque looks like a paycheque. Money arriving that Plaid itself calls
 // income needs no rule to be recognised.
+const payerKeys = () => (S().incomePayers || []).map(billKey).filter(Boolean);
+const fromPayer = (note) => { const k = billKey(note); return !!k && payerKeys().some((p) => k.includes(p) || p.includes(k)); };
+
+// Money in that Plaid calls income, or that comes from somewhere you've said
+// pays you. The payer match is a contains, since a deposit's description
+// carries batch numbers and dates that change every time.
 const looksLikeIncome = (it) => it.type === 'income'
-  && ['INCOME', 'TRANSFER_IN'].includes(String(it.plaidCategory || ''));
+  && (['INCOME', 'TRANSFER_IN'].includes(String(it.plaidCategory || '')) || fromPayer(it.note));
 
 // srcId keeps a charge from arriving twice if a sync overlaps.
 async function adoptCardCharges(b, loose) {
@@ -903,7 +921,8 @@ async function adoptCardCharges(b, loose) {
   const add = [];
   let filed = 0;
   for (const it of fresh) {
-    const rule = map[billKey(it.note)] || (looksLikeIncome(it) ? 'i' : null);
+    const rule = map[billKey(it.note)] || (fromPayer(it.note) && it.type === 'income' ? 'i' : null)
+      || (looksLikeIncome(it) ? 'i' : null);
     if (!rule) { add.push(it); continue; }
     if (applyTxRule(rule, it)) filed++;
   }
@@ -939,19 +958,30 @@ function bankBalance(v, role) {
 // by hand, and the card balance is kept beside the log so the two can be compared
 // rather than silently overwriting what you've recorded.
 function bankBalanceSync() {
-  let bills = null, card = null, cardPend = null, cardName = null;
+  // The ROLE says where an account's transactions go. The TYPE says what the
+  // account is. A chequing account routed to loose logs is still chequing, and
+  // its balance has no business being added to what you owe on a card.
+  let bills = null, spend = null, spendName = null;
+  let card = null, cardPend = null, cardName = null;
   bankUI.items.forEach((it) => Object.entries(it.roles || {}).forEach(([acct, role]) => {
     const v = (it.balances || {})[acct];
-    if (!v || typeof v.current !== 'number') return;
-    if (role === 'bills') bills = round((bills || 0) + bankBalance(v, role));
-    if (role === 'card') {
+    if (!v || typeof v.current !== 'number' || role === 'off') return;
+    if (v.type === 'credit') {
       card = round((card || 0) + (+v.current || 0));
       cardPend = round((cardPend || 0) + (+v.pending || 0));
       cardName = v.name || cardName;
+    } else if (role === 'bills') {
+      bills = round((bills || 0) + bankBalance(v, role));
+    } else {
+      // Everything else you spend out of: the day-to-day account.
+      spend = round((spend || 0) + bankBalance(v, role));
+      spendName = v.name || spendName;
     }
   }));
   let dirty = false;
   if (bills != null && (S().billsAcct || {}).bal !== bills) { S().billsAcct = { bal: bills, asOf: today() }; dirty = true; }
+  const sa = S().spendAcct || {};
+  if (spend != null && sa.bal !== spend) { S().spendAcct = { bal: spend, name: spendName, asOf: today() }; dirty = true; }
   const pb = S().cc.plaidBal || {};
   if (card != null && (pb.amount !== card || pb.pending !== (cardPend || 0))) {
     S().cc = { ...S().cc, plaidBal: { amount: card, pending: cardPend || 0, asOf: today(), name: cardName } };
@@ -1101,6 +1131,14 @@ function bankBlock() {
       </div></div>`;
   }).join('');
 
+  const payers = S().incomePayers || [];
+  const payerBox = `<h2>Income from</h2><div class="card">
+    <div class="note">Deposits from these are logged as income without asking. Matched loosely, so batch numbers and dates on the end don't matter.</div>
+    ${payers.map((n, i) => `<div class="acct row"><div class="nm">${esc(n)}</div>
+      <button class="btn tiny" data-act="payer-del" data-i="${i}">Remove</button></div>`).join('')
+      || '<div class="note">Nobody listed — deposits will wait in the review queue.</div>'}
+    <button class="btn block" data-act="payer-add">+ Add who pays you</button></div>`;
+
   const rules = Object.entries(S().txMatch || {});
   const ruleLabel = (r) => r === 'i' ? '💰 Income'
     : r === '__skip' ? '🚫 Ignored'
@@ -1123,6 +1161,7 @@ function bankBlock() {
     <button class="btn block" data-act="bank-sync"${off('sync')}>${b.busy === 'sync' ? 'Checking…' : '⟳ Check for new activity'}</button>
     <button class="btn block" data-act="bank-activity">🔎 Browse all bank activity</button>
     ${synced ? `<div class="note">Imports on its own when you open the app. Last checked ${new Date(synced).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}.</div>` : ''}</div>
+    ${payerBox}
     ${ruleRows}
     ${b.inbox.length ? `<h2>To review · ${b.inbox.length}</h2><div class="card">
       <div class="note">Give each one a category to add it. Nothing here counts toward your budget yet.</div>
@@ -1959,6 +1998,7 @@ document.addEventListener('click', (e) => {
     case 'plan-reset': ui.planDraft[planKey()] = {}; savePlanDraft(); commitPlan(); return render();
     case 'plan-reset-field': { delete planEdits()[id]; savePlanDraft(); commitPlan(); return render(); }
     case 'plan-bills-needed': { planEdits().bills = round(parseFloat(id) || 0); savePlanDraft(); commitPlan(); return render(); }
+    case 'pay-live': { ui.payLive = !ui.payLive; savePayLive(); delete planEdits().pay; savePlanDraft(); commitPlan(); return render(); }
     case 'plan-live': { ui.planLive = !ui.planLive; savePlanLive(); delete planEdits().everyday; savePlanDraft(); commitPlan(); return render(); }
     case 'trends': return openTrends();
     case 'sheet-close': return closeSheet();
@@ -2012,6 +2052,17 @@ document.addEventListener('click', (e) => {
       return bankRun('unlink', async () => { const b = await bankMod(); await b.unlink(id); await bankLoad(false); toast('Unlinked'); });
     }
     case 'billq-drop': return billqRule(id, '__skip');
+    case 'payer-add': {
+      const n = prompt('Who pays you? (part of the name is enough)');
+      if (n && n.trim()) { S().incomePayers = [...(S().incomePayers || []), n.trim()]; saveSettings(); }
+      return;
+    }
+    case 'payer-del': {
+      const list = [...(S().incomePayers || [])];
+      list.splice(i, 1);
+      S().incomePayers = list; saveSettings(); render();
+      return;
+    }
     case 'rule-del': {
       const m = { ...(S().txMatch || {}) };
       delete m[id];

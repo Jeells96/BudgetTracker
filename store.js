@@ -1,6 +1,6 @@
-import { firebaseConfig } from './firebase-config.js?v=85';
-import { DEFAULT_SETTINGS } from './defaults.js?v=85';
-import { HISTORY } from './history.js?v=85';
+import { firebaseConfig } from './firebase-config.js?v=86';
+import { DEFAULT_SETTINGS } from './defaults.js?v=86';
+import { HISTORY } from './history.js?v=86';
 
 const LS_KEY = 'budget-tracker-v2';
 const CDN = 'https://www.gstatic.com/firebasejs/11.0.2/';
@@ -50,6 +50,10 @@ function normalize(s) {
   out.billMatch = (s && s.billMatch && typeof s.billMatch === 'object') ? s.billMatch : {};
   // Standing rules for imported activity: paycheques, transfers, things to ignore.
   out.txMatch = (s && s.txMatch && typeof s.txMatch === 'object') ? s.txMatch : {};
+  // Who pays you. Matched loosely, since deposit descriptions carry batch numbers.
+  out.incomePayers = Array.isArray(s && s.incomePayers) ? s.incomePayers : ['Arctic Sheet Metal'];
+  // The day-to-day account's live balance, mirrored from the bank.
+  out.spendAcct = (s && s.spendAcct && typeof s.spendAcct === 'object') ? s.spendAcct : { bal: null, name: null, asOf: null };
   out.bankOn = !!(s && s.bankOn);
   out.bankSyncAt = (s && +s.bankSyncAt) || 0;
   out.finance = normalizeFinance(s && s.finance);
