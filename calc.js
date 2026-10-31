@@ -461,6 +461,13 @@ export function cardSchedule(s, txs, now = new Date()) {
   };
 }
 
+/** How a split is divided. Each share is a percentage of what's needed. */
+export function splitPct(s) {
+  const p = (s && s.cc && s.cc.splitPct) || {};
+  const n = (v, dflt) => { const x = +v; return isFinite(x) && x >= 0 ? Math.min(400, x) : dflt; };
+  return { spend: n(p.spend, 50), save: n(p.save, 50) };
+}
+
 export function cardPlan(s, txs, now = new Date()) {
   const bal = cardBalance(s, txs);
   const sch = cardSchedule(s, txs, now);
@@ -472,14 +479,27 @@ export function cardPlan(s, txs, now = new Date()) {
   const extra = Math.max(0, sw.extra);                 // leftover after everyday spending
   const need = Math.max(0, round(perWeek - extra));    // what leftover can't cover
   const spendCut = Math.min(need, s.weeklyBudget), saveCut = Math.min(need, s.weeklySavings);
-  const half = round(need / 2);
+
+  // Split is two shares of what's needed, not necessarily halves and not
+  // necessarily adding to 100: 76/24 splits it unevenly, 100/50 deliberately
+  // frees half again as much and pays the card down faster.
+  const pct = splitPct(s);
+  const splitSpend = Math.min(round(need * pct.spend / 100), s.weeklyBudget);
+  const splitSave = Math.min(round(need * pct.save / 100), s.weeklySavings);
   const stretchWeeks = weeks + 4;
   return {
     balance: bal, weeks, perWeek, extra: round(extra), need,
     options: {
       spend: { cut: round(spendCut), newSpend: round(s.weeklyBudget - spendCut), short: round(need - spendCut) },
       save: { cut: round(saveCut), newSave: round(s.weeklySavings - saveCut), short: round(need - saveCut) },
-      split: { newSpend: round(s.weeklyBudget - Math.min(half, s.weeklyBudget)), newSave: round(s.weeklySavings - Math.min(half, s.weeklySavings)), short: round(need - Math.min(half, s.weeklyBudget) - Math.min(half, s.weeklySavings)) }
+      split: {
+        pct, spendCut: splitSpend, saveCut: splitSave,
+        newSpend: round(s.weeklyBudget - splitSpend),
+        newSave: round(s.weeklySavings - splitSave),
+        freed: round(splitSpend + splitSave),
+        short: round(Math.max(0, need - splitSpend - splitSave)),
+        over: round(Math.max(0, splitSpend + splitSave - need))
+      }
     },
     stretch: { weeks: stretchWeeks, perWeek: round(bal / stretchWeeks) }
   };
@@ -517,8 +537,19 @@ export function weekPlan(s, txs, now = new Date()) {
     // leftover covers the rest — showing only the shortfall made the row look
     // far smaller than what you actually put on the card, with the leftover
     // sitting below as though it were still spare.
-    extra = strat === 'extra' ? Math.min(cp.perWeek, Math.max(0, sw.extra)) : cp.perWeek;
-    fromLeftover = round(Math.min(Math.max(0, sw.extra), cp.perWeek));
+    if (strat === 'extra') {
+      extra = Math.min(cp.perWeek, Math.max(0, sw.extra));
+      fromLeftover = extra;
+    } else {
+      // Under a cutting strategy the leftover goes to the card too, so freeing
+      // more than the week needs genuinely pays it down faster instead of
+      // quietly handing the surplus back as spare money.
+      const cuts = round(Math.max(0, sw.everyday - everyday) + Math.max(0, sw.savings - savings));
+      fromLeftover = cp.need > 0
+        ? round(Math.max(0, sw.extra))
+        : round(Math.min(cp.perWeek, Math.max(0, sw.extra)));
+      extra = round(cuts + fromLeftover);
+    }
     leftover = round(pay - bills - groceries - everyday - savings - extra);
   } else {
     extra = round(pay - bills - groceries - everyday - savings);     // just spare money

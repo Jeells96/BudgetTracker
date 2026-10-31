@@ -1,6 +1,6 @@
-import { firebaseConfig } from './firebase-config.js?v=92';
-import { DEFAULT_SETTINGS } from './defaults.js?v=92';
-import { HISTORY } from './history.js?v=92';
+import { firebaseConfig } from './firebase-config.js?v=93';
+import { DEFAULT_SETTINGS } from './defaults.js?v=93';
+import { HISTORY } from './history.js?v=93';
 
 const LS_KEY = 'budget-tracker-v2';
 const CDN = 'https://www.gstatic.com/firebasejs/11.0.2/';
@@ -38,6 +38,9 @@ function normalize(s) {
     manual: cc.manual ?? cc.balance ?? 0,
     chargesAdj: cc.chargesAdj || 0,
     strategy: cc.strategy || 'extra',
+    // Shares of the week's shortfall taken from each side of a "split".
+    splitPct: (cc.splitPct && typeof cc.splitPct === 'object')
+      ? { spend: +cc.splitPct.spend || 0, save: +cc.splitPct.save || 0 } : { spend: 50, save: 50 },
     paidThrough: cc.paidThrough ?? null,
     payoffBy: cc.payoffBy ?? null,
     planEdits: (cc.planEdits && typeof cc.planEdits === 'object') ? cc.planEdits : {},

@@ -573,3 +573,14 @@ nav#tabs button.on { background:var(--ink); color:var(--canvas); }
 .pok { color:var(--accent); font-weight:700; }
 .pbad { color:var(--bad); font-weight:700; }
 @keyframes spin { to { transform:rotate(360deg); } }
+
+/* Split both: how much comes off each side */
+.splitpct { border:1px solid var(--hair); border-radius:var(--r); padding:4px 13px 10px; margin:8px 0 2px; background:var(--raise); }
+.sp-row { display:flex; align-items:center; gap:10px; padding:10px 0; border-top:1px solid var(--hair); font-size:.88rem; }
+.sp-row:first-child { border-top:0; }
+.sp-row label { flex:1; min-width:0; }
+.sp-row input { width:64px; flex:none; text-align:right; padding:8px 9px; border-radius:9px;
+  background:var(--surface); border:1px solid var(--hair); -moz-appearance:textfield; }
+.sp-row span { flex:none; color:var(--muted); font-size:.8rem; margin-left:-6px; }
+.sp-row b { flex:none; width:76px; text-align:right; font-variant-numeric:tabular-nums; }
+.splitpct .note { margin:8px 0 0; }

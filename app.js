@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=92';
-import { TRANSFERS } from './defaults.js?v=92';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=92';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=93';
+import { TRANSFERS } from './defaults.js?v=93';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=93';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -333,7 +333,17 @@ function strategyPicker(cp, strategy) {
     ${opt('extra', 'Use leftover', covered ? `Your leftover covers ${money(cp.perWeek)}/wk — no change needed.` : `Leftover covers ${money(cp.extra)}/wk; you'd still be ${money(cp.need)} short.`)}
     ${opt('spend', 'Spend less', `Everyday ${money(cp.extra + cp.need)} → ${money(o.spend.newSpend)}/wk${o.spend.short > 0 ? `, still ${money(o.spend.short)} short` : ''}`)}
     ${opt('save', 'Save less', `Savings → ${money(o.save.newSave)}/wk${o.save.short > 0 ? `, still ${money(o.save.short)} short` : ''}`)}
-    ${opt('split', 'Split both', `Everyday ${money(o.split.newSpend)} · savings ${money(o.split.newSave)}${o.split.short > 0 ? `, still ${money(o.split.short)} short` : ''}`)}
+    ${opt('split', 'Split both', `Everyday ${money(o.split.newSpend)} · savings ${money(o.split.newSave)}${
+      o.split.short > 0 ? `, still ${money(o.split.short)} short` : o.split.over > 0 ? `, ${money(o.split.over)} extra off the card` : ''}`)}
+    ${strategy === 'split' ? `<div class="splitpct">
+      <div class="sp-row"><label>From spending</label>
+        <input type="number" inputmode="numeric" min="0" max="400" step="1" value="${o.split.pct.spend}" data-splitpct="spend"><span>%</span>
+        <b>${money(o.split.spendCut)}</b></div>
+      <div class="sp-row"><label>From savings</label>
+        <input type="number" inputmode="numeric" min="0" max="400" step="1" value="${o.split.pct.save}" data-splitpct="save"><span>%</span>
+        <b>${money(o.split.saveCut)}</b></div>
+      <div class="note">Shares of the ${money(cp.need)} this week needs. They don't have to add to 100 — go over and the surplus comes straight off the card.</div>
+    </div>` : ''}
     ${opt('stretch', 'Stretch payoff', `${money(cp.stretch.perWeek)}/wk over ${cp.stretch.weeks} weeks — pay off a bit later`)}
   </div>`;
 }
@@ -865,7 +875,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=92'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=93'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -2265,6 +2275,11 @@ document.addEventListener('change', (e) => {
   else if (t.hasAttribute('data-billsbal')) { S().billsAcct = { bal: num(), asOf: today() }; saveSettings(); render(); return; }
   else if (t.dataset.cc === 'start') { S().cc = { ...S().cc, start: num(), asOf: today(), asOfAt: Date.now() }; saveSettings(); }
   else if (t.dataset.cc === 'manual') { S().cc = { ...S().cc, manual: num() }; saveSettings(); }
+  else if (t.dataset.splitpct) {
+    const v = Math.max(0, Math.min(400, Math.round(parseNum(t.value))));
+    S().cc = { ...S().cc, splitPct: { ...(S().cc.splitPct || { spend: 50, save: 50 }), [t.dataset.splitpct]: v } };
+    saveSettings(false); render(); return;
+  }
   else if (t.dataset.cc === 'payoffBy') { S().cc = { ...S().cc, payoffBy: t.value || null }; saveSettings(); }
   else if (t.dataset.ccPay) { const e = { ...(S().cc.planEdits || {}) }; if (t.value.trim() === '') delete e[t.dataset.ccPay]; else e[t.dataset.ccPay] = num(); S().cc = { ...S().cc, planEdits: e }; saveSettings(); }
   else if (t.dataset.ovignore) { updateTx(t.dataset.ovignore, { exBudget: !t.checked }); openOverage(); render(); return; }
