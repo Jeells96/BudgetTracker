@@ -491,8 +491,27 @@ export function cardPlan(s, txs, now = new Date()) {
   const splitSpend = Math.min(round(s.weeklyBudget * pct.spend / 100), s.weeklyBudget);
   const splitSave = Math.min(round(s.weeklySavings * pct.save / 100), s.weeklySavings);
   const stretchWeeks = weeks + 4;
+
+  // The most this week could possibly give the card: your leftover plus every
+  // penny of spending and saving. If the plan asks for more than that, no choice
+  // of strategy can reach it and saying which is least short is beside the point.
+  const maxWeekly = round(extra + (s.weeklyBudget || 0) + (s.weeklySavings || 0));
+  const shortPerWeek = round(Math.max(0, perWeek - maxWeekly));
+  const weeksNeeded = maxWeekly > 0.005 ? Math.ceil(round(bal / maxWeekly) * 100) / 100 : Infinity;
+  const wholeWeeks = isFinite(weeksNeeded) ? Math.ceil(bal / maxWeekly) : Infinity;
+  const startDay = s.weekStartDay ?? 5;
+  const firstDue = firstUnpaidPayday(s, txs, now, startDay);
+  const afford = {
+    max: maxWeekly,
+    shortPerWeek,
+    totalShort: round(shortPerWeek * weeks),
+    weeksNeeded: wholeWeeks,
+    byDate: isFinite(wholeWeeks) && wholeWeeks > 0 ? ymd(addDays(firstDue, (wholeWeeks - 1) * 7)) : null,
+    perWeekThen: isFinite(wholeWeeks) && wholeWeeks > 0 ? round(bal / wholeWeeks) : 0,
+  };
+
   return {
-    balance: bal, weeks, perWeek, extra: round(extra), need,
+    balance: bal, weeks, perWeek, extra: round(extra), need, afford,
     options: {
       spend: { cut: round(spendCut), newSpend: round(s.weeklyBudget - spendCut), short: round(need - spendCut) },
       save: { cut: round(saveCut), newSave: round(s.weeklySavings - saveCut), short: round(need - saveCut) },

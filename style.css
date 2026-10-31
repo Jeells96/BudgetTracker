@@ -588,3 +588,9 @@ nav#tabs button.on { background:var(--ink); color:var(--canvas); }
 .subhead { font-size:.7rem; text-transform:uppercase; letter-spacing:.1em; color:var(--muted);
   font-weight:600; margin:18px 0 6px; }
 .ccmode { display:block; width:100%; text-align:center; margin-top:10px; font-size:.8rem; color:var(--muted); }
+
+/* When the plan asks for more than you have */
+.warn { border-radius:var(--r); padding:12px 14px; margin:4px 0 10px; font-size:.86rem; line-height:1.5;
+  background:color-mix(in srgb,var(--bad) 12%,transparent); border:1px solid color-mix(in srgb,var(--bad) 34%,transparent); }
+.warn b { font-weight:650; }
+.warn.soft { background:var(--raise); border-color:var(--hair); }

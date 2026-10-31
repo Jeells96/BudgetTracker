@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=97';
-import { TRANSFERS } from './defaults.js?v=97';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=97';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=98';
+import { TRANSFERS } from './defaults.js?v=98';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=98';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -386,11 +386,38 @@ function cardSection() {
   </div>`;
   const hasEdits = cc.planEdits && Object.keys(cc.planEdits).length > 0;
 
+  // Two different ways to fall short, which need different answers.
+  //   impossible — the plan asks for more than every penny you have.
+  //   not set high enough — it's reachable, this choice just doesn't reach it.
+  const af = cp.afford;
+  const o2 = cp.options;
+  const curShort = strat === 'extra' ? cp.need
+    : strat === 'spend' ? o2.spend.short
+    : strat === 'save' ? o2.save.short
+    : strat === 'split' ? o2.split.short
+    : 0;
+  const payLeft = Math.max(1, cp.weeks);
+  const shortNote = af.shortPerWeek > 0.005 ? `<div class="warn">
+      <b>This plan is more than you can pay.</b>
+      Clearing ${money(cp.balance)} by then needs ${money(cp.perWeek)} a week, but even with nothing at all to spend or save you could only find ${money(af.max)}.
+      You'd be <b>${money(af.shortPerWeek)} short every week</b> — ${money(af.totalShort)} over the ${payLeft} payment${payLeft === 1 ? '' : 's'} left.
+      ${af.byDate ? `The soonest you could actually clear it is <b>${shortDate(parseYmd(af.byDate))}</b>, at ${money(af.perWeekThen)} a week.` : ''}
+      </div>
+      ${af.byDate ? `<button class="btn block" data-act="cc-afford-date" data-id="${af.byDate}">Move the date to ${shortDate(parseYmd(af.byDate))}</button>` : ''}`
+    : curShort > 0.005 ? `<div class="warn soft">
+      <b>This doesn't cover the plan.</b>
+      It needs ${money(cp.perWeek)} a week and this leaves you <b>${money(curShort)} short</b> — ${money(round(curShort * payLeft))} over the ${payLeft} payment${payLeft === 1 ? '' : 's'} left.
+      You could find ${money(af.max)} a week in total, so it is reachable${strat === 'split' ? ' — just not at these percentages' : ' with a different choice below'}.
+      </div>
+      ${strat === 'split' ? `<button class="btn block" data-act="cc-split-cover">Set the split to cover it</button>` : ''}`
+    : '';
+
   const planBlock = wp.cardBalance > 0 ? `
     <div class="week"><span class="muted">Pay off ${money(cp.balance)}</span><b>${money(cp.perWeek)}/Friday</b></div>
     ${wp.owed - cp.balance > 0.005 ? `<div class="note" style="margin:2px 0 8px">You owe ${money(wp.owed)}. ${money(round(wp.owed - cp.balance))} of that is this week's budgeted spending, which your weekly budget already covers, so the paydown plan works on the rest.</div>` : ''}
     <div class="field" style="margin:8px 0 2px"><label>Pay off by<br><span class="muted" style="font-size:.8rem">${cc.payoffBy ? 'custom date' : 'default: end of this month'}</span></label>
       <input type="date" value="${cc.payoffBy || ''}" min="${today()}" data-cc="payoffBy"></div>
+    ${shortNote}
     <details class="collapse" ${openAttr('cc-strategy')}><summary>Where the extra comes from · <b>${{ extra: 'Use leftover', spend: 'Spend less', save: 'Save less', split: 'Split both', stretch: 'Stretch payoff' }[strat] || 'Use leftover'}</b></summary>
       ${strategyPicker(cp, strat)}</details>
     ${payoffScheduleHTML(wp.sch)}
@@ -883,7 +910,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=97'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=98'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -2062,6 +2089,22 @@ document.addEventListener('click', (e) => {
       S().cc = { ...S().cc, chargesAdj: round((S().cc.chargesAdj || 0) + r.diff) };
       saveSettings(); render();
       return toast(`Card matched to ${money(r.bank)}`);
+    }
+    case 'cc-afford-date': {
+      S().cc = { ...S().cc, payoffBy: id };
+      saveSettings(); render();
+      return toast('Payoff date moved to something you can actually pay');
+    }
+    case 'cc-split-cover': {
+      const now = new Date();
+      const cp2 = cardPlan(S(), planTxsFor(S(), store.txs, now), now);
+      const pot = round((S().weeklyBudget || 0) + (S().weeklySavings || 0));
+      if (pot <= 0) return toast('Nothing to take it from');
+      // Same share from each, so neither is emptied before the other.
+      const pct = Math.min(100, round((cp2.need / pot) * 100));
+      S().cc = { ...S().cc, splitPct: { spend: pct, save: pct } };
+      saveSettings(); render();
+      return toast(`Split set to ${pct}% of each`);
     }
     case 'cc-week-done': {
       const w = weekPaidState(S(), store.txs, new Date(), S().weekStartDay ?? 5);
