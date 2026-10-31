@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=89';
-import { TRANSFERS } from './defaults.js?v=89';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=89';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=90';
+import { TRANSFERS } from './defaults.js?v=90';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=90';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -366,7 +366,7 @@ function cardSection() {
   const hasEdits = cc.planEdits && Object.keys(cc.planEdits).length > 0;
 
   const planBlock = wp.cardBalance > 0 ? `
-    <div class="week"><span class="muted">Pay off ${money(wp.cardBalance)}</span><b>${money(cp.perWeek)}/Friday</b></div>
+    <div class="week"><span class="muted">Pay off ${money(cp.balance)}</span><b>${money(cp.perWeek)}/Friday</b></div>
     <div class="field" style="margin:8px 0 2px"><label>Pay off by<br><span class="muted" style="font-size:.8rem">${cc.payoffBy ? 'custom date' : 'default: end of this month'}</span></label>
       <input type="date" value="${cc.payoffBy || ''}" min="${today()}" data-cc="payoffBy"></div>
     <details class="collapse"><summary>Where the extra comes from · <b>${{ extra: 'Use leftover', spend: 'Spend less', save: 'Save less', split: 'Split both', stretch: 'Stretch payoff' }[strat] || 'Use leftover'}</b></summary>
@@ -530,7 +530,11 @@ function planTab() {
 
   const stratLabel = { extra: 'from leftover', spend: 'spending less', save: 'saving less', split: 'splitting the difference', stretch: 'stretching the payoff', none: '' }[wp.strategy];
   // Show what the card paydown is actually made of.
-  const cuts = [wp.spendCut > 0.005 ? `${money(wp.spendCut)} less spending` : '', wp.saveCut > 0.005 ? `${money(wp.saveCut)} less saving` : ''].filter(Boolean).join(' + ');
+  const cuts = [
+    wp.spendCut > 0.005 ? `${money(wp.spendCut)} less spending` : '',
+    wp.saveCut > 0.005 ? `${money(wp.saveCut)} less saving` : '',
+    wp.fromLeftover > 0.005 ? `${money(wp.fromLeftover)} of your leftover` : ''
+  ].filter(Boolean).join(' + ');
   const cardNote = wp.cardBalance > 0
     ? `Card paydown <b>${money(rc.extra)}</b>${cuts ? ` = ${cuts}` : ' from your leftover'} · balance ${money(sch.balance)}`
     : '';
@@ -860,7 +864,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=89'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=90'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();

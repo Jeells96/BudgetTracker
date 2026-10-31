@@ -479,7 +479,7 @@ export function weekPlan(s, txs, now = new Date()) {
   const pay = sw.pay;
   const bills = sw.bills;   // the plan's "To bills account" stays your standard amount
   const groceries = sw.groceries;
-  let everyday = sw.everyday, savings = sw.savings, extra, leftover;
+  let everyday = sw.everyday, savings = sw.savings, extra, leftover, fromLeftover = 0;
   const strat = cp.balance > 0 ? (s.cc.strategy || 'extra') : 'none';
   const o = cp.options;
 
@@ -488,8 +488,13 @@ export function weekPlan(s, txs, now = new Date()) {
     if (strat === 'spend') everyday = o.spend.newSpend;
     else if (strat === 'save') savings = o.save.newSave;
     else if (strat === 'split') { everyday = o.split.newSpend; savings = o.split.newSave; }
-    // The card gets what the strategy frees up; your standard leftover stays yours.
-    extra = strat === 'extra' ? Math.min(cp.perWeek, Math.max(0, sw.extra)) : cp.need;
+    // The card paydown row is the whole weekly payment, not just the part the
+    // cuts had to find. Cutting spending and saving covers the shortfall; your
+    // leftover covers the rest — showing only the shortfall made the row look
+    // far smaller than what you actually put on the card, with the leftover
+    // sitting below as though it were still spare.
+    extra = strat === 'extra' ? Math.min(cp.perWeek, Math.max(0, sw.extra)) : cp.perWeek;
+    fromLeftover = round(Math.min(Math.max(0, sw.extra), cp.perWeek));
     leftover = round(pay - bills - groceries - everyday - savings - extra);
   } else {
     extra = round(pay - bills - groceries - everyday - savings);     // just spare money
@@ -508,6 +513,7 @@ export function weekPlan(s, txs, now = new Date()) {
     goal: weeklyGoal(s),
     strategy: strat, cardBalance: cp.balance, cardPerWeek: cp.perWeek, cardNeed: cp.need,
     spendCut: round(Math.max(0, sw.everyday - everyday)), saveCut: round(Math.max(0, sw.savings - savings)),
+    fromLeftover,
     stretchWeeks: cp.stretch.weeks,
     bt, sch, isCurrent: ms.isCurrent
   };
