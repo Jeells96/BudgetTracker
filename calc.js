@@ -163,11 +163,10 @@ export function planTxs(s, txs, allowance = Infinity, now = new Date()) {
 
 // The weekly spending allowance implied by a given plan balance.
 function adjustedFrom(s, ptxs, now) {
-  const base = s.weeklyBudget, strat = s.cc && s.cc.strategy;
-  if (strat !== 'spend' && strat !== 'split') return base;
+  const base = s.weeklyBudget;
+  if (!(splitPct(s).spend > 0)) return base;     // spending isn't being touched
   const cp = cardPlan(s, ptxs, now);
-  if (cp.balance <= 0) return base;
-  return strat === 'spend' ? cp.options.spend.newSpend : cp.options.split.newSpend;
+  return cp.balance <= 0 ? base : cp.mix.newSpend;
 }
 
 // What your weekly allowance would be with no over-spend in the picture — the
@@ -479,7 +478,9 @@ export function cardSchedule(s, txs, now = new Date()) {
 export function splitPct(s) {
   const p = (s && s.cc && s.cc.splitPct) || {};
   const n = (v, dflt) => { const x = +v; return isFinite(x) && x >= 0 ? Math.min(100, x) : dflt; };
-  return { spend: n(p.spend, 50), save: n(p.save, 50) };
+  // Leftover defaults to all of it and the budgets to none: spare money goes to
+  // the card before anything you had planned to spend or save does.
+  return { left: n(p.left, 100), spend: n(p.spend, 0), save: n(p.save, 0) };
 }
 
 export function cardPlan(s, txs, now = new Date()) {
@@ -495,14 +496,14 @@ export function cardPlan(s, txs, now = new Date()) {
   const perWeek = sch.firstPay > 0.005 ? sch.firstPay : sch.autoPerWeek;
   const extra = Math.max(0, sw.extra);                 // leftover after everyday spending
   const need = Math.max(0, round(perWeek - extra));    // what leftover can't cover
-  const spendCut = Math.min(need, s.weeklyBudget), saveCut = Math.min(need, s.weeklySavings);
-
-  // Each side gives up a share of itself: 100% of spending means spending drops
-  // to zero. The two are independent, so 100/50 hands over all of one and half
-  // of the other.
+  // Each source gives up a share of itself: 100% of spending means spending
+  // drops to zero. They're independent, so you can hand over all of one and
+  // half of another.
   const pct = splitPct(s);
-  const splitSpend = Math.min(round(s.weeklyBudget * pct.spend / 100), s.weeklyBudget);
-  const splitSave = Math.min(round(s.weeklySavings * pct.save / 100), s.weeklySavings);
+  const fromLeft = Math.min(round(extra * pct.left / 100), round(extra));
+  const fromSpend = Math.min(round(s.weeklyBudget * pct.spend / 100), s.weeklyBudget);
+  const fromSave = Math.min(round(s.weeklySavings * pct.save / 100), s.weeklySavings);
+  const freed = round(fromLeft + fromSpend + fromSave);
   const stretchWeeks = weeks + 4;
 
   // The most this week could possibly give the card: your leftover plus every
@@ -525,17 +526,14 @@ export function cardPlan(s, txs, now = new Date()) {
 
   return {
     balance: bal, weeks, perWeek, extra: round(extra), need, afford,
-    options: {
-      spend: { cut: round(spendCut), newSpend: round(s.weeklyBudget - spendCut), short: round(need - spendCut) },
-      save: { cut: round(saveCut), newSave: round(s.weeklySavings - saveCut), short: round(need - saveCut) },
-      split: {
-        pct, spendCut: splitSpend, saveCut: splitSave,
-        newSpend: round(s.weeklyBudget - splitSpend),
-        newSave: round(s.weeklySavings - splitSave),
-        freed: round(splitSpend + splitSave),
-        short: round(Math.max(0, need - splitSpend - splitSave)),
-        over: round(Math.max(0, splitSpend + splitSave - need))
-      }
+    // One mix, not a menu of plans.
+    mix: {
+      pct, fromLeft, fromSpend, fromSave, freed,
+      leftOver: round(extra - fromLeft),
+      newSpend: round(s.weeklyBudget - fromSpend),
+      newSave: round(s.weeklySavings - fromSave),
+      short: round(Math.max(0, perWeek - freed)),
+      over: round(Math.max(0, freed - perWeek)),
     },
     stretch: { weeks: stretchWeeks, perWeek: round(bal / stretchWeeks) }
   };
@@ -555,8 +553,7 @@ export function weekPlan(s, txs, now = new Date()) {
   const bills = sw.bills;   // the plan's "To bills account" stays your standard amount
   const groceries = sw.groceries;
   let everyday = sw.everyday, savings = sw.savings, extra, leftover, fromLeftover = 0, avail = 0;
-  const strat = cp.balance > 0 ? (s.cc.strategy || 'extra') : 'none';
-  const o = cp.options;
+  const mix = cp.mix;
 
   // The schedule has to be built from the same balance the weekly plan is sized
   // off, or the payments listed can't add up to the payment asked for. Budgeted
@@ -565,27 +562,14 @@ export function weekPlan(s, txs, now = new Date()) {
   const ptx = planTxsFor(s, txs, now);
   const sch = cardSchedule(s, ptx, now);
   if (cp.balance > 0) {
-    if (strat === 'spend') everyday = o.spend.newSpend;
-    else if (strat === 'save') savings = o.save.newSave;
-    else if (strat === 'split') { everyday = o.split.newSpend; savings = o.split.newSave; }
-    // The card paydown row is the whole weekly payment, not just the part the
-    // cuts had to find. Cutting spending and saving covers the shortfall; your
-    // leftover covers the rest — showing only the shortfall made the row look
-    // far smaller than what you actually put on the card, with the leftover
-    // sitting below as though it were still spare.
-    if (strat === 'extra') {
-      extra = Math.min(cp.perWeek, Math.max(0, sw.extra));
-      fromLeftover = extra;
-    } else {
-      // What the week could put on the card: the cuts plus your leftover.
-      const cuts = round(Math.max(0, sw.everyday - everyday) + Math.max(0, sw.savings - savings));
-      avail = round(cuts + Math.max(0, sw.extra));
-      // By default the card is paid what the payoff plan asks for and no more,
-      // so anything beyond it stays visible as leftover rather than disappearing
-      // into the card. Turning overpay on hands the surplus over as well.
-      extra = s.cc.overpay ? avail : round(Math.min(avail, cp.perWeek));
-      fromLeftover = round(Math.max(0, extra - cuts));
-    }
+    everyday = mix.newSpend;
+    savings = mix.newSave;
+    avail = mix.freed;
+    // By default the card is paid what the payoff plan asks for and no more, so
+    // anything beyond it stays visible as leftover rather than disappearing into
+    // the card. Turning overpay on hands the surplus over as well.
+    extra = s.cc.overpay ? avail : round(Math.min(avail, cp.perWeek));
+    fromLeftover = round(Math.min(mix.fromLeft, extra));
     leftover = round(pay - bills - groceries - everyday - savings - extra);
   } else {
     extra = round(pay - bills - groceries - everyday - savings);     // just spare money
@@ -618,7 +602,7 @@ export function weekPlan(s, txs, now = new Date()) {
     cardAsked: cp.balance > 0 ? cp.perWeek : 0,
     cp,                                            // so the card section shows the same figures
     owed: cardBalance(s, txs),                     // what the statement says, before any of that
-    strategy: strat, cardBalance: cp.balance, cardPerWeek: cp.perWeek, cardNeed: cp.need,
+    mix, cardBalance: cp.balance, cardPerWeek: cp.perWeek, cardNeed: cp.need,
     spendCut: round(Math.max(0, sw.everyday - everyday)), saveCut: round(Math.max(0, sw.savings - savings)),
     fromLeftover,
     stretchWeeks: cp.stretch.weeks,

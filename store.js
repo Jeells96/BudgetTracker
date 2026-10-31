@@ -1,6 +1,6 @@
-import { firebaseConfig } from './firebase-config.js?v=109';
-import { DEFAULT_SETTINGS } from './defaults.js?v=109';
-import { HISTORY } from './history.js?v=109';
+import { firebaseConfig } from './firebase-config.js?v=110';
+import { DEFAULT_SETTINGS } from './defaults.js?v=110';
+import { HISTORY } from './history.js?v=110';
 
 const LS_KEY = 'budget-tracker-v2';
 const CDN = 'https://www.gstatic.com/firebasejs/11.0.2/';
@@ -40,7 +40,9 @@ function normalize(s) {
     strategy: cc.strategy || 'extra',
     // Shares of the week's shortfall taken from each side of a "split".
     splitPct: (cc.splitPct && typeof cc.splitPct === 'object')
-      ? { spend: +cc.splitPct.spend || 0, save: +cc.splitPct.save || 0 } : { spend: 50, save: 50 },
+      ? { left: cc.splitPct.left == null ? 100 : +cc.splitPct.left || 0,
+          spend: +cc.splitPct.spend || 0, save: +cc.splitPct.save || 0 }
+      : { left: 100, spend: 0, save: 0 },
     paidThrough: cc.paidThrough ?? null,
     payoffBy: cc.payoffBy ?? null,
     planEdits: (cc.planEdits && typeof cc.planEdits === 'object') ? cc.planEdits : {},

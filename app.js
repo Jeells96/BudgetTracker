@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=109';
-import { TRANSFERS } from './defaults.js?v=109';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=109';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=110';
+import { TRANSFERS } from './defaults.js?v=110';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=110';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -398,35 +398,32 @@ function payoffScheduleHTML(sch) {
     ${outcome}</div>`;
 }
 
-function strategyPicker(cp, strategy) {
-  const opt = (id, title, desc, disabled) => `<button class="strat ${strategy === id ? 'on' : ''}" data-act="cc-strategy" data-id="${id}" ${disabled ? 'disabled' : ''}>
-    <span class="radio"></span><span class="st-body"><b>${title}</b><span class="muted">${desc}</span></span></button>`;
-  const o = cp.options;
-  const covered = cp.need <= 0;
-  return `<div class="stratlist">
-    ${opt('extra', 'Use leftover', covered ? `Your leftover covers ${money(cp.perWeek)}/wk — no change needed.` : `Leftover covers ${money(cp.extra)}/wk; you'd still be ${money(cp.need)} short.`)}
-    ${opt('spend', 'Spend less', `Everyday ${money(cp.extra + cp.need)} → ${money(o.spend.newSpend)}/wk${o.spend.short > 0 ? `, still ${money(o.spend.short)} short` : ''}`)}
-    ${opt('save', 'Save less', `Savings → ${money(o.save.newSave)}/wk${o.save.short > 0 ? `, still ${money(o.save.short)} short` : ''}`)}
-    ${opt('split', 'Split both', `Everyday ${money(o.split.newSpend)} · savings ${money(o.split.newSave)}${
-      o.split.short > 0 ? `, still ${money(o.split.short)} short` : o.split.over > 0 ? `, ${money(o.split.over)} extra off the card` : ''}`)}
-    ${strategy === 'split' ? `<div class="splitpct">
-      ${[['spend', 'Spending', o.split.pct.spend, o.split.newSpend, o.split.spendCut],
-         ['save', 'Savings', o.split.pct.save, o.split.newSave, o.split.saveCut]]
-        .map(([k, label, pct, left, cut]) => `<div class="sp-row"><label>${label}<div class="sp-s">${money(cut)} to the card</div></label>
-          <input type="text" inputmode="decimal" value="${fmtNum(pct)}" data-splitpct="${k}" aria-label="${label} percent"><span>%</span>
-          <input type="text" inputmode="decimal" value="${fmtNum(left)}" data-splitamt="${k}" aria-label="${label} left"></div>`).join('')}
-      <div class="note">How much of each goes to the card. 100% leaves nothing; the box on the right is what you'd have left, and setting either one moves the other.</div>
-      <div class="se-row tot" style="border-top:1px solid var(--hair);margin-top:8px;padding-top:9px">
-        <span>This Friday's payment</span><b>${money(cp.perWeek)}</b></div>
-      <div class="se-row"><span>Your leftover covers</span><b>${money(cp.extra)}</b></div>
-      <div class="se-row"><span>So these need to find</span><b>${money(cp.need)}</b></div>
-      <div class="se-row"><span>They free</span><b class="${o.split.short > 0 ? 'negtext' : 'goodtext'}">${money(o.split.freed)}</b></div>
-      <div class="note" style="margin-top:6px">${o.split.short > 0
-        ? `<b class="negtext">${money(o.split.short)} short</b> of this Friday's payment.`
-        : o.split.over > 0 ? `Covers it, with ${money(o.split.over)} over.`
-        : 'Covers it exactly.'}</div>
-    </div>` : ''}
-    ${opt('stretch', 'Stretch payoff', `${money(cp.stretch.perWeek)}/wk over ${cp.stretch.weeks} weeks — pay off a bit later`)}
+/**
+ * One editor, not a menu of plans: each source says what share of itself goes
+ * to the card, and the totals underneath show whether that covers the payment
+ * actually due this Friday.
+ */
+function mixEditor(cp) {
+  const m = cp.mix;
+  const rows = [
+    ['left', 'Leftover', m.pct.left, m.fromLeft, m.leftOver, cp.extra],
+    ['spend', 'Spending', m.pct.spend, m.fromSpend, m.newSpend, S().weeklyBudget || 0],
+    ['save', 'Savings', m.pct.save, m.fromSave, m.newSave, S().weeklySavings || 0],
+  ].map(([k, label, pct, gives, keeps, pot]) => `<div class="sp-row"><label>${label}
+      <div class="sp-s">${money(gives)} of ${money(pot)} to the card</div></label>
+    <input type="text" inputmode="decimal" value="${fmtNum(pct)}" data-splitpct="${k}" aria-label="${label} percent"><span>%</span>
+    <input type="text" inputmode="decimal" value="${fmtNum(keeps)}" data-splitamt="${k}" aria-label="${label} left"></div>`).join('');
+
+  return `<div class="splitpct">
+    ${rows}
+    <div class="note">What share of each goes to the card. 100% leaves nothing; the box on the right is what you'd keep, and setting either one moves the other.</div>
+    <div class="se-row tot" style="border-top:1px solid var(--hair);margin-top:8px;padding-top:9px">
+      <span>This Friday's payment</span><b>${money(cp.perWeek)}</b></div>
+    <div class="se-row"><span>These free</span><b class="${m.short > 0 ? 'negtext' : 'goodtext'}">${money(m.freed)}</b></div>
+    <div class="note" style="margin-top:6px">${m.short > 0
+      ? `<b class="negtext">${money(m.short)} short</b> of this Friday's payment.`
+      : m.over > 0 ? `Covers it, with ${money(m.over)} to spare.` : 'Covers it exactly.'}</div>
+    ${m.short > 0 ? `<button class="btn block" data-act="cc-split-cover" style="margin-top:8px">Set these to cover it</button>` : ''}
   </div>`;
 }
 
@@ -437,7 +434,6 @@ function cardSection() {
   const cyc = cycleWindow(now);
   const wp = weekPlan(s, store.txs, now);
   const cp = wp.cp;          // the same figures the weekly plan is built from
-  const strat = cc.strategy || 'extra';
   const diff = round((cc.manual || 0) - det.computed);
 
   // Does the log agree with the bank? Loose card charges count: the bank has
@@ -460,12 +456,7 @@ function cardSection() {
   //   impossible — the plan asks for more than every penny you have.
   //   not set high enough — it's reachable, this choice just doesn't reach it.
   const af = cp.afford;
-  const o2 = cp.options;
-  const curShort = strat === 'extra' ? cp.need
-    : strat === 'spend' ? o2.spend.short
-    : strat === 'save' ? o2.save.short
-    : strat === 'split' ? o2.split.short
-    : 0;
+  const curShort = cp.mix.short;
   const payLeft = Math.max(1, cp.weeks);
   const shortNote = af.shortPerWeek > 0.005 ? `<div class="warn">
       <b>This plan is more than you can pay.</b>
@@ -477,9 +468,8 @@ function cardSection() {
     : curShort > 0.005 ? `<div class="warn soft">
       <b>This doesn't cover the plan.</b>
       It needs ${money(cp.perWeek)} a week and this leaves you <b>${money(curShort)} short</b> — ${money(round(curShort * payLeft))} over the ${payLeft} payment${payLeft === 1 ? '' : 's'} left.
-      You could find ${money(af.max)} a week in total, so it is reachable${strat === 'split' ? ' — just not at these percentages' : ' with a different choice below'}.
-      </div>
-      ${strat === 'split' ? `<button class="btn block" data-act="cc-split-cover">Set the split to cover it</button>` : ''}`
+      You could find ${money(af.max)} a week in total, so it is reachable — just not at these percentages.
+      </div>`
     : '';
 
   const planBlock = wp.cardBalance > 0 ? `
@@ -488,8 +478,8 @@ function cardSection() {
     <div class="field" style="margin:8px 0 2px"><label>Pay off by<br><span class="muted" style="font-size:.8rem">${cc.payoffBy ? 'custom date' : 'default: end of this month'}</span></label>
       <input type="date" value="${cc.payoffBy || ''}" min="${today()}" data-cc="payoffBy"></div>
     ${shortNote}
-    <details class="collapse" ${openAttr('cc-strategy')}><summary>Where the extra comes from · <b>${{ extra: 'Use leftover', spend: 'Spend less', save: 'Save less', split: 'Split both', stretch: 'Stretch payoff' }[strat] || 'Use leftover'}</b></summary>
-      ${strategyPicker(cp, strat)}</details>
+    <details class="collapse" ${openAttr('cc-strategy')}><summary>Where the money comes from · <b class="${cp.mix.short > 0 ? 'negtext' : 'goodtext'}">${money(cp.mix.freed)} of ${money(cp.perWeek)}</b></summary>
+      ${mixEditor(cp)}</details>
     ${payoffScheduleHTML(wp.sch)}
     ${weekDoneRow()}
     ${hasEdits ? `<button class="btn block" data-act="cc-edits-reset" style="margin-top:8px">↺ Clear manual payment edits</button>` : ''}
@@ -655,7 +645,6 @@ function planTab() {
     <button data-act="plan-week" data-id="1" aria-label="Next week">›</button></div>
     ${ui.weekOff ? '<button class="btn block" data-act="plan-week" data-id="0" style="margin:0 0 12px">Back to this week</button>' : ''}`;
 
-  const stratLabel = { extra: 'from leftover', spend: 'spending less', save: 'saving less', split: 'splitting the difference', stretch: 'stretching the payoff', none: '' }[wp.strategy];
   // Show what the card paydown is actually made of.
   const cuts = [
     wp.spendCut > 0.005 ? `${money(wp.spendCut)} less spending` : '',
@@ -1001,7 +990,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=109'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=110'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -2204,13 +2193,14 @@ document.addEventListener('click', (e) => {
     case 'cc-split-cover': {
       const now = new Date();
       const cp2 = cardPlan(S(), planTxsFor(S(), store.txs, now), now);
+      // Leftover first, since it costs you nothing you had planned, then the
+      // same share from spending and savings so neither empties before the other.
+      const rest = round(Math.max(0, cp2.perWeek - round(cp2.extra)));
       const pot = round((S().weeklyBudget || 0) + (S().weeklySavings || 0));
-      if (pot <= 0) return toast('Nothing to take it from');
-      // Same share from each, so neither is emptied before the other.
-      const pct = Math.min(100, round((cp2.need / pot) * 100));
-      S().cc = { ...S().cc, splitPct: { spend: pct, save: pct } };
+      const pct = pot > 0 ? Math.min(100, round((rest / pot) * 100)) : 0;
+      S().cc = { ...S().cc, splitPct: { left: 100, spend: pct, save: pct } };
       saveSettings(); render();
-      return toast(`Split set to ${pct}% of each`);
+      return toast(rest > 0 ? `All your leftover plus ${pct}% of each budget` : 'Your leftover covers it');
     }
     case 'cc-week-done': {
       const w = weekPaidState(S(), store.txs, new Date(), S().weekStartDay ?? 5);
@@ -2244,7 +2234,6 @@ document.addEventListener('click', (e) => {
     }
     case 'cc-pay-clear': { const e = { ...(S().cc.planEdits || {}) }; delete e[id]; S().cc = { ...S().cc, planEdits: e }; saveSettings(); return render(); }
     case 'cc-edits-reset': { S().cc = { ...S().cc, planEdits: {} }; saveSettings(); return render(); }
-    case 'cc-strategy': { S().cc = { ...S().cc, strategy: id }; saveSettings(); return render(); }
     case 'cc-mode': { S().cc = { ...S().cc, mode: id }; saveSettings(); return render(); }
     case 'catavg-view': return openCatAvg(id);
     case 'avg-toggle': { const t = store.txs.find((x) => x.id === id); if (t) updateTx(id, { exAvg: !t.exAvg }); if (avgCat) openCatAvg(avgCat); return; }
@@ -2436,14 +2425,16 @@ document.addEventListener('change', (e) => {
   else if (t.dataset.cc === 'manual') { S().cc = { ...S().cc, manual: num() }; saveSettings(); }
   else if (t.dataset.splitpct || t.dataset.splitamt) {
     const side = t.dataset.splitpct || t.dataset.splitamt;
-    const budget = side === 'spend' ? (S().weeklyBudget || 0) : (S().weeklySavings || 0);
+    const budget = side === 'spend' ? (S().weeklyBudget || 0)
+      : side === 'save' ? (S().weeklySavings || 0)
+      : round(cardPlan(S(), planTxsFor(S(), store.txs, new Date()), new Date()).extra);
     // The right-hand box is what you keep, so the percentage is how much of the
     // budget giving that away leaves behind.
     const pct = t.dataset.splitpct
       ? parseNum(t.value)
       : (budget > 0 ? ((budget - parseNum(t.value)) / budget) * 100 : 0);
     const v = Math.max(0, Math.min(100, round(pct)));
-    S().cc = { ...S().cc, splitPct: { ...(S().cc.splitPct || { spend: 50, save: 50 }), [side]: v } };
+    S().cc = { ...S().cc, splitPct: { ...splitPct(S()), [side]: v } };
     saveSettings(false); render(); return;
   }
   else if (t.dataset.cc === 'payoffBy') { S().cc = { ...S().cc, payoffBy: t.value || null }; saveSettings(); }
