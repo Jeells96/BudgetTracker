@@ -593,6 +593,9 @@ export function weekPlan(s, txs, now = new Date()) {
     // asked for. A plan can be underfunded without anything being wrong with
     // the arithmetic, and the Plan page has to say so rather than look settled.
     cardShort: round(Math.max(0, (cp.balance > 0 ? cp.perWeek : 0) - extra)),
+    // What would still be owed on the payoff date if every week went like this
+    // one — the lump sum that would have to make up the difference.
+    cardShortTotal: round(Math.max(0, (cp.balance > 0 ? cp.perWeek : 0) - extra) * Math.max(1, cp.weeks)),
     cardAsked: cp.balance > 0 ? cp.perWeek : 0,
     cp,                                            // so the card section shows the same figures
     owed: cardBalance(s, txs),                     // what the statement says, before any of that

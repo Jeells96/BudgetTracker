@@ -1,6 +1,6 @@
-import { firebaseConfig } from './firebase-config.js?v=99';
-import { DEFAULT_SETTINGS } from './defaults.js?v=99';
-import { HISTORY } from './history.js?v=99';
+import { firebaseConfig } from './firebase-config.js?v=101';
+import { DEFAULT_SETTINGS } from './defaults.js?v=101';
+import { HISTORY } from './history.js?v=101';
 
 const LS_KEY = 'budget-tracker-v2';
 const CDN = 'https://www.gstatic.com/firebasejs/11.0.2/';
@@ -44,6 +44,7 @@ function normalize(s) {
     paidThrough: cc.paidThrough ?? null,
     payoffBy: cc.payoffBy ?? null,
     planEdits: (cc.planEdits && typeof cc.planEdits === 'object') ? cc.planEdits : {},
+    shortAck: cc.shortAck || null,   // a silenced underfunding warning
     // What the bank itself says, kept beside the log rather than replacing it.
     plaidBal: (cc.plaidBal && typeof cc.plaidBal === 'object')
       ? { ...cc.plaidBal, pending: +cc.plaidBal.pending || 0 } : null
