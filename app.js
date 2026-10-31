@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=95';
-import { TRANSFERS } from './defaults.js?v=95';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=95';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=97';
+import { TRANSFERS } from './defaults.js?v=97';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=97';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -228,10 +228,9 @@ function home() {
     <button class="log-btn" data-act="log"><span class="plus">+</span> Log a purchase</button>
     <h2>${monthShort(ui.month)} · ${paychecks} paychecks</h2><div class="card">${list}</div>
     <div class="twobtn" style="margin-top:16px">
-      <button class="btn block" data-act="track-later">🕗 Track later</button>
+      <button class="btn block ${pend.length ? 'primary' : ''}" data-act="finish-loose">🕗 Loose logs${pend.length ? ` · ${pend.length}` : ''}</button>
       <button class="btn block" data-act="returns-view">↩︎ Returns${(s.returns || []).length ? ` · ${(s.returns || []).length}` : ''}</button>
     </div>
-    <button class="btn block ${pend.length ? 'primary' : ''}" data-act="finish-loose" ${pend.length ? '' : 'disabled'} style="margin-top:10px">✓ Finish loose logs${pend.length ? ` (${pend.length})` : ''}</button>
     ${activityBlock()}`;
 }
 
@@ -399,29 +398,27 @@ function cardSection() {
     ${hasEdits ? `<button class="btn block" data-act="cc-edits-reset" style="margin-top:8px">↺ Clear manual payment edits</button>` : ''}
     <hr class="sep">` : '';
 
-  const modeToggle = `<div class="seg">
-    <button data-act="cc-mode" data-id="auto" class="${auto ? 'on' : ''}">Auto-track</button>
-    <button data-act="cc-mode" data-id="manual" class="${!auto ? 'on' : ''}">Manual</button></div>`;
-
-  let setup;
-  if (auto) {
-    setup = `
-      <div class="field"><label>Starting balance<br><span class="muted" style="font-size:.8rem">${det.asOf ? 'as of ' + shortDate(parseYmd(det.asOf)) : 'set this to start tracking'}</span></label>
+  // One place to say what the card is, and the working underneath it. There used
+  // to be five ways in here to move this number — a starting balance, an editable
+  // "purchases since", a reset button, a mode toggle and Match — most of which
+  // did the same thing by different routes.
+  const setup = auto ? `
+      <div class="field"><label>What the card actually is<br><span class="muted" style="font-size:.8rem">${det.asOf ? 'last set ' + shortDate(parseYmd(det.asOf)) : 'type it once and tracking takes over'}</span></label>
         <input type="text" inputmode="decimal" value="${fmtNum(cc.start || '')}" placeholder="0" data-cc="start"></div>
       <div class="ccbreak">
-        <div><span>Starting balance</span><b>${money(det.start)}</b></div>
-        <div><span>+ purchases since${det.adj ? ' <small>(adjusted)</small>' : ''}</span>
-          <span class="ccedit">${det.adj ? '<button class="link" data-act="cc-charges-reset" title="Back to tracked">↺</button>' : ''}<input class="ccinput" type="text" inputmode="decimal" value="${fmtNum(det.credit)}" data-cc="charges"></span></div>
+        <div><span>Set to</span><b>${money(det.start)}</b></div>
+        <div><span>+ purchases since${det.adj ? ' <small>(incl. ' + money(det.adj) + ' matched)</small>' : ''}</span><b>${money(det.credit)}</b></div>
         <div><span>− card payments since</span><b>${money(det.paid)}</b></div>
         ${det.pendRet > 0.005 ? `<div><span>− planned returns</span><b>${money(det.pendRet)}</b></div>` : ''}
-        <div class="tot"><span>Current balance</span><b>${money(det.computed)}</b></div></div>
-      <button class="btn block" data-act="cc-reset" style="margin-top:8px">↺ Reset balance to actual</button>`;
-  } else {
-    setup = `
-      <div class="field"><label>Your current balance</label><input type="text" inputmode="decimal" value="${fmtNum(cc.manual || '')}" placeholder="0" data-cc="manual"></div>
-      <div class="ccbreak"><div class="tot"><span>App estimate</span><b>${money(det.computed)}</b></div>
+        <div class="tot"><span>Current balance</span><b>${money(det.computed)}</b></div></div>`
+    : `
+      <div class="field"><label>Your current balance<br><span class="muted" style="font-size:.8rem">tracking is off; this is the number used</span></label>
+        <input type="text" inputmode="decimal" value="${fmtNum(cc.manual || '')}" placeholder="0" data-cc="manual"></div>
+      <div class="ccbreak"><div class="tot"><span>What tracking would say</span><b>${money(det.computed)}</b></div>
         <div><span>Difference</span><b class="${diff ? 'negtext' : ''}">${diff === 0 ? 'matches' : (diff > 0 ? '+' : '−') + money(Math.abs(diff)).replace('-', '')}</b></div></div>`;
-  }
+
+  const modeToggle = `<button class="link ccmode" data-act="cc-mode" data-id="${auto ? 'manual' : 'auto'}">${
+    auto ? 'Turn off tracking and just type the balance' : 'Track it from your purchases instead'}</button>`;
 
   // Planned returns that will credit this card — shown right alongside the balance.
   const cardRets = (s.returns || []).filter((r) => (r.pay || 'credit') !== 'cash');
@@ -429,15 +426,14 @@ function cardSection() {
   const retBlock = cardRets.length ? `
     <button class="retstrip" data-act="returns-view">
       <span class="rs-n">${cardRets.length} return${cardRets.length === 1 ? '' : 's'} still to make</span>
-      <b>${money(retTotal)}</b><span class="rs-go">Review ›</span></button>
-    <div class="retlist">${cardRets.map((r) => `<div><span>${esc(r.note || cat(r.category)?.name || 'Purchase')}</span><b>−${money(Math.abs(r.amount))}</b></div>`).join('')}</div>` : '';
+      <b>${money(retTotal)}</b><span class="rs-go">Review ›</span></button>` : '';
 
   return `<div class="card">
     ${recStrip}
     ${wp.cardBalance > 0 ? planBlock : '<div class="note" style="margin:0 0 8px">No balance to pay off right now.</div>'}
     ${retBlock}
-    ${modeToggle}
     ${setup}
+    ${modeToggle}
     <div class="note">Statement closes the ${ordinal(cyc.endDay)} · cycle ${shortDate(parseYmd(cyc.start))} – ${shortDate(parseYmd(cyc.end))}</div>
     <button class="btn block" data-act="log-xfer" data-id="card">+ Log a card payment</button></div>`;
 }
@@ -887,7 +883,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=95'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=97'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -1257,24 +1253,28 @@ function bankBlock() {
   }).join('');
 
   const payers = S().incomePayers || [];
-  const payerBox = `<h2>Income from</h2><div class="card">
+  const payerBox = `<div class="subhead">Income from</div>
     <div class="note">Deposits from these are logged as income without asking. Matched loosely, so batch numbers and dates on the end don't matter.</div>
     ${payers.map((n, i) => `<div class="acct row"><div class="nm">${esc(n)}</div>
       <button class="btn tiny" data-act="payer-del" data-i="${i}">Remove</button></div>`).join('')
       || '<div class="note">Nobody listed — deposits will wait in the review queue.</div>'}
-    <button class="btn block" data-act="payer-add">+ Add who pays you</button></div>`;
+    <button class="btn block" data-act="payer-add">+ Add who pays you</button>`;
 
   const rules = Object.entries(S().txMatch || {});
   const ruleLabel = (r) => r === 'i' ? '💰 Income'
     : r === '__skip' ? '🚫 Ignored'
     : r.startsWith('t:') ? ((TRANSFERS.find((x) => x.id === r.slice(2)) || {}).emoji || '🏦') + ' ' + ((TRANSFERS.find((x) => x.id === r.slice(2)) || {}).name || r.slice(2))
     : ((S().categories.find((c) => c.id === r.slice(2)) || {}).name || r.slice(2));
-  const ruleRows = !rules.length ? '' : `<h2>Automatic rules · ${rules.length}</h2><div class="card">
+  const ruleRows = !rules.length ? '' : `<div class="subhead">Automatic rules · ${rules.length}</div>
     <div class="note">Learned when you filed one of these. Paycheques and transfers file themselves; purchases always wait for you.</div>
     ${rules.map(([k, r]) => `<div class="acct row"><div class="nm">${esc(k)}<div class="sub">${ruleLabel(r)}</div></div>
-      <button class="btn tiny" data-act="rule-del" data-id="${esc(k)}">Forget</button></div>`).join('')}</div>`;
+      <button class="btn tiny" data-act="rule-del" data-id="${esc(k)}">Forget</button></div>`).join('')}`;
 
-  return `<h2>Banking</h2><div class="card">${err}
+  // The queues are what you act on, so they stay in the open; everything that
+  // is set once and forgotten goes behind a summary.
+  const setup = `<details class="psec" ${openAttr('bank-setup')}>
+    <summary><span class="psec-t">Accounts &amp; rules</span><span class="psec-caret">›</span></summary>
+    <div class="psec-body">
     <div class="acct row"><div class="nm">Signed in as ${esc(b.user.email || b.user.displayName || 'you')}</div>
       <button class="btn tiny" data-act="bank-signout"${off('signout')}>Sign out</button></div>
     ${accts}
@@ -1282,12 +1282,17 @@ function bankBlock() {
       ? '<div class="note">No account is set to <b>Bills → 12-month averages</b> yet, so nothing is filling in your bills account balance or their averages.</div>' : ''}
     ${b.items.length ? '<div class="note">Set your card to <b>Charges → loose logs</b>: each one lands in the 🕗 list on Home with its price and merchant, and only counts once you finish it. Set your bills account to <b>Bills → 12-month averages</b> — those payments never count as purchases, they just fill in each bill\'s history and keep the account balance current.</div>' : ''}
     <button class="btn block" data-act="bank-connect"${off('connect')}>${b.busy === 'connect' ? 'Opening…' : '+ Connect a bank'}</button>
-    ${progressHTML()}
-    <button class="btn block" data-act="bank-sync"${off('sync')}>${b.busy === 'sync' ? 'Checking…' : '⟳ Check for new activity'}</button>
-    <button class="btn block" data-act="bank-activity">🔎 Browse all bank activity</button>
-    ${synced ? `<div class="note">Imports on its own when you open the app. Last checked ${new Date(synced).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}.</div>` : ''}</div>
     ${payerBox}
     ${ruleRows}
+    </div></details>`;
+
+  return `<h2>Banking</h2><div class="card">${err}
+    ${progressHTML()}
+    ${synced ? `<div class="note" style="margin:0 0 10px">Imports on its own when you open the app. Last checked ${new Date(synced).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}.</div>` : ''}
+    <button class="btn block" data-act="bank-sync"${off('sync')}>${b.busy === 'sync' ? 'Checking…' : '⟳ Check for new activity'}</button>
+    <button class="btn block" data-act="bank-activity">🔎 Browse all bank activity</button>
+    ${setup}
+    </div>
     ${b.inbox.length ? `<h2>To review · ${b.inbox.length}</h2><div class="card">
       <div class="note">Give each one a category to add it. Nothing here counts toward your budget yet.</div>
       ${rows}</div>` : ''}
@@ -1400,14 +1405,19 @@ function trackClick(btn) {
       f.amt = typeAmount(f.amt, v);
       return refreshAmount(f.amt, '[data-track="more"],[data-track="done"]');
     case 'more': if (parseFloat(f.amt) > 0) { addPending(f.amt); f.count += 1; f.amt = ''; drawTrack(); render(); toast('Saved to finish later'); } return;
-    case 'done': if (parseFloat(f.amt) > 0) addPending(f.amt); closeSheet(); render(); if (parseFloat(f.amt) > 0 || f.count) toast('Saved to finish later'); return;
+    case 'done': {
+      const any = parseFloat(f.amt) > 0;
+      if (any) addPending(f.amt);
+      closeSheet(); render();
+      if (any || f.count) toast('Saved to finish later');
+      return openPending();
+    }
   }
 }
 
 // ----- the list of loose logs to finish (also the first-open reminder) -----
 let pendingOpen = false;
 function openPending() {
-  if (!(S().pending || []).length && !bankUI.progress.length) return;
   pendingOpen = true;
   drawPending();
   $('#sheet').hidden = false;
@@ -1415,7 +1425,6 @@ function openPending() {
 
 function drawPending() {
   const pend = (S().pending || []).slice().sort((a, b) => b.date.localeCompare(a.date));
-  if (!pend.length && !bankUI.progress.length) return closeSheet();
   const rows = !pend.length ? '' : pend.map((x) => `<div class="loose-row">${x.source === 'plaid' && x.note
     ? `<button class="x" data-act="pending-ignore" data-id="${esc(x.id)}" title="Always ignore ${esc(x.note)}" aria-label="Always ignore">🚫</button>` : ''}
     <button class="loose" data-act="finish-item" data-id="${esc(x.id)}"><div class="emoji">🕗</div>
@@ -1425,9 +1434,12 @@ function drawPending() {
     <button class="x" data-act="pending-del" data-id="${esc(x.id)}" aria-label="Discard">✕</button></div>`).join('');
   $('#sheet').innerHTML = `<div class="panel"><div class="head"><span style="width:40px"></span><span class="step">Loose logs to finish</span><button data-act="sheet-close" aria-label="Later">✕</button></div>
     ${progressHTML()}
-    <p class="note" style="margin:0 0 10px">${pend.length ? `${pend.length} item${pend.length === 1 ? '' : 's'} to finish` : 'Nothing to finish yet.'}</p>
+    <p class="note" style="margin:0 0 10px">${pend.length
+      ? `${pend.length} item${pend.length === 1 ? '' : 's'} to finish — tap one to give it a category.`
+      : 'Nothing waiting. Card purchases land here on their own; add a price now and finish it later.'}</p>
     ${rows}
-    <button class="btn block" data-act="sheet-close" style="margin-top:12px">Later</button></div>`;
+    <button class="btn block" data-act="track-later" style="margin-top:12px">+ Note a price for later</button>
+    <button class="btn block" data-act="sheet-close" style="margin-top:8px">Done</button></div>`;
   $('#sheet').className = 'sheet';
 }
 
@@ -1677,35 +1689,14 @@ function flowClick(btn) {
     case 'save': {
       if (!f.splitting && !(parseFloat(f.amt) > 0)) return;
       if (!gasOk(f)) return;
-      const askCard = f.category === 'card' && weekPlan(S(), store.txs).sch.multi;
       const wantReturn = !f.splitting && logCat(f.category)?.type === 'expense' && $('#f-ret') && $('#f-ret').checked;
       const tx = flowCommit();
-      if (askCard) return openCardAsk(tx);
       render(); toast(savedMsg(tx));
       if (wantReturn) return openReturnPlan(tx);   // jump straight into planning the return
       closeSheet(); return;
     }
     case 'again': { if (!(parseFloat(f.amt) > 0)) return; if (!gasOk(f)) return; const tx = flowCommit(); f.count += 1; f.amt = ''; f.note = ''; f.exAvg = false; f.vehicle = null; f.step = 2; drawFlow(); render(); toast(savedMsg(tx)); return; }
   }
-}
-
-// After a card payment while a payoff plan is running, ask if that's the week's payment.
-function openCardAsk(tx) {
-  flow = null;
-  const bal = cardBalance(S(), store.txs);
-  // Name the week, otherwise "this week" means nothing when you're logging a
-  // payment dated a few days back.
-  const ws = parseYmd(weekStart(parseYmd(tx.date), S().weekStartDay ?? 5));
-  const we = addDays(ws, 6);
-  const span = `${ws.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${we.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
-  const el = $('#sheet');
-  el.className = 'sheet';
-  el.innerHTML = `<div class="panel"><div class="head"><span style="width:40px"></span><span class="step">Card payment</span><button data-act="cc-ask" data-id="more" aria-label="Close">✕</button></div>
-    <div class="q">Paid ${money(tx.amount)} · ${money(bal)} left</div>
-    <p class="note" style="margin:0 0 14px">Is that the whole payment for the week of <b>${span}</b>, or will you put more towards the card before ${we.toLocaleDateString('en-US', { weekday: 'long' })}?</p>
-    <button class="btn primary block" data-act="cc-ask" data-id="week">That's the whole payment for this week</button>
-    <button class="btn block" data-act="cc-ask" data-id="more" style="margin-top:8px">I'll put more towards it</button></div>`;
-  el.hidden = false;
 }
 
 function savedMsg(tx) {
@@ -2072,13 +2063,6 @@ document.addEventListener('click', (e) => {
       saveSettings(); render();
       return toast(`Card matched to ${money(r.bank)}`);
     }
-    case 'cc-reset': {
-      const cur = cardDetail(S(), store.txs).computed;
-      const v = prompt('Actual current card balance? (re-baselines, stays on auto)', cur);
-      if (v == null) return;
-      const n = parseFloat(v); if (!(n >= 0)) return toast('Enter a valid balance');
-      S().cc = { ...S().cc, start: round(n), asOf: today(), asOfAt: Date.now(), chargesAdj: 0 }; saveSettings(); render(); toast('Balance reset'); return;
-    }
     case 'cc-week-done': {
       const w = weekPaidState(S(), store.txs, new Date(), S().weekStartDay ?? 5);
       S().cc = { ...S().cc, paidThrough: w.payday };
@@ -2093,18 +2077,8 @@ document.addEventListener('click', (e) => {
     }
     case 'cc-pay-clear': { const e = { ...(S().cc.planEdits || {}) }; delete e[id]; S().cc = { ...S().cc, planEdits: e }; saveSettings(); return render(); }
     case 'cc-edits-reset': { S().cc = { ...S().cc, planEdits: {} }; saveSettings(); return render(); }
-    case 'cc-ask': {
-      const payday = ymd(nextPayday(new Date(), S().weekStartDay ?? 5));
-      // "week" = this week's payment (auto-detect already covers it); "more" = keep
-      // this payday in the plan because another payment is coming.
-      S().cc = { ...S().cc, paidThrough: id === 'week' ? payday : 'more:' + payday };
-      saveSettings(); closeSheet(); render();
-      toast(id === 'week' ? "Got it — that's this week's card payment; the rest is split over the weeks left" : "Okay — add the rest when you can");
-      return;
-    }
     case 'cc-strategy': { S().cc = { ...S().cc, strategy: id }; saveSettings(); return render(); }
     case 'cc-mode': { S().cc = { ...S().cc, mode: id }; saveSettings(); return render(); }
-    case 'cc-charges-reset': { S().cc = { ...S().cc, chargesAdj: 0 }; saveSettings(); return render(); }
     case 'catavg-view': return openCatAvg(id);
     case 'avg-toggle': { const t = store.txs.find((x) => x.id === id); if (t) updateTx(id, { exAvg: !t.exAvg }); if (avgCat) openCatAvg(avgCat); return; }
     case 'track-later': return openTrack();
@@ -2285,7 +2259,7 @@ document.addEventListener('change', (e) => {
   if (t.id === 'sav-slider') { slideSavings(+t.value); saveSettings(); return; }
   if (t.dataset.set) { S()[t.dataset.set] = num(); saveSettings(); }
   else if (t.hasAttribute('data-billsbal')) { S().billsAcct = { bal: num(), asOf: today() }; saveSettings(); render(); return; }
-  else if (t.dataset.cc === 'start') { S().cc = { ...S().cc, start: num(), asOf: today(), asOfAt: Date.now() }; saveSettings(); }
+  else if (t.dataset.cc === 'start') { S().cc = { ...S().cc, start: num(), asOf: today(), asOfAt: Date.now(), chargesAdj: 0 }; saveSettings(); }
   else if (t.dataset.cc === 'manual') { S().cc = { ...S().cc, manual: num() }; saveSettings(); }
   else if (t.dataset.splitpct || t.dataset.splitamt) {
     const side = t.dataset.splitpct || t.dataset.splitamt;
@@ -2302,7 +2276,6 @@ document.addEventListener('change', (e) => {
   else if (t.dataset.cc === 'payoffBy') { S().cc = { ...S().cc, payoffBy: t.value || null }; saveSettings(); }
   else if (t.dataset.ccPay) { const e = { ...(S().cc.planEdits || {}) }; if (t.value.trim() === '') delete e[t.dataset.ccPay]; else e[t.dataset.ccPay] = num(); S().cc = { ...S().cc, planEdits: e }; saveSettings(); }
   else if (t.dataset.ovignore) { updateTx(t.dataset.ovignore, { exBudget: !t.checked }); openOverage(); render(); return; }
-  else if (t.dataset.cc === 'charges') { const raw = cardDetail(S(), store.txs).rawCredit; S().cc = { ...S().cc, chargesAdj: round(num() - raw) }; saveSettings(); }
   else if (t.dataset.billfix) { S().bills[billEdit].amount = num(); saveSettings(); drawBillEdit(); return; }
   else if (t.hasAttribute('data-billevery')) { S().bills[billEdit].everyMonths = Math.max(1, Math.round(+t.value || 1)); saveSettings(); drawBillEdit(); render(); return; }
   else if (t.hasAttribute('data-billavg')) { S().bills[billEdit].useAvg = t.checked; saveSettings(); drawBillEdit(); render(); return; }
