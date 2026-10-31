@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=93';
-import { TRANSFERS } from './defaults.js?v=93';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=93';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=94';
+import { TRANSFERS } from './defaults.js?v=94';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=94';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -38,6 +38,19 @@ try { ui.planLive = JSON.parse(localStorage.getItem('plan-live') ?? 'true'); } c
 // figure on request. What's actually in the account is the more useful number.
 try { ui.payLive = JSON.parse(localStorage.getItem('pay-live') ?? 'true'); } catch { ui.payLive = true; }
 const savePayLive = () => { try { localStorage.setItem('pay-live', JSON.stringify(!!ui.payLive)); } catch {} };
+
+// Which collapsibles are open. render() rebuilds the DOM, so without this a
+// section closes itself the moment anything inside it changes a value.
+try { ui.open = JSON.parse(localStorage.getItem('open-sections') || '{}') || {}; } catch { ui.open = {}; }
+const saveOpen = () => { try { localStorage.setItem('open-sections', JSON.stringify(ui.open || {})); } catch {} };
+const isOpen = (key, dflt = false) => (ui.open && ui.open[key] !== undefined ? !!ui.open[key] : dflt);
+const openAttr = (key, dflt = false) => `data-dkey="${key}"${isOpen(key, dflt) ? ' open' : ''}`;
+document.addEventListener('toggle', (e) => {
+  const k = e.target && e.target.dataset && e.target.dataset.dkey;
+  if (!k) return;
+  (ui.open ||= {})[k] = e.target.open;
+  saveOpen();
+}, true);
 const savePlanDraft = () => { try { localStorage.setItem('plan-draft', JSON.stringify(ui.planDraft || {})); } catch {} };
 const savePlanLive = () => { try { localStorage.setItem('plan-live', JSON.stringify(!!ui.planLive)); } catch {} };
 
@@ -336,13 +349,12 @@ function strategyPicker(cp, strategy) {
     ${opt('split', 'Split both', `Everyday ${money(o.split.newSpend)} · savings ${money(o.split.newSave)}${
       o.split.short > 0 ? `, still ${money(o.split.short)} short` : o.split.over > 0 ? `, ${money(o.split.over)} extra off the card` : ''}`)}
     ${strategy === 'split' ? `<div class="splitpct">
-      <div class="sp-row"><label>From spending</label>
-        <input type="number" inputmode="numeric" min="0" max="400" step="1" value="${o.split.pct.spend}" data-splitpct="spend"><span>%</span>
-        <b>${money(o.split.spendCut)}</b></div>
-      <div class="sp-row"><label>From savings</label>
-        <input type="number" inputmode="numeric" min="0" max="400" step="1" value="${o.split.pct.save}" data-splitpct="save"><span>%</span>
-        <b>${money(o.split.saveCut)}</b></div>
-      <div class="note">Shares of the ${money(cp.need)} this week needs. They don't have to add to 100 — go over and the surplus comes straight off the card.</div>
+      ${[['spend', 'From spending', o.split.pct.spend, o.split.spendCut],
+         ['save', 'From savings', o.split.pct.save, o.split.saveCut]]
+        .map(([k, label, pct, amt]) => `<div class="sp-row"><label>${label}</label>
+          <input type="text" inputmode="decimal" value="${fmtNum(pct)}" data-splitpct="${k}" aria-label="${label} percent"><span>%</span>
+          <input type="text" inputmode="decimal" value="${fmtNum(amt)}" data-splitamt="${k}" aria-label="${label} amount"></div>`).join('')}
+      <div class="note">Shares of the ${money(cp.need)} this week needs — set either the percentage or the amount and the other follows. They don't have to add to 100: go over and the surplus comes straight off the card.</div>
     </div>` : ''}
     ${opt('stretch', 'Stretch payoff', `${money(cp.stretch.perWeek)}/wk over ${cp.stretch.weeks} weeks — pay off a bit later`)}
   </div>`;
@@ -380,7 +392,7 @@ function cardSection() {
     ${wp.owed - cp.balance > 0.005 ? `<div class="note" style="margin:2px 0 8px">You owe ${money(wp.owed)}. ${money(round(wp.owed - cp.balance))} of that is this week's budgeted spending, which your weekly budget already covers, so the paydown plan works on the rest.</div>` : ''}
     <div class="field" style="margin:8px 0 2px"><label>Pay off by<br><span class="muted" style="font-size:.8rem">${cc.payoffBy ? 'custom date' : 'default: end of this month'}</span></label>
       <input type="date" value="${cc.payoffBy || ''}" min="${today()}" data-cc="payoffBy"></div>
-    <details class="collapse"><summary>Where the extra comes from · <b>${{ extra: 'Use leftover', spend: 'Spend less', save: 'Save less', split: 'Split both', stretch: 'Stretch payoff' }[strat] || 'Use leftover'}</b></summary>
+    <details class="collapse" ${openAttr('cc-strategy')}><summary>Where the extra comes from · <b>${{ extra: 'Use leftover', spend: 'Spend less', save: 'Save less', split: 'Split both', stretch: 'Stretch payoff' }[strat] || 'Use leftover'}</b></summary>
       ${strategyPicker(cp, strat)}</details>
     ${payoffScheduleHTML(wp.sch)}
     ${weekDoneRow()}
@@ -594,7 +606,7 @@ function planTab() {
 
   // Each area is a collapsible section. The weekly planner is open by default; the
   // rest start collapsed. (Native <details>, so open/closed is remembered per tap.)
-  const sec = (title, body, open = false) => `<details class="psec"${open ? ' open' : ''}><summary><span class="psec-t">${title}</span><span class="psec-caret">›</span></summary><div class="psec-body">${body}</div></details>`;
+  const sec = (title, body, open = false) => `<details class="psec" ${openAttr('psec-' + title.replace(/[^a-z]/gi, '').slice(0, 20), open)}><summary><span class="psec-t">${title}</span><span class="psec-caret">›</span></summary><div class="psec-body">${body}</div></details>`;
   const billsAcctBody = billsAcctCard(s) + `<button class="btn block" data-act="log-xfer" data-id="bills" style="margin-top:8px">+ Log a transfer to the bills account</button>`;
   const baTag = bt.hasBal ? (bt.covered ? ' · covered' : ' · short ' + money(bt.shortfall)) : '';
 
@@ -875,7 +887,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=93'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=94'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -2275,9 +2287,15 @@ document.addEventListener('change', (e) => {
   else if (t.hasAttribute('data-billsbal')) { S().billsAcct = { bal: num(), asOf: today() }; saveSettings(); render(); return; }
   else if (t.dataset.cc === 'start') { S().cc = { ...S().cc, start: num(), asOf: today(), asOfAt: Date.now() }; saveSettings(); }
   else if (t.dataset.cc === 'manual') { S().cc = { ...S().cc, manual: num() }; saveSettings(); }
-  else if (t.dataset.splitpct) {
-    const v = Math.max(0, Math.min(400, Math.round(parseNum(t.value))));
-    S().cc = { ...S().cc, splitPct: { ...(S().cc.splitPct || { spend: 50, save: 50 }), [t.dataset.splitpct]: v } };
+  else if (t.dataset.splitpct || t.dataset.splitamt) {
+    const side = t.dataset.splitpct || t.dataset.splitamt;
+    const need = cardPlan(S(), planTxsFor(S(), store.txs, new Date()), new Date()).need;
+    // An amount only means a percentage if there's a shortfall to be a share of.
+    const pct = t.dataset.splitpct
+      ? parseNum(t.value)
+      : (need > 0 ? (parseNum(t.value) / need) * 100 : 0);
+    const v = Math.max(0, Math.min(400, round(pct)));
+    S().cc = { ...S().cc, splitPct: { ...(S().cc.splitPct || { spend: 50, save: 50 }), [side]: v } };
     saveSettings(false); render(); return;
   }
   else if (t.dataset.cc === 'payoffBy') { S().cc = { ...S().cc, payoffBy: t.value || null }; saveSettings(); }

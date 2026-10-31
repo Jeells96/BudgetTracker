@@ -582,5 +582,5 @@ nav#tabs button.on { background:var(--ink); color:var(--canvas); }
 .sp-row input { width:64px; flex:none; text-align:right; padding:8px 9px; border-radius:9px;
   background:var(--surface); border:1px solid var(--hair); -moz-appearance:textfield; }
 .sp-row span { flex:none; color:var(--muted); font-size:.8rem; margin-left:-6px; }
-.sp-row b { flex:none; width:76px; text-align:right; font-variant-numeric:tabular-nums; }
+.sp-row input[data-splitamt] { width:84px; }
 .splitpct .note { margin:8px 0 0; }
