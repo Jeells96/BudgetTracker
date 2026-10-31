@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=104';
-import { TRANSFERS } from './defaults.js?v=104';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=104';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=105';
+import { TRANSFERS } from './defaults.js?v=105';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=105';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -221,6 +221,7 @@ function home() {
   ].join('');
 
   return `${header('Budget')}
+    ${progressHTML()}
     ${hero}
     ${cardTrim}
     ${rollover}
@@ -343,10 +344,31 @@ function payoffScheduleHTML(sch) {
     }${money(sch.balance)} left${manual.length ? ` − ${money(manualSum)} you set by hand` : ''} over ${fridays} = <b>${money(sch.autoPerWeek)}</b> each.</div>`
     : '';
 
+  // What the edits actually buy you, and what to do about it.
+  const d = (x) => parseYmd(x).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  let outcome = '';
+  if (sch.edited && sch.shortfall > 0.005) {
+    const spreadable = sch.payments.filter((p) => !p.paid && !p.manual).length;
+    outcome = `<div class="warn soft" style="margin:10px 0 0">
+      <b>This leaves ${money(sch.shortfall)} unpaid.</b>
+      Paying these amounts clears ${money(round(sch.balance - sch.shortfall))} of ${money(sch.balance)} by ${d(sch.plannedEnd)}.
+      </div>
+      ${spreadable ? `<button class="btn block" data-act="cc-spread" style="margin-top:8px">Spread the ${money(sch.shortfall)} over the other ${spreadable} ${spreadable === 1 ? 'week' : 'weeks'}</button>` : ''}`;
+  } else if (sch.edited && sch.dropped > 0) {
+    outcome = `<div class="warn soft good" style="margin:10px 0 0">
+      <b>${sch.dropped} payment${sch.dropped === 1 ? '' : 's'} earlier.</b>
+      Paying these amounts clears the card on ${d(sch.payoffDate)} instead of ${d(sch.plannedEnd)}.
+      </div>
+      <button class="btn block" data-act="cc-apply" data-id="${sch.payoffDate}" style="margin-top:8px">Make ${d(sch.payoffDate)} the plan — ${money(round(sch.balance / Math.max(1, sch.weeks)))} a week</button>`;
+  } else if (sch.edited) {
+    outcome = `<button class="btn block" data-act="cc-apply" data-id="${sch.payoffDate || sch.plannedEnd}" style="margin-top:10px">Make this the plan — even it out at ${money(round(sch.balance / Math.max(1, sch.weeks)))} a week</button>`;
+  }
+
   return `<div class="plan">
     ${head}
     ${why}
-    <div class="sched">${rows}</div></div>`;
+    <div class="sched">${rows}</div>
+    ${outcome}</div>`;
 }
 
 function strategyPicker(cp, strategy) {
@@ -881,7 +903,7 @@ function syncQueue() {
 
 // Re-draw whatever is on screen that shows progress.
 function progressTick() {
-  render();
+  render();          // Home carries the same strip, so a quiet sync is still visible
   if (pendingOpen) drawPending();
 }
 
@@ -943,7 +965,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=104'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=105'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -2165,6 +2187,24 @@ document.addEventListener('click', (e) => {
       S().cc = { ...S().cc, paidThrough: 'more:' + w.payday };
       saveSettings(); render();
       return toast('Reopened — add the rest when you can');
+    }
+    case 'cc-apply': {
+      // Keep the finish date the edits produced, and let every week carry an
+      // equal share of it again.
+      S().cc = { ...S().cc, payoffBy: id, planEdits: {} };
+      saveSettings(); render();
+      return toast(`Plan set to clear by ${shortDate(parseYmd(id))}`);
+    }
+    case 'cc-spread': {
+      const sch = weekPlan(S(), store.txs, new Date()).sch;
+      const open = sch.payments.filter((p) => !p.paid && !p.manual);
+      if (!open.length || sch.shortfall <= 0.005) return;
+      const add = round(sch.shortfall / open.length);
+      const e = { ...(S().cc.planEdits || {}) };
+      open.forEach((p) => { e[p.date] = round(p.amount + add); });
+      S().cc = { ...S().cc, planEdits: e };
+      saveSettings(); render();
+      return toast(`${money(add)} added to each of the other ${open.length}`);
     }
     case 'cc-pay-clear': { const e = { ...(S().cc.planEdits || {}) }; delete e[id]; S().cc = { ...S().cc, planEdits: e }; saveSettings(); return render(); }
     case 'cc-edits-reset': { S().cc = { ...S().cc, planEdits: {} }; saveSettings(); return render(); }

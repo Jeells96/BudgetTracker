@@ -609,3 +609,4 @@ nav#tabs button.on { background:var(--ink); color:var(--canvas); }
 .rb-row.diff span { color:var(--muted); font-size:.8rem; }
 .recbox .rb-ok { color:var(--accent); font-weight:600; padding-top:4px; }
 .recbox .btn.block { margin-top:9px; font-size:.84rem; padding:10px; }
+.warn.soft.good { background:var(--accent-soft); border-color:color-mix(in srgb,var(--accent) 24%,transparent); }

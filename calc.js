@@ -438,14 +438,22 @@ export function cardSchedule(s, txs, now = new Date()) {
   const man = {}; let manualSum = 0;
   for (const dt of dates) if (edits[dt] != null) { man[dt] = Math.max(0, round(edits[dt])); manualSum += man[dt]; }
   const autoCount = dates.filter((dt) => man[dt] == null).length;       // paydays still auto-split
-  const autoPerWeek = autoCount > 0 ? round(Math.max(0, bal - manualSum) / autoCount) : 0;
-  let remAuto = Math.max(0, round(bal - manualSum));
-  let autoLeft = autoCount;
+  // The even plan: the balance across every payday you have. Editing one week
+  // leaves the others on this rate rather than re-dividing the whole balance,
+  // so paying extra buys you an earlier finish instead of smaller payments.
+  const autoPerWeek = dates.length ? round(bal / dates.length) : 0;
+
+  let rem = round(bal);
   const payments = [];
   for (const dt of dates) {
-    if (man[dt] != null) payments.push({ date: dt, amount: man[dt], manual: true });
-    else { const amt = autoLeft > 0 ? round(remAuto / autoLeft) : 0; payments.push({ date: dt, amount: amt }); remAuto = round(remAuto - amt); autoLeft--; }
+    if (rem <= 0.005) break;                 // already cleared, so later paydays fall away
+    const want = man[dt] != null ? man[dt] : autoPerWeek;
+    const amt = round(Math.min(want, rem));
+    payments.push({ date: dt, amount: amt, manual: man[dt] != null });
+    rem = round(rem - amt);
   }
+  const shortfall = round(Math.max(0, rem));          // still owing when the paydays run out
+  const dropped = dates.length - payments.length;     // paydays no longer needed
   const wps = weekPaidState(s, txs, now, startDay);
   if (wps.paid && (wps.amount > 0.005 || edits[wps.payday] != null)) {
     const amt = edits[wps.payday] != null ? Math.max(0, round(edits[wps.payday])) : wps.amount;
@@ -454,6 +462,8 @@ export function cardSchedule(s, txs, now = new Date()) {
   const upcoming = payments.filter((p) => !p.paid);
   return {
     payments, balance: bal, weeks: upcoming.length, multi: upcoming.length > 1,
+    shortfall, dropped, edited: Object.keys(man).length, manualSum,
+    plannedEnd: dates.length ? dates[dates.length - 1] : null,
     firstPay: upcoming.length ? upcoming[0].amount : 0,
     autoWeeks: autoCount, autoPerWeek,                                  // ongoing weekly rate (skips paid/zeroed weeks)
     payoffDate: upcoming.length ? upcoming[upcoming.length - 1].date : null,
