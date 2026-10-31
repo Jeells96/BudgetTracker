@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=90';
-import { TRANSFERS } from './defaults.js?v=90';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=90';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=91';
+import { TRANSFERS } from './defaults.js?v=91';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=91';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -344,7 +344,7 @@ function cardSection() {
   const det = cardDetail(s, store.txs);
   const cyc = cycleWindow(now);
   const wp = weekPlan(s, store.txs, now);
-  const cp = cardPlan(s, store.txs, now);
+  const cp = wp.cp;          // the same figures the weekly plan is built from
   const strat = cc.strategy || 'extra';
   const diff = round((cc.manual || 0) - det.computed);
 
@@ -367,6 +367,7 @@ function cardSection() {
 
   const planBlock = wp.cardBalance > 0 ? `
     <div class="week"><span class="muted">Pay off ${money(cp.balance)}</span><b>${money(cp.perWeek)}/Friday</b></div>
+    ${wp.owed - cp.balance > 0.005 ? `<div class="note" style="margin:2px 0 8px">You owe ${money(wp.owed)}. ${money(round(wp.owed - cp.balance))} of that is this week's budgeted spending, which your weekly budget already covers, so the paydown plan works on the rest.</div>` : ''}
     <div class="field" style="margin:8px 0 2px"><label>Pay off by<br><span class="muted" style="font-size:.8rem">${cc.payoffBy ? 'custom date' : 'default: end of this month'}</span></label>
       <input type="date" value="${cc.payoffBy || ''}" min="${today()}" data-cc="payoffBy"></div>
     <details class="collapse"><summary>Where the extra comes from · <b>${{ extra: 'Use leftover', spend: 'Spend less', save: 'Save less', split: 'Split both', stretch: 'Stretch payoff' }[strat] || 'Use leftover'}</b></summary>
@@ -864,7 +865,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=90'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=91'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();

@@ -483,7 +483,12 @@ export function weekPlan(s, txs, now = new Date()) {
   const strat = cp.balance > 0 ? (s.cc.strategy || 'extra') : 'none';
   const o = cp.options;
 
-  const sch = cardSchedule(s, txs, now);          // the real balance, for the card section
+  // The schedule has to be built from the same balance the weekly plan is sized
+  // off, or the payments listed can't add up to the payment asked for. Budgeted
+  // card spending is already covered by the week's own budget, so asking the
+  // paydown plan to clear it as well would charge you for it twice.
+  const ptx = planTxsFor(s, txs, now);
+  const sch = cardSchedule(s, ptx, now);
   if (cp.balance > 0) {
     if (strat === 'spend') everyday = o.spend.newSpend;
     else if (strat === 'save') savings = o.save.newSave;
@@ -511,6 +516,8 @@ export function weekPlan(s, txs, now = new Date()) {
     standard: sw,
     rec: { pay, bills, groceries, everyday, savings, extra, leftover },
     goal: weeklyGoal(s),
+    cp,                                            // so the card section shows the same figures
+    owed: cardBalance(s, txs),                     // what the statement says, before any of that
     strategy: strat, cardBalance: cp.balance, cardPerWeek: cp.perWeek, cardNeed: cp.need,
     spendCut: round(Math.max(0, sw.everyday - everyday)), saveCut: round(Math.max(0, sw.savings - savings)),
     fromLeftover,
