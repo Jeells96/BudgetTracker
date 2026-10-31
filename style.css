@@ -629,3 +629,21 @@ nav#tabs button.on { background:var(--ink); color:var(--canvas); }
 .sch-row.head .sch-n .op { flex:none; }
 .sch-row.paid { opacity:.6; }
 .sch-row.paid .sch-n { justify-content:flex-end; }
+
+/* Payoff schedule: one dropdown per payday */
+details.sch-row { display:block; padding:0; border-top:1px solid var(--hair); }
+details.sch-row:first-of-type { border-top:0; }
+details.sch-row > summary { display:flex; align-items:center; gap:10px; padding:13px 0; cursor:pointer; list-style:none; }
+details.sch-row > summary::-webkit-details-marker { display:none; }
+details.sch-row > summary .sch-d { flex:1; min-width:0; font-size:.88rem; display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
+details.sch-row > summary .sch-tot { flex:none; font-weight:600; font-variant-numeric:tabular-nums; }
+details.sch-row > summary .chev { flex:none; color:var(--muted); transition:transform .18s ease; }
+details.sch-row[open] > summary .chev { transform:rotate(90deg); }
+details.sch-row.man > summary .sch-tot { color:var(--accent); }
+.sch-edit { padding:2px 0 14px; }
+.se-row { display:flex; align-items:center; gap:10px; padding:7px 0; font-size:.86rem; }
+.se-row > span:first-child { flex:1; min-width:0; color:var(--muted); }
+.se-row b { flex:none; font-variant-numeric:tabular-nums; }
+.se-row.tot > span:first-child { color:var(--ink); font-weight:500; }
+.se-in { flex:none; display:flex; align-items:center; gap:6px; }
+.se-in .ccinput { width:110px; text-align:right; }

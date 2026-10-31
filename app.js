@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=108';
-import { TRANSFERS } from './defaults.js?v=108';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=108';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=109';
+import { TRANSFERS } from './defaults.js?v=109';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=109';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -338,22 +338,25 @@ function payoffScheduleHTML(sch) {
     const tag = paid ? ' <span class="paidtag">✓ paid</span>'
       : p.manual ? ' <span class="mantag">edited</span>'
       : trimmed ? ' <span class="mantag">what\'s left</span>' : '';
-    const revert = p.manual && !paid ? `<button class="cellx" data-act="cc-pay-clear" data-id="${p.date}" title="Back to the plan">↺</button>` : '';
+    const revert = p.manual && !paid ? `<button class="btn block" data-act="cc-pay-clear" data-id="${p.date}" style="margin-top:8px">↺ Back to the plan</button>` : '';
     if (paid) {
       return `<div class="sch-row paid"><div class="sch-d">${label(p.date)}${tag}</div>
         <div class="sch-n"><b class="sch-tot">${money(p.amount)}</b></div></div>`;
     }
-    return `<div class="sch-row${p.manual ? ' man' : ''}"><div class="sch-d">${label(p.date)}${tag}${revert}</div>
-      <div class="sch-n">
-        <span class="sch-plan">${money(plan)}</span>
-        <span class="op">${delta < 0 ? '−' : '+'}</span>
-        <input class="ccinput adj${delta ? ' on' : ''}" type="text" inputmode="decimal" value="${delta ? fmtNum(Math.abs(delta)) : ''}" placeholder="0" data-cc-delta="${p.date}" aria-label="Adjustment">
-        <span class="op">=</span>
-        <input class="ccinput tot" type="text" inputmode="decimal" value="${fmtNum(p.amount)}" data-cc-pay="${p.date}" aria-label="Total to pay">
-      </div></div>`;
+    // Closed, a payday is just a date and what you'd pay. Open it to change it.
+    return `<details class="sch-row${p.manual ? ' man' : ''}" ${openAttr('pay-' + p.date)}>
+      <summary><span class="sch-d">${label(p.date)}${tag}</span><b class="sch-tot">${money(p.amount)}</b><span class="chev">›</span></summary>
+      <div class="sch-edit">
+        <div class="se-row"><span>Plan</span><b>${money(plan)}</b></div>
+        <div class="se-row"><span>Adjust by</span>
+          <span class="se-in"><span class="op">${delta < 0 ? '−' : '+'}</span>
+          <input class="ccinput adj${delta ? ' on' : ''}" type="text" inputmode="decimal" value="${delta ? fmtNum(Math.abs(delta)) : ''}" placeholder="0" data-cc-delta="${p.date}" aria-label="Adjustment"></span></div>
+        <div class="se-row tot"><span>Pay this Friday</span>
+          <span class="se-in"><input class="ccinput tot" type="text" inputmode="decimal" value="${fmtNum(p.amount)}" data-cc-pay="${p.date}" aria-label="Total to pay"></span></div>
+        ${revert}
+      </div></details>`;
   }).join('');
-  const schHead = `<div class="sch-row head"><div class="sch-d"></div>
-    <div class="sch-n"><span>Plan</span><span class="op"></span><span>Adjust</span><span class="op"></span><span>Total</span></div></div>`;
+  const schHead = '';
   const endD = sch.payoffDate || sch.end;
   const head = `<div class="week"><span class="muted">Payoff plan · ${sch.weeks} payment${sch.weeks === 1 ? '' : 's'}</span><b class="goodtext">clear by ${parseYmd(endD).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</b></div>`;
 
@@ -412,7 +415,16 @@ function strategyPicker(cp, strategy) {
         .map(([k, label, pct, left, cut]) => `<div class="sp-row"><label>${label}<div class="sp-s">${money(cut)} to the card</div></label>
           <input type="text" inputmode="decimal" value="${fmtNum(pct)}" data-splitpct="${k}" aria-label="${label} percent"><span>%</span>
           <input type="text" inputmode="decimal" value="${fmtNum(left)}" data-splitamt="${k}" aria-label="${label} left"></div>`).join('')}
-      <div class="note">How much of each goes to the card. 100% leaves nothing; the box on the right is what you'd have left, and setting either one moves the other. Together they need to cover ${money(cp.need)} this week${o.split.short > 0 ? ` — still ${money(o.split.short)} short` : o.split.over > 0 ? `, and ${money(o.split.over)} over goes straight off the card` : ''}.</div>
+      <div class="note">How much of each goes to the card. 100% leaves nothing; the box on the right is what you'd have left, and setting either one moves the other.</div>
+      <div class="se-row tot" style="border-top:1px solid var(--hair);margin-top:8px;padding-top:9px">
+        <span>This Friday's payment</span><b>${money(cp.perWeek)}</b></div>
+      <div class="se-row"><span>Your leftover covers</span><b>${money(cp.extra)}</b></div>
+      <div class="se-row"><span>So these need to find</span><b>${money(cp.need)}</b></div>
+      <div class="se-row"><span>They free</span><b class="${o.split.short > 0 ? 'negtext' : 'goodtext'}">${money(o.split.freed)}</b></div>
+      <div class="note" style="margin-top:6px">${o.split.short > 0
+        ? `<b class="negtext">${money(o.split.short)} short</b> of this Friday's payment.`
+        : o.split.over > 0 ? `Covers it, with ${money(o.split.over)} over.`
+        : 'Covers it exactly.'}</div>
     </div>` : ''}
     ${opt('stretch', 'Stretch payoff', `${money(cp.stretch.perWeek)}/wk over ${cp.stretch.weeks} weeks — pay off a bit later`)}
   </div>`;
@@ -989,7 +1001,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=108'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=109'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();

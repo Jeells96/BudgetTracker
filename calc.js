@@ -489,7 +489,10 @@ export function cardPlan(s, txs, now = new Date()) {
   // Size everything off the actual ongoing weekly payment (balance ÷ the paydays
   // still left to auto-pay — skips a week you've already paid or zeroed out).
   const weeks = Math.max(1, sch.autoWeeks);
-  const perWeek = sch.autoPerWeek;
+  // What THIS week has to find, which is the next payment on the schedule —
+  // including any adjustment you made to it. Sizing the week off the even rate
+  // while the schedule asked for something else is how the two disagreed.
+  const perWeek = sch.firstPay > 0.005 ? sch.firstPay : sch.autoPerWeek;
   const extra = Math.max(0, sw.extra);                 // leftover after everyday spending
   const need = Math.max(0, round(perWeek - extra));    // what leftover can't cover
   const spendCut = Math.min(need, s.weeklyBudget), saveCut = Math.min(need, s.weeklySavings);
