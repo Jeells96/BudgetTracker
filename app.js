@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=87';
-import { TRANSFERS } from './defaults.js?v=87';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=87';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=88';
+import { TRANSFERS } from './defaults.js?v=88';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=88';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -834,7 +834,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=87'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=88'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -857,6 +857,16 @@ async function bankLoad(resume) {
   const [res, box] = await Promise.all([b.listItems(), b.inbox()]);
   bankUI.items = res.items || [];
   if (bankUI.items.length && !S().bankOn) { S().bankOn = true; saveSettings(); }
+
+  // Banks linked before webhooks existed need pointing at it once. New ones are
+  // already pointed there by the link token.
+  if (bankUI.items.length && !S().webhooksAt) {
+    try {
+      const r = await b.registerWebhooks();
+      S().webhooksAt = Date.now(); saveSettings(false);
+      if (r.registered) console.log('webhooks registered for', r.registered, 'bank(s)');
+    } catch (e) { console.warn('webhook registration failed', e); }
+  }
 
   // Card charges become loose logs by themselves — you turn each one into a real
   // transaction when you're ready, and nothing counts until you do. A refund or a

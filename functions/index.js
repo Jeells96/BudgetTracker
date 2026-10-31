@@ -8,7 +8,7 @@
  * Access tokens live in /plaidItems/{uid}/items/{itemId}, which firestore.rules
  * denies to every client. The Admin SDK bypasses rules, so only this code reads them.
  */
-const { onCall, HttpsError } = require('firebase-functions/v2/https');
+const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
 const { defineSecret } = require('firebase-functions/params');
 const { setGlobalOptions } = require('firebase-functions/v2');
 const admin = require('firebase-admin');
@@ -28,6 +28,11 @@ const PLAID_ENV = process.env.PLAID_ENV === 'production' ? 'production' : 'sandb
 // Blank means "don't send one". Sending a redirect_uri Plaid hasn't got on file
 // fails /link/token/create outright, so it has to be clearable without a deploy.
 const REDIRECT_URI = (process.env.PLAID_REDIRECT_URI || '').trim();
+
+// Where Plaid tells us new activity has landed, instead of us guessing how long
+// a refresh takes. /transactions/refresh is asynchronous; this is the signal
+// that it finished.
+const WEBHOOK_URL = 'https://us-central1-bestball-fantasy.cloudfunctions.net/plaidWebhook';
 
 setGlobalOptions({ region: 'us-central1', maxInstances: 3, timeoutSeconds: 180 });
 const withSecrets = { secrets: [PLAID_CLIENT_ID, PLAID_SECRET] };
@@ -106,6 +111,7 @@ exports.createLinkToken = onCall(withSecrets, async (req) => {
       products: ['transactions'],
       country_codes: ['US'],
       language: 'en',
+      webhook: WEBHOOK_URL,
       ...(REDIRECT_URI ? { redirect_uri: REDIRECT_URI } : {}),
     });
   } catch (e) { throw plaidError(e, 'Could not start Plaid Link'); }
@@ -146,6 +152,7 @@ exports.exchangePublicToken = onCall(withSecrets, async (req) => {
   const roles = {};
   accounts.forEach((a) => { roles[a.account_id] = defaultRole(a); });
 
+  await db.collection('plaidItemIndex').doc(itemId).set({ uid, linkedAt: admin.firestore.FieldValue.serverTimestamp() });
   await itemsCol(uid).doc(itemId).set({
     accessToken, itemId, accounts, roles, balances,
     startDate: new Date().toISOString().slice(0, 10),
@@ -208,7 +215,7 @@ exports.recentActivity = onCall(withSecrets, async (req) => {
   if (req.data && req.data.refresh) {
     let any = false;
     for (const doc of items.docs) any = (await refreshItem(api, doc, doc.data(), 0)) || any;
-    if (any) await wait(5000);
+    if (any) await wait(9000);   // the extraction is asynchronous; give it a moment
   }
 
   for (const doc of items.docs) {
@@ -245,6 +252,56 @@ exports.recentActivity = onCall(withSecrets, async (req) => {
   return { days, transactions: out };
 });
 
+/**
+ * Plaid calling to say a bank has new activity. Syncing immediately is what
+ * makes it there before you open the app.
+ *
+ * Deliberately unauthenticated, as webhooks must be. It acts only on item_ids
+ * already in our index, syncs that item into its own owner's inbox, and returns
+ * nothing: the most an unknown caller could achieve is making us re-read a bank
+ * we already read, which refreshItem's own one-a-minute cap limits anyway.
+ */
+exports.plaidWebhook = onRequest(withSecrets, async (req, res) => {
+  try {
+    const body = req.body || {};
+    const { webhook_type: type, webhook_code: code, item_id: itemId } = body;
+    const wanted = ['SYNC_UPDATES_AVAILABLE', 'DEFAULT_UPDATE', 'INITIAL_UPDATE', 'HISTORICAL_UPDATE'];
+    if (type !== 'TRANSACTIONS' || !itemId || !wanted.includes(code)) return res.status(200).send('ignored');
+
+    const idx = await db.collection('plaidItemIndex').doc(itemId).get();
+    if (!idx.exists) return res.status(200).send('unknown item');
+    const uid = idx.data().uid;
+    const itemDoc = await itemsCol(uid).doc(itemId).get();
+    if (!itemDoc.exists) return res.status(200).send('gone');
+
+    const r = await syncOneItem(plaid(), uid, itemDoc, { refreshFirst: false });
+    console.log('webhook', code, itemId, 'added', r.added);
+    return res.status(200).send('ok');
+  } catch (e) {
+    console.error('webhook failed', e);
+    return res.status(200).send('logged');   // never make Plaid retry on our bug
+  }
+});
+
+/** Point an already-linked bank at the webhook, and record who owns it. */
+exports.registerWebhooks = onCall(withSecrets, async (req) => {
+  const uid = uidOf(req);
+  const api = plaid();
+  const items = await itemsCol(uid).get();
+  let done = 0;
+  for (const doc of items.docs) {
+    try {
+      await api.itemWebhookUpdate({ access_token: doc.data().accessToken, webhook: WEBHOOK_URL });
+      await db.collection('plaidItemIndex').doc(doc.id).set({ uid }, { merge: true });
+      done++;
+    } catch (e) {
+      const d = (e && e.response && e.response.data) || {};
+      console.warn('webhook register failed', doc.id, d.error_code || e.message);
+    }
+  }
+  return { registered: done, url: WEBHOOK_URL };
+});
+
 /** Point each account at what it's for. No Plaid call, so no secrets needed. */
 exports.setAccountRoles = onCall(async (req) => {
   const uid = uidOf(req);
@@ -257,38 +314,21 @@ exports.setAccountRoles = onCall(async (req) => {
 });
 
 /** Step 3 — pull new/changed/removed transactions and mirror them into the app. */
-exports.syncTransactions = onCall(withSecrets, async (req) => {
-  const uid = uidOf(req);
-  const api = plaid();
-  const items = await itemsCol(uid).get();
-  if (items.empty) return { added: 0, modified: 0, removed: 0, accounts: 0 };
-  // One bank at a time when asked, so the app can say which it is working on
-  // instead of showing one long unexplained wait.
-  const only = req.data && req.data.itemId;
-
-  // Imports land in an inbox, NOT straight into your transactions. Nothing touches
-  // the weekly budget or the card plan until you accept and categorise it.
+/**
+ * Pull one bank's activity into the inbox.
+ *
+ * Shared by the app and by Plaid's webhook. The webhook passes refreshFirst
+ * false: it fires precisely because the new data is already waiting, so asking
+ * for a refresh would only add a wait.
+ */
+async function syncOneItem(api, uid, itemDoc, { refreshFirst = true } = {}) {
   const txCol = db.collection('users').doc(uid).collection('inbox');
   let added = 0, modified = 0, removed = 0, refreshed = 0;
-  const failed = [];
-
-  const ordered = items.docs
-    .filter((d) => !only || d.id === only)
-    .sort((a, b) => {
-      const card = (d) => (Object.values(d.data().roles || {}).includes('card') ? 0 : 1);
-      return card(a) - card(b);
-    });
-
-  for (const itemDoc of ordered) {
-   // One dead item must not stop the others. Switching between sandbox and
-   // production invalidates the tokens from the environment you left, and those
-   // banks are still listed until you unlink them.
-   try {
     const item = itemDoc.data();
     const roles = item.roles || {};
     // The card is what you look at first, so it gets the longer settle.
     const isCard = Object.values(roles).includes('card');
-    refreshed += (await refreshItem(api, itemDoc, item, isCard ? 5000 : 2500)) ? 1 : 0;
+    if (refreshFirst) refreshed += (await refreshItem(api, itemDoc, item, isCard ? 5000 : 2500)) ? 1 : 0;
     const roleFor = (accountId) => roles[accountId]
       || defaultRole((item.accounts || []).find((a) => a.account_id === accountId));
 
@@ -364,11 +404,39 @@ exports.syncTransactions = onCall(withSecrets, async (req) => {
       more = d.has_more;
     }
     await itemDoc.ref.update({ cursor: cursor || null, balances, syncedAt: admin.firestore.FieldValue.serverTimestamp() });
-   } catch (e) {
-     const d = (e && e.response && e.response.data) || {};
-     console.error('item sync failed', itemDoc.id, d.error_code || e.message);
-     failed.push({ itemId: itemDoc.id, code: d.error_code || 'SYNC_FAILED', message: d.error_message || e.message });
-   }
+  return { added, modified, removed, refreshed };
+}
+
+exports.syncTransactions = onCall(withSecrets, async (req) => {
+  const uid = uidOf(req);
+  const api = plaid();
+  const items = await itemsCol(uid).get();
+  if (items.empty) return { added: 0, modified: 0, removed: 0, accounts: 0, failed: [] };
+  // One bank at a time when asked, so the app can say which it is working on
+  // instead of showing one long unexplained wait.
+  const only = req.data && req.data.itemId;
+
+  const ordered = items.docs
+    .filter((d) => !only || d.id === only)
+    .sort((a, b) => {
+      const card = (d) => (Object.values(d.data().roles || {}).includes('card') ? 0 : 1);
+      return card(a) - card(b);
+    });
+
+  let added = 0, modified = 0, removed = 0, refreshed = 0;
+  const failed = [];
+  for (const itemDoc of ordered) {
+    // One dead item must not stop the others. Switching between sandbox and
+    // production invalidates the tokens from the environment you left, and those
+    // banks are still listed until you unlink them.
+    try {
+      const r = await syncOneItem(api, uid, itemDoc);
+      added += r.added; modified += r.modified; removed += r.removed; refreshed += r.refreshed;
+    } catch (e) {
+      const d = (e && e.response && e.response.data) || {};
+      console.error('item sync failed', itemDoc.id, d.error_code || e.message);
+      failed.push({ itemId: itemDoc.id, code: d.error_code || 'SYNC_FAILED', message: d.error_message || e.message });
+    }
   }
   return { added, modified, removed, refreshed, accounts: ordered.length, failed };
 });
