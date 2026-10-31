@@ -594,3 +594,5 @@ nav#tabs button.on { background:var(--ink); color:var(--canvas); }
   background:color-mix(in srgb,var(--bad) 12%,transparent); border:1px solid color-mix(in srgb,var(--bad) 34%,transparent); }
 .warn b { font-weight:650; }
 .warn.soft { background:var(--raise); border-color:var(--hair); }
+.shorttag { font-size:.7rem; font-weight:600; color:var(--bad); white-space:nowrap;
+  background:color-mix(in srgb,var(--bad) 14%,transparent); padding:2px 6px; border-radius:999px; margin-left:6px; }

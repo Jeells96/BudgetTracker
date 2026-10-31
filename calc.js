@@ -589,6 +589,11 @@ export function weekPlan(s, txs, now = new Date()) {
     standard: sw,
     rec: { pay, bills, groceries, everyday, savings, extra, leftover },
     goal: weeklyGoal(s),
+    // What the week actually puts on the card, against what the payoff plan
+    // asked for. A plan can be underfunded without anything being wrong with
+    // the arithmetic, and the Plan page has to say so rather than look settled.
+    cardShort: round(Math.max(0, (cp.balance > 0 ? cp.perWeek : 0) - extra)),
+    cardAsked: cp.balance > 0 ? cp.perWeek : 0,
     cp,                                            // so the card section shows the same figures
     owed: cardBalance(s, txs),                     // what the statement says, before any of that
     strategy: strat, cardBalance: cp.balance, cardPerWeek: cp.perWeek, cardNeed: cp.need,

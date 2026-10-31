@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=98';
-import { TRANSFERS } from './defaults.js?v=98';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=98';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=99';
+import { TRANSFERS } from './defaults.js?v=99';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=99';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -535,10 +535,14 @@ function planValues() {
     pay, bills, groceries, everyday, savings, extra, leftover };
 }
 
-function calloutHTML(leftover) {
-  return leftover < 0
-    ? `You're <b>${money(-leftover)}</b> short this week — trim a line above or change your card strategy.`
-    : `You've got <b>${money(leftover)}</b> left over this week after everything.`;
+function calloutHTML(leftover, cardShort = 0) {
+  if (leftover < 0) return `You're <b>${money(-leftover)}</b> short this week — trim a line above or change your card strategy.`;
+  // Nothing left over is only good news if the card is actually being covered.
+  if (cardShort > 0.005) {
+    return `This week puts <b>${money(cardShort)}</b> less on the card than the payoff date needs. `
+      + `Free up more below, or move the date out.`;
+  }
+  return `You've got <b>${money(leftover)}</b> left over this week after everything.`;
 }
 
 // Live update of the derived cells while the user edits — no save, no full re-render.
@@ -547,7 +551,8 @@ function planRecalc() {
   const cb = $('#plan-combined'); if (cb) cb.textContent = money(round(p.everyday + p.extra));
   const lo = $('#plan-leftover'); if (lo) lo.textContent = money(p.leftover);
   const loRow = $('#plan-leftover-row'); if (loRow) { loRow.classList.toggle('neg', p.leftover < 0); loRow.classList.toggle('total', p.leftover >= 0); }
-  const co = $('#plan-callout'); if (co) { co.className = 'callout ' + (p.leftover < 0 ? 'bad' : 'good'); co.innerHTML = calloutHTML(p.leftover); }
+  const cs = p.wp.cardShort || 0;
+  const co = $('#plan-callout'); if (co) { co.className = 'callout ' + (p.leftover < 0 || cs > 0.005 ? 'bad' : 'good'); co.innerHTML = calloutHTML(p.leftover, cs); }
   const rb = $('#plan-reset-btn'); if (rb) rb.hidden = false;
 }
 
@@ -583,6 +588,9 @@ function planTab() {
   ].filter(Boolean).join(' + ');
   const cardNote = wp.cardBalance > 0
     ? `Card paydown <b>${money(rc.extra)}</b>${cuts ? ` = ${cuts}` : ' from your leftover'} · balance ${money(sch.balance)}`
+      + (wp.cardShort > 0.005
+        ? ` — <b class="negtext">${money(wp.cardShort)} short</b> of the ${money(wp.cardAsked)} a week this payoff date needs.`
+        : '')
     : '';
 
   // Indented editable sub-row (used inside the merged Spending + card group).
@@ -600,7 +608,7 @@ function planTab() {
     ? `<div class="trow grouphdr"><span>Spending + credit card</span><span class="b">${money(st.everyday)}</span><span class="n" id="plan-combined">${money(p.everyday + p.extra)}</span></div>
        ${subrow('Spending', 'everyday')}
        ${liveChip}
-       ${subrow('Card paydown', 'extra', 0)}`
+       ${subrow('Card paydown' + (wp.cardShort > 0.005 ? ` <span class="shorttag">${money(wp.cardShort)} short</span>` : ''), 'extra', 0)}`
     : `${erow('Everyday spending', 'everyday', liveChip)}${erow('Extra', 'extra')}`;
 
   // Where the trimmed spending number actually comes from.
@@ -622,7 +630,7 @@ function planTab() {
       ${erow('Savings', 'savings')}
       <div class="trow ${p.leftover < 0 ? 'neg' : 'total'}" id="plan-leftover-row"><span>Leftover / extra</span><span class="b">${money(p.hasCard ? st.extra : 0)}</span><span class="n" id="plan-leftover">${money(p.leftover)}</span></div>
     </div>
-    <div class="callout ${p.leftover < 0 ? 'bad' : 'good'}" id="plan-callout">${calloutHTML(p.leftover)}</div>
+    <div class="callout ${p.leftover < 0 || wp.cardShort > 0.005 ? 'bad' : 'good'}" id="plan-callout">${calloutHTML(p.leftover, wp.cardShort)}</div>
     <button class="btn block" id="plan-reset-btn" data-act="plan-reset" ${edited ? '' : 'hidden'}>↺ Reset to recommended</button>
     ${trimNote}
     ${cardNote ? `<p class="note">${cardNote}</p>` : ''}`;
@@ -910,7 +918,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=98'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=99'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
