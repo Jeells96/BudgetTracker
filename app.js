@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=111';
-import { TRANSFERS } from './defaults.js?v=111';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=111';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=113';
+import { TRANSFERS } from './defaults.js?v=113';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=113';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -328,13 +328,19 @@ function payoffScheduleHTML(sch) {
   // and what you'd actually pay. The adjustment is the one you reach for most,
   // but the planned figure stays editable too.
   const base = sch.autoPerWeek;
+  const edits = S().cc.planEdits || {};
   const rows = sch.payments.map((p) => {
     const paid = !!p.paid;
-    const wanted = p.manual ? null : base;
     // The last payment is whatever is left, which isn't an adjustment you made.
     const trimmed = !p.manual && p.amount < base - 1;   // a rounding cent isn't "what's left" 
     const plan = paid || trimmed ? p.amount : base;
-    const delta = p.manual ? round(p.amount - base) : 0;
+    // Read the adjustment from what you typed, not from what was scheduled: the
+    // balance caps the payment, and rewriting your number to match that cap made
+    // it impossible to type a round figure.
+    const asked = edits[p.date];
+    const shown = p.manual && asked != null ? round(asked) : p.amount;
+    const delta = p.manual && asked != null ? round(asked - base) : 0;
+    const capped = p.manual && asked != null && asked - p.amount > 0.005;
     const tag = paid ? ' <span class="paidtag">✓ paid</span>'
       : p.manual ? ' <span class="mantag">edited</span>'
       : trimmed ? ' <span class="mantag">what\'s left</span>' : '';
@@ -345,14 +351,15 @@ function payoffScheduleHTML(sch) {
     }
     // Closed, a payday is just a date and what you'd pay. Open it to change it.
     return `<details class="sch-row${p.manual ? ' man' : ''}" ${openAttr('pay-' + p.date)}>
-      <summary><span class="sch-d">${label(p.date)}${tag}</span><b class="sch-tot">${money(p.amount)}</b><span class="chev">›</span></summary>
+      <summary><span class="sch-d">${label(p.date)}${tag}</span><b class="sch-tot">${money(shown)}</b><span class="chev">›</span></summary>
       <div class="sch-edit">
         <div class="se-row"><span>Plan</span><b>${money(plan)}</b></div>
         <div class="se-row"><span>Adjust by</span>
           <span class="se-in"><span class="op">${delta < 0 ? '−' : '+'}</span>
           <input class="ccinput adj${delta ? ' on' : ''}" type="text" inputmode="decimal" value="${delta ? fmtNum(Math.abs(delta)) : ''}" placeholder="0" data-cc-delta="${p.date}" aria-label="Adjustment"></span></div>
         <div class="se-row tot"><span>Pay this Friday</span>
-          <span class="se-in"><input class="ccinput tot" type="text" inputmode="decimal" value="${fmtNum(p.amount)}" data-cc-pay="${p.date}" aria-label="Total to pay"></span></div>
+          <span class="se-in"><input class="ccinput tot" type="text" inputmode="decimal" value="${fmtNum(shown)}" data-cc-pay="${p.date}" aria-label="Total to pay"></span></div>
+        ${capped ? `<div class="note">${money(p.amount)} clears the whole balance, so that's all that would actually go.</div>` : ''}
         ${revert}
       </div></details>`;
   }).join('');
@@ -418,10 +425,11 @@ function mixEditor(cp) {
     ${rows}
     <div class="note">What share of each goes to the card. 100% leaves nothing; the box on the right is what you'd keep, and setting either one moves the other.</div>
     <div class="se-row tot" style="border-top:1px solid var(--hair);margin-top:8px;padding-top:9px">
-      <span>This Friday's payment</span><b>${money(cp.perWeek)}</b></div>
+      <span>The weekly payment</span><b>${money(cp.perWeek)}</b></div>
     <div class="se-row"><span>These free</span><b class="${m.short > 0 ? 'negtext' : 'goodtext'}">${money(m.freed)}</b></div>
+    <div class="note" style="margin-top:4px">Adjusting a payday is money from elsewhere, so it isn't counted here.</div>
     <div class="note" style="margin-top:6px">${m.short > 0
-      ? `<b class="negtext">${money(m.short)} short</b> of this Friday's payment.`
+      ? `<b class="negtext">${money(m.short)} short</b> of the weekly payment.`
       : m.over > 0 ? `Covers it, with ${money(m.over)} over — that goes to the card too, clearing it sooner. Lower a percentage to keep it instead.` : 'Covers it exactly.'}</div>
     ${m.short > 0 ? `<button class="btn block" data-act="cc-split-cover" style="margin-top:8px">Set these to cover it</button>` : ''}
   </div>`;
@@ -984,7 +992,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=111'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=113'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
