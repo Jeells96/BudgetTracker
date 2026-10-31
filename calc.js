@@ -247,12 +247,31 @@ export function cycleWindow(now = new Date()) {
 
 // What the app computes the balance to be: starting balance + credit-card
 // purchases logged since the baseline date − card payments since then.
+/**
+ * Does this belong AFTER the balance you stated?
+ *
+ * A balance given "as of" a day is the balance at that moment, so only what
+ * happened afterwards counts. Three cases on the day itself:
+ *   - imported from the bank: no. The figure you typed came off the bank, so it
+ *     already covers everything the bank knew that day, pending charges included.
+ *   - entered by you before the reset: no, it's behind the figure you gave.
+ *   - entered by you after it: yes, that's new.
+ */
+function afterReset(t, asOf, asOfAt) {
+  if (t.date > asOf) return true;
+  if (t.date < asOf) return false;
+  if (t.src === 'bank') return false;
+  return (+t.at || 0) > asOfAt;
+}
+
 export function cardDetail(s, txs) {
   const start = s.cc.start || 0, asOf = s.cc.asOf;
-  const rawCredit = asOf ? sum(txs.filter((t) => t.type === 'expense' && t.pay !== 'cash' && t.date >= asOf).map(txNet)) : 0;
+  const asOfAt = +s.cc.asOfAt || 0;
+  const keep = (t) => afterReset(t, asOf, asOfAt);
+  const rawCredit = asOf ? sum(txs.filter((t) => t.type === 'expense' && t.pay !== 'cash' && keep(t)).map(txNet)) : 0;
   const adj = s.cc.chargesAdj || 0;                 // manual correction; new purchases still add on top
   const credit = round(rawCredit + adj);
-  const paid = asOf ? sum(txs.filter((t) => t.type === 'transfer' && t.category === 'card' && t.date >= asOf).map((t) => t.amount)) : 0;
+  const paid = asOf ? sum(txs.filter((t) => t.type === 'transfer' && t.category === 'card' && keep(t)).map((t) => t.amount)) : 0;
   return { start, asOf, rawCredit, adj, credit, paid, computed: Math.max(0, round(start + credit - paid)) };
 }
 export const cardComputed = (s, txs) => cardDetail(s, txs).computed;
@@ -269,7 +288,7 @@ export function rollCardBaseline(s, txs, now = new Date()) {
   const creditBefore = sum(txs.filter((t) => t.type === 'expense' && t.pay !== 'cash' && t.date >= cc.asOf && t.date < cyc).map((t) => t.amount));
   const paidBefore = sum(txs.filter((t) => t.type === 'transfer' && t.category === 'card' && t.date >= cc.asOf && t.date < cyc).map((t) => t.amount));
   const newStart = Math.max(0, round((cc.start || 0) + creditBefore + (cc.chargesAdj || 0) - paidBefore));
-  return { ...cc, start: newStart, asOf: cyc, chargesAdj: 0 };
+  return { ...cc, start: newStart, asOf: cyc, chargesAdj: 0, asOfAt: 0 };
 }
 
 // The balance the rest of the app uses: computed in auto mode, your typed number in manual.

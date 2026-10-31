@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=91';
-import { TRANSFERS } from './defaults.js?v=91';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=91';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=92';
+import { TRANSFERS } from './defaults.js?v=92';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=92';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -865,7 +865,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=91'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=92'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -936,9 +936,9 @@ async function bankLoad(resume) {
 function applyTxRule(rule, it) {
   if (!rule || rule === '__skip') return false;
   const base = { amount: it.amount, date: it.date, note: it.note || '' };
-  if (rule === 'i') { addTx({ ...base, type: 'income', category: 'income' }); return true; }
-  if (rule.startsWith('t:')) { addTx({ ...base, type: 'transfer', category: rule.slice(2) }); return true; }
-  if (rule.startsWith('e:')) { addTx({ ...base, type: 'expense', category: rule.slice(2), pay: it.pay || 'credit' }); return true; }
+  if (rule === 'i') { addTx({ ...base, type: 'income', category: 'income', src: 'bank' }); return true; }
+  if (rule.startsWith('t:')) { addTx({ ...base, type: 'transfer', category: rule.slice(2), src: 'bank' }); return true; }
+  if (rule.startsWith('e:')) { addTx({ ...base, type: 'expense', category: rule.slice(2), pay: it.pay || 'credit', src: 'bank' }); return true; }
   return false;
 }
 
@@ -992,7 +992,7 @@ async function autoFile(b, box) {
 
   let filed = 0;
   for (const a of arrivals) {
-    addTx({ type: 'transfer', category: a.cat, amount: a.it.amount, date: a.it.date, note: a.it.note || '' });
+    addTx({ type: 'transfer', category: a.cat, amount: a.it.amount, date: a.it.date, note: a.it.note || '', src: 'bank' });
     handled.push(a.it);
     filed++;
     const i = others.findIndex((o) => o.type === 'expense' && sameMoney(o.amount, a.it.amount) && nearDate(o.date, a.it.date, 3));
@@ -1565,6 +1565,11 @@ function flowCommit() {
     // Filing an imported paycheque or transfer teaches the rule, so the next one
     // files itself. Purchases never do: those stay yours to categorise.
     const src = (S().pending || []).find((x) => x.id === f.pendingId);
+    if (src && src.source === 'plaid' && result) {
+      // It came off the card, so a balance stated that day already covers it.
+      updateTx(result.id, { src: 'bank' });
+      result.src = 'bank';
+    }
     if (src && src.source === 'plaid' && src.note && (c.type === 'income' || c.type === 'transfer')) {
       const k = billKey(src.note);
       if (k) {
@@ -2050,7 +2055,7 @@ document.addEventListener('click', (e) => {
       const v = prompt('Actual current card balance? (re-baselines, stays on auto)', cur);
       if (v == null) return;
       const n = parseFloat(v); if (!(n >= 0)) return toast('Enter a valid balance');
-      S().cc = { ...S().cc, start: round(n), asOf: today(), chargesAdj: 0 }; saveSettings(); render(); toast('Balance reset'); return;
+      S().cc = { ...S().cc, start: round(n), asOf: today(), asOfAt: Date.now(), chargesAdj: 0 }; saveSettings(); render(); toast('Balance reset'); return;
     }
     case 'cc-week-done': {
       const w = weekPaidState(S(), store.txs, new Date(), S().weekStartDay ?? 5);
@@ -2258,7 +2263,7 @@ document.addEventListener('change', (e) => {
   if (t.id === 'sav-slider') { slideSavings(+t.value); saveSettings(); return; }
   if (t.dataset.set) { S()[t.dataset.set] = num(); saveSettings(); }
   else if (t.hasAttribute('data-billsbal')) { S().billsAcct = { bal: num(), asOf: today() }; saveSettings(); render(); return; }
-  else if (t.dataset.cc === 'start') { S().cc = { ...S().cc, start: num(), asOf: today() }; saveSettings(); }
+  else if (t.dataset.cc === 'start') { S().cc = { ...S().cc, start: num(), asOf: today(), asOfAt: Date.now() }; saveSettings(); }
   else if (t.dataset.cc === 'manual') { S().cc = { ...S().cc, manual: num() }; saveSettings(); }
   else if (t.dataset.cc === 'payoffBy') { S().cc = { ...S().cc, payoffBy: t.value || null }; saveSettings(); }
   else if (t.dataset.ccPay) { const e = { ...(S().cc.planEdits || {}) }; if (t.value.trim() === '') delete e[t.dataset.ccPay]; else e[t.dataset.ccPay] = num(); S().cc = { ...S().cc, planEdits: e }; saveSettings(); }

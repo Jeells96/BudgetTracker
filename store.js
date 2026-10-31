@@ -1,6 +1,6 @@
-import { firebaseConfig } from './firebase-config.js?v=91';
-import { DEFAULT_SETTINGS } from './defaults.js?v=91';
-import { HISTORY } from './history.js?v=91';
+import { firebaseConfig } from './firebase-config.js?v=92';
+import { DEFAULT_SETTINGS } from './defaults.js?v=92';
+import { HISTORY } from './history.js?v=92';
 
 const LS_KEY = 'budget-tracker-v2';
 const CDN = 'https://www.gstatic.com/firebasejs/11.0.2/';
@@ -33,6 +33,7 @@ function normalize(s) {
   out.cc = {
     start: cc.start ?? cc.balance ?? 0,
     asOf: cc.asOf ?? null,
+    asOfAt: +cc.asOfAt || 0,        // the moment a stated balance was given
     mode: cc.mode || 'auto',
     manual: cc.manual ?? cc.balance ?? 0,
     chargesAdj: cc.chargesAdj || 0,
