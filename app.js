@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=105';
-import { TRANSFERS } from './defaults.js?v=105';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=105';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=108';
+import { TRANSFERS } from './defaults.js?v=108';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=108';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -324,12 +324,36 @@ function payoffScheduleHTML(sch) {
   const thisFri = ymd(nextPayday(new Date(), S().weekStartDay ?? 5));
   const dated = (d) => parseYmd(d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
   const label = (d) => d === thisFri ? `This ${dated(d)}` : dated(d);
+  // Three numbers per payday: what the plan asks, what you're changing it by,
+  // and what you'd actually pay. The adjustment is the one you reach for most,
+  // but the planned figure stays editable too.
+  const base = sch.autoPerWeek;
   const rows = sch.payments.map((p) => {
-    const tag = p.paid ? ' <span class="paidtag">✓ paid</span>' : (p.manual ? ' <span class="mantag">edited</span>' : '');
-    const revert = p.manual ? `<button class="link" data-act="cc-pay-clear" data-id="${p.date}" title="Back to auto">↺</button>` : '';
-    return `<div class="sch-row${p.paid ? ' paid' : ''}${p.manual ? ' man' : ''}"><span>${label(p.date)}${tag}</span>
-      <span class="ccedit">${revert}<input class="ccinput" type="text" inputmode="decimal" value="${fmtNum(p.amount)}" data-cc-pay="${p.date}"></span></div>`;
+    const paid = !!p.paid;
+    const wanted = p.manual ? null : base;
+    // The last payment is whatever is left, which isn't an adjustment you made.
+    const trimmed = !p.manual && p.amount < base - 1;   // a rounding cent isn't "what's left" 
+    const plan = paid || trimmed ? p.amount : base;
+    const delta = p.manual ? round(p.amount - base) : 0;
+    const tag = paid ? ' <span class="paidtag">✓ paid</span>'
+      : p.manual ? ' <span class="mantag">edited</span>'
+      : trimmed ? ' <span class="mantag">what\'s left</span>' : '';
+    const revert = p.manual && !paid ? `<button class="cellx" data-act="cc-pay-clear" data-id="${p.date}" title="Back to the plan">↺</button>` : '';
+    if (paid) {
+      return `<div class="sch-row paid"><div class="sch-d">${label(p.date)}${tag}</div>
+        <div class="sch-n"><b class="sch-tot">${money(p.amount)}</b></div></div>`;
+    }
+    return `<div class="sch-row${p.manual ? ' man' : ''}"><div class="sch-d">${label(p.date)}${tag}${revert}</div>
+      <div class="sch-n">
+        <span class="sch-plan">${money(plan)}</span>
+        <span class="op">${delta < 0 ? '−' : '+'}</span>
+        <input class="ccinput adj${delta ? ' on' : ''}" type="text" inputmode="decimal" value="${delta ? fmtNum(Math.abs(delta)) : ''}" placeholder="0" data-cc-delta="${p.date}" aria-label="Adjustment">
+        <span class="op">=</span>
+        <input class="ccinput tot" type="text" inputmode="decimal" value="${fmtNum(p.amount)}" data-cc-pay="${p.date}" aria-label="Total to pay">
+      </div></div>`;
   }).join('');
+  const schHead = `<div class="sch-row head"><div class="sch-d"></div>
+    <div class="sch-n"><span>Plan</span><span class="op"></span><span>Adjust</span><span class="op"></span><span>Total</span></div></div>`;
   const endD = sch.payoffDate || sch.end;
   const head = `<div class="week"><span class="muted">Payoff plan · ${sch.weeks} payment${sch.weeks === 1 ? '' : 's'}</span><b class="goodtext">clear by ${parseYmd(endD).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</b></div>`;
 
@@ -367,7 +391,7 @@ function payoffScheduleHTML(sch) {
   return `<div class="plan">
     ${head}
     ${why}
-    <div class="sched">${rows}</div>
+    <div class="sched">${schHead}${rows}</div>
     ${outcome}</div>`;
 }
 
@@ -965,7 +989,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=105'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=108'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -2411,7 +2435,20 @@ document.addEventListener('change', (e) => {
     saveSettings(false); render(); return;
   }
   else if (t.dataset.cc === 'payoffBy') { S().cc = { ...S().cc, payoffBy: t.value || null }; saveSettings(); }
-  else if (t.dataset.ccPay) { const e = { ...(S().cc.planEdits || {}) }; if (t.value.trim() === '') delete e[t.dataset.ccPay]; else e[t.dataset.ccPay] = num(); S().cc = { ...S().cc, planEdits: e }; saveSettings(); }
+  else if (t.dataset.ccPay || t.dataset.ccDelta) {
+    const date = t.dataset.ccPay || t.dataset.ccDelta;
+    const sch = weekPlan(S(), store.txs, new Date()).sch;
+    const row = sch.payments.find((x) => x.date === date);
+    if (!row || row.paid) return;
+    const planned = sch.autoPerWeek;
+    const total = t.dataset.ccDelta
+      ? round(planned + (t.value.trim() === '' ? 0 : num()))
+      : round(t.value.trim() === '' ? planned : num());
+    const e = { ...(S().cc.planEdits || {}) };
+    if (Math.abs(total - planned) < 0.005) delete e[date]; else e[date] = Math.max(0, total);
+    S().cc = { ...S().cc, planEdits: e };
+    saveSettings(); render(); return;
+  }
   else if (t.dataset.ovignore) { updateTx(t.dataset.ovignore, { exBudget: !t.checked }); openOverage(); render(); return; }
   else if (t.dataset.billfix) { S().bills[billEdit].amount = num(); saveSettings(); drawBillEdit(); return; }
   else if (t.hasAttribute('data-billevery')) { S().bills[billEdit].everyMonths = Math.max(1, Math.round(+t.value || 1)); saveSettings(); drawBillEdit(); render(); return; }

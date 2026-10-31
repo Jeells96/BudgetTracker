@@ -610,3 +610,22 @@ nav#tabs button.on { background:var(--ink); color:var(--canvas); }
 .recbox .rb-ok { color:var(--accent); font-weight:600; padding-top:4px; }
 .recbox .btn.block { margin-top:9px; font-size:.84rem; padding:10px; }
 .warn.soft.good { background:var(--accent-soft); border-color:color-mix(in srgb,var(--accent) 24%,transparent); }
+
+/* Payoff schedule: plan + adjustment = total */
+.sch-row { display:flex; flex-direction:column; gap:7px; padding:11px 0; border-top:1px solid var(--hair); }
+.sch-row:first-child { border-top:0; }
+.sch-row .sch-d { font-size:.87rem; display:flex; align-items:center; gap:7px; }
+.sch-row .sch-n { display:flex; align-items:center; gap:7px; }
+.sch-row .sch-n .ccinput { flex:1; min-width:0; width:auto; text-align:right; }
+.sch-row .sch-n .op { flex:none; color:var(--muted); font-size:.9rem; width:10px; text-align:center; }
+.sch-row .sch-n .sch-tot { flex:1; text-align:right; font-variant-numeric:tabular-nums; font-weight:600; }
+.sch-row .sch-n .sch-plan { flex:1; text-align:right; font-variant-numeric:tabular-nums; color:var(--muted); font-size:.9rem; }
+.sch-row .sch-n .ccinput.tot { font-weight:600; }
+.sch-row .ccinput.adj { color:var(--muted); }
+.sch-row .ccinput.adj.on { color:var(--ink); border-color:var(--accent); }
+.sch-row.head { padding:4px 0 6px; border-top:0; }
+.sch-row.head .sch-n span { flex:1; text-align:right; font-size:.68rem; text-transform:uppercase;
+  letter-spacing:.08em; color:var(--muted); font-weight:600; }
+.sch-row.head .sch-n .op { flex:none; }
+.sch-row.paid { opacity:.6; }
+.sch-row.paid .sch-n { justify-content:flex-end; }
