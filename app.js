@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=101';
-import { TRANSFERS } from './defaults.js?v=101';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=101';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=102';
+import { TRANSFERS } from './defaults.js?v=102';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=102';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -373,16 +373,15 @@ function cardSection() {
   // already billed them, they just aren't categorised yet.
   const rec = cardReconcile();
   const agrees = rec && Math.abs(rec.diff) < 0.01;
-  const recStrip = !rec ? '' : `<div class="recstrip ${agrees ? 'ok' : ''}">
-    <div class="rs-n">
-      <div><b>${esc(rec.name || 'Your card')}</b> says <b>${money(rec.bank)}</b></div>
-      <div class="rs-m">Your log ${money(rec.computed)}${rec.loose ? ` + ${money(rec.loose)} not finished` : ''} = ${money(rec.ours)}${
-        rec.pend && Math.abs(Math.abs(rec.diff) - rec.pend) < 0.02
-          ? `<br>The ${money(rec.pend)} gap is exactly what's pending — the bank hasn't posted it yet, so this will settle itself.`
-          : ''}</div>
-    </div>
-    ${agrees ? '<b class="rs-ok">In step ✓</b>'
-      : `<button class="btn tiny" data-act="cc-match">Off by ${money(Math.abs(rec.diff))} · Match</button>`}
+  const settles = rec && rec.pend && Math.abs(Math.abs(rec.diff) - rec.pend) < 0.02;
+  const recStrip = !rec ? '' : `<div class="recbox ${agrees ? 'ok' : ''}">
+    <div class="rb-row"><span>${esc(rec.name || 'Your card')} says</span><b>${money(rec.bank)}</b></div>
+    <div class="rb-row"><span>Your log${rec.loose ? ` · ${money(rec.computed)} tracked + ${money(rec.loose)} not finished yet` : ''}</span><b>${money(rec.ours)}</b></div>
+    ${agrees ? '<div class="rb-ok">These agree ✓</div>' : `
+      <div class="rb-row diff"><span>Your log is ${money(Math.abs(rec.diff))} ${rec.diff < 0 ? 'higher' : 'lower'} than the bank</span><b class="negtext">${rec.diff < 0 ? '+' : '−'}${money(Math.abs(rec.diff))}</b></div>
+      ${settles
+        ? `<div class="note" style="margin:6px 0 0">That gap is exactly what's pending. The bank hasn't posted it yet, so it settles itself — matching now would only have to be undone.</div>`
+        : `<button class="btn block" data-act="cc-match" style="margin-top:9px">Match the bank · set the tracked balance to ${money(rec.target)}</button>`}`}
   </div>`;
   const hasEdits = cc.planEdits && Object.keys(cc.planEdits).length > 0;
 
@@ -925,7 +924,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=101'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=102'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -1092,7 +1091,7 @@ async function adoptCardCharges(b, loose) {
   if (add.length) {
     S().pending = [...(S().pending || []), ...add.map((it) => ({
       id: uid(), srcId: it.id, amount: it.amount, date: it.date, note: it.note || '',
-      source: 'plaid', account: it.account || null, pend: !!it.pending
+      at: Date.now(), source: 'plaid', account: it.account || null, pend: !!it.pending
     }))];
   }
   if (add.length || filed) saveSettings();
@@ -1167,9 +1166,17 @@ function cardReconcile() {
   const pend = +pb.pending || 0;
   const bank = posted;
   const computed = cardDetail(s, store.txs).computed;
-  const loose = round((s.pending || []).filter((p) => p.source === 'plaid').reduce((n, p) => n + (+p.amount || 0), 0));
+  // A loose log that was already sitting there when you typed the balance was
+  // already on the card, so it's inside the figure you gave — exactly the rule
+  // the tracked charges follow.
+  const asOf = s.cc.asOf, asOfAt = +s.cc.asOfAt || 0;
+  const counts = (p) => !asOf || afterReset({ date: p.date, at: p.at, src: p.source === 'plaid' ? 'bank' : '' }, asOf, asOfAt);
+  const loose = round((s.pending || []).filter((p) => p.source === 'plaid').filter(counts)
+    .reduce((n, p) => n + (+p.amount || 0), 0));
   const ours = round(computed + loose);
-  return { posted, pend, bank, asOf: pb.asOf, name: pb.name, computed, loose, ours, diff: round(bank - ours) };
+  // What the tracked balance would become, which is the thing Match actually edits.
+  const target = round(bank - loose);
+  return { posted, pend, bank, asOf: pb.asOf, name: pb.name, computed, loose, ours, target, diff: round(bank - ours) };
 }
 
 const ROLE_OPTS = [
@@ -1425,7 +1432,7 @@ const keypad = () => `<div class="pad">${['1','2','3','4','5','6','7','8','9','.
 function addPending(amt) {
   const a = round(parseFloat(amt) || 0);
   if (!(a > 0)) return;
-  S().pending = [...(S().pending || []), { id: uid(), amount: a, date: today() }];
+  S().pending = [...(S().pending || []), { id: uid(), amount: a, date: today(), at: Date.now() }];
   saveSettings();
 }
 function openTrack() { track = { amt: '', count: 0 }; drawTrack(); $('#sheet').hidden = false; }
@@ -2103,7 +2110,7 @@ document.addEventListener('click', (e) => {
       if (!r || Math.abs(r.diff) < 0.01) return;
       S().cc = { ...S().cc, chargesAdj: round((S().cc.chargesAdj || 0) + r.diff) };
       saveSettings(); render();
-      return toast(`Card matched to ${money(r.bank)}`);
+      return toast(`Tracked balance set to ${money(r.target)}`);
     }
     case 'short-hide': {
       const wp = weekPlan(S(), store.txs, planNow());

@@ -597,3 +597,15 @@ nav#tabs button.on { background:var(--ink); color:var(--canvas); }
 .shorttag { font-size:.7rem; font-weight:600; color:var(--bad); white-space:nowrap;
   background:color-mix(in srgb,var(--bad) 14%,transparent); padding:2px 6px; border-radius:999px; margin-left:6px; }
 .shortshow { display:block; width:100%; text-align:center; margin-top:8px; font-size:.8rem; color:var(--muted); }
+
+/* Does the log agree with the bank? */
+.recbox { border-radius:var(--r); padding:11px 13px; margin:0 0 12px; font-size:.86rem;
+  background:var(--raise); border:1px solid var(--hair); }
+.recbox.ok { background:var(--accent-soft); border-color:color-mix(in srgb,var(--accent) 24%,transparent); }
+.rb-row { display:flex; align-items:baseline; gap:12px; padding:5px 0; }
+.rb-row span { flex:1; min-width:0; color:var(--ink-2); }
+.rb-row b { flex:none; font-variant-numeric:tabular-nums; }
+.rb-row.diff { border-top:1px solid var(--hair); margin-top:4px; padding-top:9px; }
+.rb-row.diff span { color:var(--muted); font-size:.8rem; }
+.recbox .rb-ok { color:var(--accent); font-weight:600; padding-top:4px; }
+.recbox .btn.block { margin-top:9px; font-size:.84rem; padding:10px; }

@@ -257,7 +257,7 @@ export function cycleWindow(now = new Date()) {
  *   - entered by you before the reset: no, it's behind the figure you gave.
  *   - entered by you after it: yes, that's new.
  */
-function afterReset(t, asOf, asOfAt) {
+export function afterReset(t, asOf, asOfAt) {
   if (t.date > asOf) return true;
   if (t.date < asOf) return false;
   if (t.src === 'bank') return false;
