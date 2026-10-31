@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=88';
-import { TRANSFERS } from './defaults.js?v=88';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=88';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=89';
+import { TRANSFERS } from './defaults.js?v=89';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=89';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -282,10 +282,35 @@ function billsAcctCard(s, now = new Date()) {
 }
 
 
+/**
+ * Mark this payday's card payment finished, or re-open it, at any time.
+ *
+ * The question used to be asked once, right after logging a payment, and never
+ * again — so changing your mind, or deciding later that you're done for the
+ * week, had no way of being said.
+ */
+function weekDoneRow() {
+  const s = S();
+  const w = weekPaidState(s, store.txs, new Date(), s.weekStartDay ?? 5);
+  const when = parseYmd(w.payday).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  const marked = s.cc.paidThrough === w.payday;
+  const more = s.cc.paidThrough === 'more:' + w.payday;
+
+  if (marked || (w.paid && !more)) {
+    return `<div class="note" style="margin-top:10px">${w.amount > 0.005
+      ? `${money(w.amount)} paid towards the card for ${when}.`
+      : `Marked done for ${when} without a payment.`}
+      <button class="link" data-act="cc-week-more">I'll put more towards it</button></div>`;
+  }
+  return `<button class="btn block" data-act="cc-week-done" style="margin-top:8px">✓ Done paying the card for ${when}</button>
+    ${more ? `<div class="note">You said more was coming this week${w.amount > 0.005 ? ` — ${money(w.amount)} so far` : ''}.</div>` : ''}`;
+}
+
 function payoffScheduleHTML(sch) {
   if (!sch.payments.length) return '';
   const thisFri = ymd(nextPayday(new Date(), S().weekStartDay ?? 5));
-  const label = (d) => d === thisFri ? 'This Fri' : parseYmd(d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+  const dated = (d) => parseYmd(d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+  const label = (d) => d === thisFri ? `This ${dated(d)}` : dated(d);
   const rows = sch.payments.map((p) => {
     const tag = p.paid ? ' <span class="paidtag">✓ paid</span>' : (p.manual ? ' <span class="mantag">edited</span>' : '');
     const revert = p.manual ? `<button class="link" data-act="cc-pay-clear" data-id="${p.date}" title="Back to auto">↺</button>` : '';
@@ -347,6 +372,7 @@ function cardSection() {
     <details class="collapse"><summary>Where the extra comes from · <b>${{ extra: 'Use leftover', spend: 'Spend less', save: 'Save less', split: 'Split both', stretch: 'Stretch payoff' }[strat] || 'Use leftover'}</b></summary>
       ${strategyPicker(cp, strat)}</details>
     ${payoffScheduleHTML(wp.sch)}
+    ${weekDoneRow()}
     ${hasEdits ? `<button class="btn block" data-act="cc-edits-reset" style="margin-top:8px">↺ Clear manual payment edits</button>` : ''}
     <hr class="sep">` : '';
 
@@ -834,7 +860,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=88'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=89'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -2020,6 +2046,18 @@ document.addEventListener('click', (e) => {
       if (v == null) return;
       const n = parseFloat(v); if (!(n >= 0)) return toast('Enter a valid balance');
       S().cc = { ...S().cc, start: round(n), asOf: today(), chargesAdj: 0 }; saveSettings(); render(); toast('Balance reset'); return;
+    }
+    case 'cc-week-done': {
+      const w = weekPaidState(S(), store.txs, new Date(), S().weekStartDay ?? 5);
+      S().cc = { ...S().cc, paidThrough: w.payday };
+      saveSettings(); render();
+      return toast("Done for this week — the rest is spread over the weeks left");
+    }
+    case 'cc-week-more': {
+      const w = weekPaidState(S(), store.txs, new Date(), S().weekStartDay ?? 5);
+      S().cc = { ...S().cc, paidThrough: 'more:' + w.payday };
+      saveSettings(); render();
+      return toast('Reopened — add the rest when you can');
     }
     case 'cc-pay-clear': { const e = { ...(S().cc.planEdits || {}) }; delete e[id]; S().cc = { ...S().cc, planEdits: e }; saveSettings(); return render(); }
     case 'cc-edits-reset': { S().cc = { ...S().cc, planEdits: {} }; saveSettings(); return render(); }

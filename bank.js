@@ -8,8 +8,8 @@
  * Imported charges land in an inbox you review. Nothing reaches your weekly
  * budget or the card plan until you give it a category and accept it.
  */
-import { fbReady } from './store.js?v=88';
-import { firebaseConfig } from './firebase-config.js?v=88';
+import { fbReady } from './store.js?v=89';
+import { firebaseConfig } from './firebase-config.js?v=89';
 
 const FB = 'https://www.gstatic.com/firebasejs/11.0.2/';
 const LINK_JS = 'https://cdn.plaid.com/link/v2/stable/link-initialize.js';
