@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=102';
-import { TRANSFERS } from './defaults.js?v=102';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=102';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=103';
+import { TRANSFERS } from './defaults.js?v=103';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=103';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -331,8 +331,21 @@ function payoffScheduleHTML(sch) {
   }).join('');
   const endD = sch.payoffDate || sch.end;
   const head = `<div class="week"><span class="muted">Payoff plan · ${sch.weeks} payment${sch.weeks === 1 ? '' : 's'}</span><b class="goodtext">clear by ${parseYmd(endD).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</b></div>`;
+
+  // Where the repeated figure comes from. It's just the balance shared out, but
+  // nothing on the page said so.
+  const manual = sch.payments.filter((p) => p.manual && !p.paid);
+  const manualSum = round(manual.reduce((a, p) => a + p.amount, 0));
+  const paidSum = round(sch.payments.filter((p) => p.paid).reduce((a, p) => a + p.amount, 0));
+  const fridays = `${sch.autoWeeks} ${sch.autoWeeks === 1 ? 'Friday' : 'Fridays'}`;
+  const why = sch.autoWeeks > 0 ? `<div class="note" style="margin:2px 0 8px">${
+      paidSum > 0.005 ? `${money(paidSum)} already paid. ` : ''
+    }${money(sch.balance)} left${manual.length ? ` − ${money(manualSum)} you set by hand` : ''} over ${fridays} = <b>${money(sch.autoPerWeek)}</b> each.</div>`
+    : '';
+
   return `<div class="plan">
     ${head}
+    ${why}
     <div class="sched">${rows}</div></div>`;
 }
 
@@ -924,7 +937,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=102'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=103'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
