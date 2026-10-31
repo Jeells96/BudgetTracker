@@ -1,6 +1,6 @@
-import { firebaseConfig } from './firebase-config.js?v=110';
-import { DEFAULT_SETTINGS } from './defaults.js?v=110';
-import { HISTORY } from './history.js?v=110';
+import { firebaseConfig } from './firebase-config.js?v=111';
+import { DEFAULT_SETTINGS } from './defaults.js?v=111';
+import { HISTORY } from './history.js?v=111';
 
 const LS_KEY = 'budget-tracker-v2';
 const CDN = 'https://www.gstatic.com/firebasejs/11.0.2/';
@@ -47,7 +47,6 @@ function normalize(s) {
     payoffBy: cc.payoffBy ?? null,
     planEdits: (cc.planEdits && typeof cc.planEdits === 'object') ? cc.planEdits : {},
     shortAck: cc.shortAck || null,   // a silenced underfunding warning
-    overpay: !!cc.overpay,           // hand the card more than the plan asks for
     // What the bank itself says, kept beside the log rather than replacing it.
     plaidBal: (cc.plaidBal && typeof cc.plaidBal === 'object')
       ? { ...cc.plaidBal, pending: +cc.plaidBal.pending || 0 } : null

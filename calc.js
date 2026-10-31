@@ -564,12 +564,12 @@ export function weekPlan(s, txs, now = new Date()) {
   if (cp.balance > 0) {
     everyday = mix.newSpend;
     savings = mix.newSave;
+    // The percentages decide the paydown outright: what they free is what the
+    // card gets. Wanting to keep some of it means lowering a percentage, which
+    // is one control instead of a percentage and a toggle disagreeing.
     avail = mix.freed;
-    // By default the card is paid what the payoff plan asks for and no more, so
-    // anything beyond it stays visible as leftover rather than disappearing into
-    // the card. Turning overpay on hands the surplus over as well.
-    extra = s.cc.overpay ? avail : round(Math.min(avail, cp.perWeek));
-    fromLeftover = round(Math.min(mix.fromLeft, extra));
+    extra = avail;
+    fromLeftover = mix.fromLeft;
     leftover = round(pay - bills - groceries - everyday - savings - extra);
   } else {
     extra = round(pay - bills - groceries - everyday - savings);     // just spare money
@@ -595,7 +595,7 @@ export function weekPlan(s, txs, now = new Date()) {
     // Short is measured against everything the week could free, not against
     // what it chose to hand over, or capping the payment would look like a gap.
     cardShort: round(Math.max(0, (cp.balance > 0 ? cp.perWeek : 0) - Math.max(avail, extra))),
-    surplus, overpay: !!s.cc.overpay,
+    surplus,
     // What would still be owed on the payoff date if every week went like this
     // one — the lump sum that would have to make up the difference.
     cardShortTotal: round(Math.max(0, (cp.balance > 0 ? cp.perWeek : 0) - Math.max(avail, extra)) * Math.max(1, cp.weeks)),
