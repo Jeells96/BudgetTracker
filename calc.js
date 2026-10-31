@@ -461,10 +461,14 @@ export function cardSchedule(s, txs, now = new Date()) {
   };
 }
 
-/** How a split is divided. Each share is a percentage of what's needed. */
+/**
+ * How much of each budget goes to the card, as a percentage of that budget.
+ * 100% hands the whole thing over and leaves nothing, which is why it can't
+ * go above 100: there is no more of it to give.
+ */
 export function splitPct(s) {
   const p = (s && s.cc && s.cc.splitPct) || {};
-  const n = (v, dflt) => { const x = +v; return isFinite(x) && x >= 0 ? Math.min(400, x) : dflt; };
+  const n = (v, dflt) => { const x = +v; return isFinite(x) && x >= 0 ? Math.min(100, x) : dflt; };
   return { spend: n(p.spend, 50), save: n(p.save, 50) };
 }
 
@@ -480,12 +484,12 @@ export function cardPlan(s, txs, now = new Date()) {
   const need = Math.max(0, round(perWeek - extra));    // what leftover can't cover
   const spendCut = Math.min(need, s.weeklyBudget), saveCut = Math.min(need, s.weeklySavings);
 
-  // Split is two shares of what's needed, not necessarily halves and not
-  // necessarily adding to 100: 76/24 splits it unevenly, 100/50 deliberately
-  // frees half again as much and pays the card down faster.
+  // Each side gives up a share of itself: 100% of spending means spending drops
+  // to zero. The two are independent, so 100/50 hands over all of one and half
+  // of the other.
   const pct = splitPct(s);
-  const splitSpend = Math.min(round(need * pct.spend / 100), s.weeklyBudget);
-  const splitSave = Math.min(round(need * pct.save / 100), s.weeklySavings);
+  const splitSpend = Math.min(round(s.weeklyBudget * pct.spend / 100), s.weeklyBudget);
+  const splitSave = Math.min(round(s.weeklySavings * pct.save / 100), s.weeklySavings);
   const stretchWeeks = weeks + 4;
   return {
     balance: bal, weeks, perWeek, extra: round(extra), need,

@@ -584,3 +584,4 @@ nav#tabs button.on { background:var(--ink); color:var(--canvas); }
 .sp-row span { flex:none; color:var(--muted); font-size:.8rem; margin-left:-6px; }
 .sp-row input[data-splitamt] { width:84px; }
 .splitpct .note { margin:8px 0 0; }
+.sp-row .sp-s { font-size:.74rem; color:var(--muted); margin-top:2px; }

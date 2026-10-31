@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=94';
-import { TRANSFERS } from './defaults.js?v=94';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=94';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=95';
+import { TRANSFERS } from './defaults.js?v=95';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=95';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -349,12 +349,12 @@ function strategyPicker(cp, strategy) {
     ${opt('split', 'Split both', `Everyday ${money(o.split.newSpend)} · savings ${money(o.split.newSave)}${
       o.split.short > 0 ? `, still ${money(o.split.short)} short` : o.split.over > 0 ? `, ${money(o.split.over)} extra off the card` : ''}`)}
     ${strategy === 'split' ? `<div class="splitpct">
-      ${[['spend', 'From spending', o.split.pct.spend, o.split.spendCut],
-         ['save', 'From savings', o.split.pct.save, o.split.saveCut]]
-        .map(([k, label, pct, amt]) => `<div class="sp-row"><label>${label}</label>
+      ${[['spend', 'Spending', o.split.pct.spend, o.split.newSpend, o.split.spendCut],
+         ['save', 'Savings', o.split.pct.save, o.split.newSave, o.split.saveCut]]
+        .map(([k, label, pct, left, cut]) => `<div class="sp-row"><label>${label}<div class="sp-s">${money(cut)} to the card</div></label>
           <input type="text" inputmode="decimal" value="${fmtNum(pct)}" data-splitpct="${k}" aria-label="${label} percent"><span>%</span>
-          <input type="text" inputmode="decimal" value="${fmtNum(amt)}" data-splitamt="${k}" aria-label="${label} amount"></div>`).join('')}
-      <div class="note">Shares of the ${money(cp.need)} this week needs — set either the percentage or the amount and the other follows. They don't have to add to 100: go over and the surplus comes straight off the card.</div>
+          <input type="text" inputmode="decimal" value="${fmtNum(left)}" data-splitamt="${k}" aria-label="${label} left"></div>`).join('')}
+      <div class="note">How much of each goes to the card. 100% leaves nothing; the box on the right is what you'd have left, and setting either one moves the other. Together they need to cover ${money(cp.need)} this week${o.split.short > 0 ? ` — still ${money(o.split.short)} short` : o.split.over > 0 ? `, and ${money(o.split.over)} over goes straight off the card` : ''}.</div>
     </div>` : ''}
     ${opt('stretch', 'Stretch payoff', `${money(cp.stretch.perWeek)}/wk over ${cp.stretch.weeks} weeks — pay off a bit later`)}
   </div>`;
@@ -887,7 +887,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=94'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=95'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -2289,12 +2289,13 @@ document.addEventListener('change', (e) => {
   else if (t.dataset.cc === 'manual') { S().cc = { ...S().cc, manual: num() }; saveSettings(); }
   else if (t.dataset.splitpct || t.dataset.splitamt) {
     const side = t.dataset.splitpct || t.dataset.splitamt;
-    const need = cardPlan(S(), planTxsFor(S(), store.txs, new Date()), new Date()).need;
-    // An amount only means a percentage if there's a shortfall to be a share of.
+    const budget = side === 'spend' ? (S().weeklyBudget || 0) : (S().weeklySavings || 0);
+    // The right-hand box is what you keep, so the percentage is how much of the
+    // budget giving that away leaves behind.
     const pct = t.dataset.splitpct
       ? parseNum(t.value)
-      : (need > 0 ? (parseNum(t.value) / need) * 100 : 0);
-    const v = Math.max(0, Math.min(400, round(pct)));
+      : (budget > 0 ? ((budget - parseNum(t.value)) / budget) * 100 : 0);
+    const v = Math.max(0, Math.min(100, round(pct)));
     S().cc = { ...S().cc, splitPct: { ...(S().cc.splitPct || { spend: 50, save: 50 }), [side]: v } };
     saveSettings(false); render(); return;
   }
