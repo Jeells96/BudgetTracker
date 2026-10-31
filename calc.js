@@ -541,7 +541,7 @@ export function weekPlan(s, txs, now = new Date()) {
   const pay = sw.pay;
   const bills = sw.bills;   // the plan's "To bills account" stays your standard amount
   const groceries = sw.groceries;
-  let everyday = sw.everyday, savings = sw.savings, extra, leftover, fromLeftover = 0;
+  let everyday = sw.everyday, savings = sw.savings, extra, leftover, fromLeftover = 0, avail = 0;
   const strat = cp.balance > 0 ? (s.cc.strategy || 'extra') : 'none';
   const o = cp.options;
 
@@ -564,14 +564,14 @@ export function weekPlan(s, txs, now = new Date()) {
       extra = Math.min(cp.perWeek, Math.max(0, sw.extra));
       fromLeftover = extra;
     } else {
-      // Under a cutting strategy the leftover goes to the card too, so freeing
-      // more than the week needs genuinely pays it down faster instead of
-      // quietly handing the surplus back as spare money.
+      // What the week could put on the card: the cuts plus your leftover.
       const cuts = round(Math.max(0, sw.everyday - everyday) + Math.max(0, sw.savings - savings));
-      fromLeftover = cp.need > 0
-        ? round(Math.max(0, sw.extra))
-        : round(Math.min(cp.perWeek, Math.max(0, sw.extra)));
-      extra = round(cuts + fromLeftover);
+      avail = round(cuts + Math.max(0, sw.extra));
+      // By default the card is paid what the payoff plan asks for and no more,
+      // so anything beyond it stays visible as leftover rather than disappearing
+      // into the card. Turning overpay on hands the surplus over as well.
+      extra = s.cc.overpay ? avail : round(Math.min(avail, cp.perWeek));
+      fromLeftover = round(Math.max(0, extra - cuts));
     }
     leftover = round(pay - bills - groceries - everyday - savings - extra);
   } else {
@@ -585,6 +585,9 @@ export function weekPlan(s, txs, now = new Date()) {
     leftover = round(pay - bills - groceries - everyday - savings - extra);
   }
 
+  // Freed but not handed over — offered as a choice rather than taken quietly.
+  const surplus = round(Math.max(0, avail - (cp.balance > 0 ? cp.perWeek : 0)));
+
   return {
     standard: sw,
     rec: { pay, bills, groceries, everyday, savings, extra, leftover },
@@ -592,10 +595,13 @@ export function weekPlan(s, txs, now = new Date()) {
     // What the week actually puts on the card, against what the payoff plan
     // asked for. A plan can be underfunded without anything being wrong with
     // the arithmetic, and the Plan page has to say so rather than look settled.
-    cardShort: round(Math.max(0, (cp.balance > 0 ? cp.perWeek : 0) - extra)),
+    // Short is measured against everything the week could free, not against
+    // what it chose to hand over, or capping the payment would look like a gap.
+    cardShort: round(Math.max(0, (cp.balance > 0 ? cp.perWeek : 0) - Math.max(avail, extra))),
+    surplus, overpay: !!s.cc.overpay,
     // What would still be owed on the payoff date if every week went like this
     // one — the lump sum that would have to make up the difference.
-    cardShortTotal: round(Math.max(0, (cp.balance > 0 ? cp.perWeek : 0) - extra) * Math.max(1, cp.weeks)),
+    cardShortTotal: round(Math.max(0, (cp.balance > 0 ? cp.perWeek : 0) - Math.max(avail, extra)) * Math.max(1, cp.weeks)),
     cardAsked: cp.balance > 0 ? cp.perWeek : 0,
     cp,                                            // so the card section shows the same figures
     owed: cardBalance(s, txs),                     // what the statement says, before any of that

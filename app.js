@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=103';
-import { TRANSFERS } from './defaults.js?v=103';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=103';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=104';
+import { TRANSFERS } from './defaults.js?v=104';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=104';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -604,6 +604,11 @@ function planTab() {
     wp.saveCut > 0.005 ? `${money(wp.saveCut)} less saving` : '',
     wp.fromLeftover > 0.005 ? `${money(wp.fromLeftover)} of your leftover` : ''
   ].filter(Boolean).join(' + ');
+  const overRow = wp.surplus > 0.005 ? `<div class="rowact"><button class="chipbtn ${wp.overpay ? 'on' : ''}" data-act="cc-overpay">${
+    wp.overpay
+      ? `💳 Paying ${money(wp.surplus)} extra off the card — tap to keep it instead`
+      : `💳 Put the spare ${money(wp.surplus)} on the card too`}</button></div>` : '';
+
   const cardNote = wp.cardBalance > 0
     ? `Card paydown <b>${money(rc.extra)}</b>${cuts ? ` = ${cuts}` : ' from your leftover'} · balance ${money(sch.balance)}`
       + (wp.cardShort > 0.005
@@ -626,7 +631,8 @@ function planTab() {
     ? `<div class="trow grouphdr"><span>Spending + credit card</span><span class="b">${money(st.everyday)}</span><span class="n" id="plan-combined">${money(p.everyday + p.extra)}</span></div>
        ${subrow('Spending', 'everyday')}
        ${liveChip}
-       ${subrow('Card paydown' + (wp.cardShort > 0.005 ? ` <span class="shorttag">${money(wp.cardShort)} short</span>` : ''), 'extra', 0)}`
+       ${subrow('Card paydown' + (wp.cardShort > 0.005 ? ` <span class="shorttag">${money(wp.cardShort)} short</span>` : ''), 'extra', 0)}
+       ${overRow}`
     : `${erow('Everyday spending', 'everyday', liveChip)}${erow('Extra', 'extra')}`;
 
   // Where the trimmed spending number actually comes from.
@@ -937,7 +943,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=103'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=104'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -2204,6 +2210,12 @@ document.addEventListener('click', (e) => {
     case 'plan-reset': ui.planDraft[planKey()] = {}; savePlanDraft(); commitPlan(); return render();
     case 'plan-reset-field': { delete planEdits()[id]; savePlanDraft(); commitPlan(); return render(); }
     case 'plan-bills-needed': { planEdits().bills = round(parseFloat(id) || 0); savePlanDraft(); commitPlan(); return render(); }
+    case 'cc-overpay': {
+      S().cc = { ...S().cc, overpay: !S().cc.overpay };
+      delete planEdits().extra; savePlanDraft(); commitPlan();
+      saveSettings(); render();
+      return toast(S().cc.overpay ? 'Spare money goes to the card' : 'Spare money stays as leftover');
+    }
     case 'pay-live': { ui.payLive = !ui.payLive; savePayLive(); delete planEdits().pay; savePlanDraft(); commitPlan(); return render(); }
     case 'plan-live': { ui.planLive = !ui.planLive; savePlanLive(); delete planEdits().everyday; savePlanDraft(); commitPlan(); return render(); }
     case 'trends': return openTrends();
