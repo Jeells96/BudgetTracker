@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=120';
-import { TRANSFERS } from './defaults.js?v=120';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=120';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=121';
+import { TRANSFERS } from './defaults.js?v=121';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=121';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -105,6 +105,15 @@ function header(title, nav = true) {
   return `<div class="top"><div><h1>${title}</h1><div class="muted">${sub}</div></div>${months}</div>`;
 }
 
+// Name the days the week covers. It starts on a Friday, so it often begins in
+// the month before — which is why the week total can be non-zero while the
+// month's own list below is still empty.
+function weekRangeLabel(ws) {
+  const a = parseYmd(ws.start), b = addDays(a, 6);
+  const f = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return `${f(a)} – ${f(b)}`;
+}
+
 function home() {
   const s = S(), ms = MS();
   const pend = s.pending || [];
@@ -119,7 +128,7 @@ function home() {
       ? `<div><b>${money(bal)}</b><span>${cardRet > 0 ? `Card · ${money(cardRet)} to return` : 'Card balance'}</span></div>`
       : `<div><b>${money(s.weeklySavings)}</b><span>Weekly savings</span></div>`;
     hero = `<button class="card hero tappable" data-act="week">
-      <div class="label">Left to spend this week <span class="hint">tap for breakdown ›</span></div>
+      <div class="label">Left to spend ${weekRangeLabel(ws)} <span class="hint">tap for breakdown ›</span></div>
       <div class="big ${ws.left < 0 ? 'neg' : ''}">${money(ws.left)}</div>
       <div class="bar ${barClass(ws.spent, ws.budget)}"><i style="width:${pct(ws.spent, ws.budget)}%"></i></div>
       <div class="note" style="margin:8px 0 0">${money(ws.spent)} of ${money(ws.budget)}${ws.carryover < 0 ? ` <span class="negtext">(incl. ${money(ws.carryover)} rolled over)</span>` : ''} · ${ws.ids.map((i) => esc(cat(i)?.name)).join(', ')}</div>
@@ -951,7 +960,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=120'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=121'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
