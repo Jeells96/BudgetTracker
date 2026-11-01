@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=113';
-import { TRANSFERS } from './defaults.js?v=113';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=113';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=114';
+import { TRANSFERS } from './defaults.js?v=114';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=114';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -189,23 +189,19 @@ function home() {
     return moneyRow(emoji, name, spent, total, 'cat-toggle', key, hasBudget, open) + drop;
   };
 
-  // The credit-card balance owed is committed against your weekly spending, so it
-  // counts toward "Other" used (shown with the math), not as free spending room.
-  const cardOwed = bal > 0 ? round(bal) : 0;
-  const otherUsed = round(otherSpent + cardOwed);
+  // This month's categories are what this month cost. A card balance is money
+  // owed from whenever it was charged, so counting it here made a month you had
+  // spent nothing in open as already over budget.
+  const otherUsed = otherSpent;
 
-  // Other's dropdown: the math (spending + card owed), then the weekly sub-tiers.
+  // Other's dropdown: the running total, then the weekly sub-tiers.
   const otherDrop = () => {
     const left = round(otherBudget - otherUsed);
-    const math = cardOwed > 0
-      ? `${money(otherSpent)} spent + ${money(cardOwed)} card owed = ${money(otherUsed)} of ${money(otherBudget)}`
-      : `${money(otherSpent)} of ${money(otherBudget)}`;
-    const head = `<div class="du-note ${left < 0 ? 'bad' : 'good'}">${math} · ${left < 0 ? money(-left) + ' over' : money(left) + ' left'}</div>`;
+    const head = `<div class="du-note ${left < 0 ? 'bad' : 'good'}">${money(otherSpent)} of ${money(otherBudget)} · ${left < 0 ? money(-left) + ' over' : money(left) + ' left'}</div>`;
     const groups = rolled.map((c) => ({ c, txs: monthList.filter((t) => t.type === 'expense' && t.category === c.id).sort(sortTx), total: round(ms.byCat[c.id] || 0) })).filter((g) => g.txs.length);
     const subs = groups.map((g) => `<div class="subtier"><span>${g.c.emoji} ${esc(g.c.name)}</span><b>${money(g.total)}</b></div>${g.txs.map(txRow).join('')}`).join('');
-    const cardSub = cardOwed > 0 ? `<div class="subtier"><span>💳 Credit card owed</span><b class="negtext">${money(cardOwed)}</b></div>` : '';
-    const empty = (!subs && !cardSub) ? '<div class="empty">Nothing in other weekly spending yet.</div>' : '';
-    return `<div class="catdrop">${head}${subs}${cardSub}${empty}</div>`;
+    const empty = !subs ? '<div class="empty">Nothing in other weekly spending yet.</div>' : '';
+    return `<div class="catdrop">${head}${subs}${empty}</div>`;
   };
   const otherRow = weeklyCats.length
     ? moneyRow('🧾', 'Other', otherUsed, otherBudget, 'cat-toggle', '__other', true, ui.openCat === '__other') + (ui.openCat === '__other' ? otherDrop() : '')
@@ -992,7 +988,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=113'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=114'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
