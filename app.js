@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=122';
-import { TRANSFERS } from './defaults.js?v=122';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=122';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=123';
+import { TRANSFERS } from './defaults.js?v=123';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=123';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -87,7 +87,7 @@ const pct = (a, b) => (b > 0 ? Math.max(0, Math.min(100, (a / b) * 100)) : 0);
 let pendingPromptShown = false;
 function maybePendingPrompt() {
   if (pendingPromptShown || !$('#sheet').hidden) return;
-  if (!(S().pending || []).length && !bankUI.progress.length) return;
+  if (!(S().pending || []).length) return;       // nothing waiting, nothing to interrupt for
   pendingPromptShown = true;
   openPending();
 }
@@ -882,7 +882,7 @@ function settings() {
 // exactly as it always has. Imports wait in a review queue: nothing reaches the
 // weekly budget or the card plan until you give it a category and accept it.
 let bank = null;
-const bankUI = { on: false, booted: false, busy: '', user: undefined, items: [], inbox: [], pick: {}, billq: [], billpick: {}, err: '', progress: [] };
+const bankUI = { on: false, booted: false, busy: '', user: undefined, items: [], inbox: [], pick: {}, billq: [], billpick: {}, err: '', progress: [], arrived: 0 };
 
 // What each linked bank is called, card first — that's the order they're asked
 // in, so the list reads top to bottom as it works.
@@ -954,13 +954,16 @@ async function bankAuto() {
     const added = await syncAll(b);
     S().bankSyncAt = Date.now(); saveSettings();
     if (added) toast(`${added} new from your bank`);
+    // Anything the check turned up is worth opening for, even though the
+    // first-open prompt has already been and gone by now.
+    if (bankUI.arrived > 0 && $('#sheet').hidden) { pendingPromptShown = true; openPending(); }
   } catch (e) {
     // Never let a banking problem disturb the rest of the app.
     bankUI.err = (e && e.message) || String(e);
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=122'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=123'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -1004,9 +1007,10 @@ async function bankLoad(resume) {
   // standing rule, and anything Plaid itself calls income, is handled instead.
   const loose = box2.filter((it) => it.route === 'card' && (it.type === 'expense' || known(it)));
   const billsIn = box2.filter((it) => it.route === 'bills' && it.type === 'expense');
+  bankUI.arrived = 0;
   bankUI.inbox = box2.filter((it) => it.route !== 'bills'
     && !(it.route === 'card' && (it.type === 'expense' || known(it))));
-  if (loose.length) await adoptCardCharges(b, loose);
+  if (loose.length) bankUI.arrived = (await adoptCardCharges(b, loose)) || 0;
   bankUI.billq = billsIn.length ? await adoptBillCharges(b, billsIn) : [];
   bankUI.billq.forEach((it) => {
     const k = billKey(it.note) || it.id;
@@ -1135,6 +1139,7 @@ async function adoptCardCharges(b, loose) {
   // Clear them from the inbox either way, so a retry can't duplicate them.
   await Promise.all(loose.map((it) => b.dropInbox(it.id).catch(() => {})));
   if (add.length) toast(`${add.length} card charge${add.length === 1 ? '' : 's'} to finish`);
+  return add.length;
 }
 
 /**
