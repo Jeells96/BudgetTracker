@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=123';
-import { TRANSFERS } from './defaults.js?v=123';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=123';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=124';
+import { TRANSFERS } from './defaults.js?v=124';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=124';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -149,6 +149,17 @@ function home() {
   const rollover = weekly && ws.overage > 0 && !ws.reset
     ? `<div class="rollover">You went ${money(ws.overage)} over last week, so it's come off this week — <b>${money(ws.budget)} to spend</b> instead of ${money(ws.baseBudget)}. <button class="link" data-act="overage-view">Review</button> · <button class="link" data-act="week-reset">Forgive it</button></div>`
     : '';
+  // Forgiving purchases one by one can take the over-spend to zero, at which
+  // point every note about it disappears and the week looks like it was always
+  // fine. Say what's being left out instead of going quiet.
+  const prevStart = weekStart(addDays(parseYmd(ws.start), -1), s.weekStartDay ?? 5);
+  const ignored = store.txs.filter((t) => t.type === 'expense' && t.exBudget
+    && ws.ids.includes(t.category) && t.date >= prevStart && t.date < ws.start);
+  const ignoredSum = round(ignored.reduce((a, t) => a + t.amount, 0));
+  const ignoredNote = weekly && ignored.length && ws.overage <= 0.005 && !ws.reset
+    ? `<div class="rollover info">${ignored.length} purchase${ignored.length === 1 ? '' : 's'} from last week ${ignored.length === 1 ? 'is' : 'are'} forgiven (${money(ignoredSum)}), so last week didn't go over. <button class="link" data-act="overage-view">Review</button></div>`
+    : '';
+
   const forgivenNote = weekly && ws.forgiven > 0
     ? `<div class="rollover info">Last week's ${money(ws.forgiven)} over-spend is forgiven — it isn't trimming this week. <button class="link" data-act="week-unreset">Bring the penalty back</button></div>`
     : '';
@@ -231,6 +242,7 @@ function home() {
     ${cardTrim}
     ${rollover}
     ${forgivenNote}
+    ${ignoredNote}
     <button class="log-btn" data-act="log"><span class="plus">+</span> Log a purchase</button>
     <h2>${monthShort(ui.month)} · ${paychecks} paychecks</h2><div class="card">${list}</div>
     <div class="twobtn" style="margin-top:16px">
@@ -963,7 +975,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=123'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=124'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
