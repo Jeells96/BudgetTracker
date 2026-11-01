@@ -439,7 +439,9 @@ hr.sep { border:0; border-top:1px solid var(--hair); margin:18px 0; }
 .panel .q { font-size:1.3rem; font-weight:600; letter-spacing:-.015em; margin:6px 0 14px; }
 .sheet.page { align-items:stretch; }
 .sheet.page .panel { height:100%; max-height:100%; border-radius:0; animation:fade .2s; }
-.sheet-page { max-height:92vh; overflow:auto; }
+/* Vertical only: a sideways scroller here traps panning once you've zoomed in,
+   and this rule comes after .panel so it would otherwise undo that fix. */
+.sheet-page { max-height:92vh; overflow-y:auto; overflow-x:hidden; }
 .backbtn { font-weight:600; color:var(--accent); font-size:1.2rem; width:38px; }
 .amount { text-align:center; font-family:var(--serif); font-size:3.6rem; font-weight:400; margin:10px 0 18px; letter-spacing:-.025em; }
 .amount.zero { color:var(--muted); }

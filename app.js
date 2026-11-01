@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=118';
-import { TRANSFERS } from './defaults.js?v=118';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=118';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=119';
+import { TRANSFERS } from './defaults.js?v=119';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=119';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -951,7 +951,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=118'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=119'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -2005,7 +2005,8 @@ function openOverage() {
   const prevStart = weekStart(addDays(parseYmd(ws), -1), startDay);
   const ids = s.categories.filter((c) => c.weekly).map((c) => c.id);
   const items = store.txs.filter((t) => t.type === 'expense' && ids.includes(t.category) && t.date >= prevStart && t.date < ws).sort(sortTx);
-  const over = round(-weekStats(s, store.txs, now).carryover);     // live: reflects what's ignored
+  const ws2 = weekStats(s, store.txs, now);
+  const over = round(ws2.overage);     // live: reflects what's been ignored below
   const rows = items.length ? items.map((t) => {
     const c = cat(t.category);
     return `<label class="ovrow ${t.exBudget ? 'off' : ''}">
@@ -2017,9 +2018,11 @@ function openOverage() {
   $('#sheet').innerHTML = `<div class="panel sheet-page"><div class="head">
       <button class="backbtn" data-act="sheet-close" aria-label="Back">←</button><span class="step">Last week's overage</span><span style="width:28px"></span></div>
     <div class="card hero" style="box-shadow:none;padding:4px 0">
-      <div class="label">Carrying over into this week</div>
-      <div class="big ${over > 0 ? 'neg' : ''}">${over > 0 ? '−' + money(over) : money(0)}</div>
-      <div class="note" style="margin:8px 0 0">Uncheck any purchase to forgive it — it stops counting toward last week's budget, so it won't trim this week.</div></div>
+      <div class="label">You went over last week by</div>
+      <div class="big ${over > 0 ? 'neg' : ''}">${money(over)}</div>
+      <div class="note" style="margin:8px 0 0">${over > 0
+        ? "It's on the card, spread across the paydays you have left — this week's budget is untouched. Uncheck a purchase to forgive it and it stops counting."
+        : 'Nothing went over last week.'}</div></div>
     <div class="card">${rows}</div>
     ${over > 0 ? '<button class="btn block" data-act="week-reset" style="margin-top:12px">Forgive the entire overage</button>' : ''}</div>`;
   $('#sheet').className = 'sheet page';
