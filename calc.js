@@ -412,24 +412,24 @@ export function paymentSchedule(bal, weeks, now = new Date(), startDay = 5, star
 // Over/underpaying one week redistributes automatically: the balance already reflects
 // the payment, and the divisor drops the week you marked paid.
 // When the card should be paid off by: your custom date if set, else the end of
-// this month (+4 weeks if the "stretch" strategy is picked).
-export function payoffEnd(s, now = new Date()) {
-  if (s.cc && s.cc.payoffBy) return parseYmd(s.cc.payoffBy);
-  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  return (s.cc && s.cc.strategy === 'stretch') ? addDays(monthEnd, 28) : monthEnd;
-}
-// Every payday from the first unpaid one through the payoff-by date (at least one).
+// Every payday from the first unpaid one onward. How many get used is decided
+// by the money, not by a date: the list is long enough for any sensible plan
+// and the schedule stops as soon as the balance is gone.
 export function paydayDates(s, txs, now = new Date(), startDay = 5) {
   const start = firstUnpaidPayday(s, txs, now, startDay);
-  const end = payoffEnd(s, now);
   const dates = []; let d = new Date(start);
-  while (dates.length < 60) { dates.push(ymd(d)); const nd = addDays(d, 7); if (nd > end) break; d = nd; }
+  while (dates.length < 260) { dates.push(ymd(d)); d = addDays(d, 7); }
   return dates;
 }
 // The dated payoff schedule: manual per-payday edits (cc.planEdits) are honored, and
 // the rest of the balance is split evenly over the remaining auto paydays. A payday
 // you've already covered this week shows on top as a completed row.
-export function cardSchedule(s, txs, now = new Date()) {
+/**
+ * The schedule is the consequence of what you free each week, not of a date you
+ * picked. rate is the weekly payment; the card clears when it runs out, and
+ * that date is a result rather than a target to be missed.
+ */
+export function cardSchedule(s, txs, now = new Date(), rate = 0) {
   const startDay = s.weekStartDay ?? 5;
   const bal = cardBalance(s, txs);
   const dates = paydayDates(s, txs, now, startDay);
@@ -440,19 +440,23 @@ export function cardSchedule(s, txs, now = new Date()) {
   // The even plan: the balance across every payday you have. Editing one week
   // leaves the others on this rate rather than re-dividing the whole balance,
   // so paying extra buys you an earlier finish instead of smaller payments.
-  const autoPerWeek = dates.length ? round(bal / dates.length) : 0;
+  const autoPerWeek = round(rate);
 
   let rem = round(bal);
   const payments = [];
+  const anyManual = Object.keys(man).length > 0;
   for (const dt of dates) {
-    if (rem <= 0.005) break;                 // already cleared, so later paydays fall away
+    if (rem <= 0.005) break;                 // cleared, so no further payday is needed
     const want = man[dt] != null ? man[dt] : autoPerWeek;
+    // A payday with nothing going into it isn't a payment. With nothing going in
+    // anywhere there is no schedule at all, rather than a list of zeroes.
+    if (want <= 0.005) { if (!anyManual) break; continue; }
     const amt = round(Math.min(want, rem));
     payments.push({ date: dt, amount: amt, manual: man[dt] != null });
     rem = round(rem - amt);
   }
-  const shortfall = round(Math.max(0, rem));          // still owing when the paydays run out
-  const dropped = dates.length - payments.length;     // paydays no longer needed
+  const shortfall = round(Math.max(0, rem));          // never cleared at this rate
+  const dropped = 0;
   const wps = weekPaidState(s, txs, now, startDay);
   if (wps.paid && (wps.amount > 0.005 || edits[wps.payday] != null)) {
     const amt = edits[wps.payday] != null ? Math.max(0, round(edits[wps.payday])) : wps.amount;
@@ -462,11 +466,12 @@ export function cardSchedule(s, txs, now = new Date()) {
   return {
     payments, balance: bal, weeks: upcoming.length, multi: upcoming.length > 1,
     shortfall, dropped, edited: Object.keys(man).length, manualSum,
-    plannedEnd: dates.length ? dates[dates.length - 1] : null,
+    plannedEnd: (autoPerWeek > 0.005 && dates.length)
+      ? dates[Math.min(dates.length, Math.ceil(round(bal / autoPerWeek))) - 1] : null,
     firstPay: upcoming.length ? upcoming[0].amount : 0,
-    autoWeeks: autoCount, autoPerWeek,                                  // ongoing weekly rate (skips paid/zeroed weeks)
+    autoPerWeek,                            // the weekly payment the money allows
     payoffDate: upcoming.length ? upcoming[upcoming.length - 1].date : null,
-    end: ymd(payoffEnd(s, now))
+    end: null
   };
 }
 
@@ -485,11 +490,21 @@ export function splitPct(s) {
 
 export function cardPlan(s, txs, now = new Date()) {
   const bal = cardBalance(s, txs);
-  const sch = cardSchedule(s, txs, now);
   const sw = standardWeek(s);
+
+  // What the week frees doesn't depend on the schedule, so it can be worked out
+  // first and then drive it.
+  const pct0 = splitPct(s);
+  const swExtra = Math.max(0, sw.extra);
+  const weeklyFreed = round(
+    Math.min(round(swExtra * pct0.left / 100), round(swExtra))
+    + Math.min(round((s.weeklyBudget || 0) * pct0.spend / 100), s.weeklyBudget || 0)
+    + Math.min(round((s.weeklySavings || 0) * pct0.save / 100), s.weeklySavings || 0));
+
+  const sch = cardSchedule(s, txs, now, weeklyFreed);
   // Size everything off the actual ongoing weekly payment (balance ÷ the paydays
   // still left to auto-pay — skips a week you've already paid or zeroed out).
-  const weeks = Math.max(1, sch.autoWeeks);
+  const weeks = Math.max(1, sch.weeks);     // payments it actually takes
   // The recurring payment the plan asks for. An adjustment on one payday is
   // money from somewhere else — it buys an earlier finish and is nobody's
   // business here, so it must not become the figure your budget is judged
@@ -505,7 +520,6 @@ export function cardPlan(s, txs, now = new Date()) {
   const fromSpend = Math.min(round(s.weeklyBudget * pct.spend / 100), s.weeklyBudget);
   const fromSave = Math.min(round(s.weeklySavings * pct.save / 100), s.weeklySavings);
   const freed = round(fromLeft + fromSpend + fromSave);
-  const stretchWeeks = weeks + 4;
 
   // The most this week could possibly give the card: your leftover plus every
   // penny of spending and saving. If the plan asks for more than that, no choice
@@ -526,7 +540,7 @@ export function cardPlan(s, txs, now = new Date()) {
   };
 
   return {
-    balance: bal, weeks, perWeek, extra: round(extra), need, afford,
+    balance: bal, weeks, perWeek, extra: round(extra), need, afford, sch,
     // One mix, not a menu of plans.
     mix: {
       pct, fromLeft, fromSpend, fromSave, freed,
@@ -536,7 +550,6 @@ export function cardPlan(s, txs, now = new Date()) {
       short: round(Math.max(0, perWeek - freed)),
       over: round(Math.max(0, freed - perWeek)),
     },
-    stretch: { weeks: stretchWeeks, perWeek: round(bal / stretchWeeks) }
   };
 }
 
@@ -560,8 +573,7 @@ export function weekPlan(s, txs, now = new Date()) {
   // off, or the payments listed can't add up to the payment asked for. Budgeted
   // card spending is already covered by the week's own budget, so asking the
   // paydown plan to clear it as well would charge you for it twice.
-  const ptx = planTxsFor(s, txs, now);
-  const sch = cardSchedule(s, ptx, now);
+  const sch = cp.sch;
   if (cp.balance > 0) {
     everyday = mix.newSpend;
     savings = mix.newSave;
@@ -606,7 +618,6 @@ export function weekPlan(s, txs, now = new Date()) {
     mix, cardBalance: cp.balance, cardPerWeek: cp.perWeek, cardNeed: cp.need,
     spendCut: round(Math.max(0, sw.everyday - everyday)), saveCut: round(Math.max(0, sw.savings - savings)),
     fromLeftover,
-    stretchWeeks: cp.stretch.weeks,
     bt, sch, isCurrent: ms.isCurrent
   };
 }

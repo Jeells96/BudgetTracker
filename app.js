@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=114';
-import { TRANSFERS } from './defaults.js?v=114';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=114';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=117';
+import { TRANSFERS } from './defaults.js?v=117';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=117';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -368,31 +368,26 @@ function payoffScheduleHTML(sch) {
   const manual = sch.payments.filter((p) => p.manual && !p.paid);
   const manualSum = round(manual.reduce((a, p) => a + p.amount, 0));
   const paidSum = round(sch.payments.filter((p) => p.paid).reduce((a, p) => a + p.amount, 0));
-  const fridays = `${sch.autoWeeks} ${sch.autoWeeks === 1 ? 'Friday' : 'Fridays'}`;
-  const why = sch.autoWeeks > 0 ? `<div class="note" style="margin:2px 0 8px">${
+  // The weekly figure comes from what you set aside, so that's what this says —
+  // the number of payments is the consequence, not the divisor.
+  const why = sch.autoPerWeek > 0.005 ? `<div class="note" style="margin:2px 0 8px">${
       paidSum > 0.005 ? `${money(paidSum)} already paid. ` : ''
-    }${money(sch.balance)} left${manual.length ? ` − ${money(manualSum)} you set by hand` : ''} over ${fridays} = <b>${money(sch.autoPerWeek)}</b> each.</div>`
-    : '';
+    }<b>${money(sch.autoPerWeek)}</b> a week${manual.length ? `, plus ${money(manualSum)} you added by hand,` : ''} clears the ${money(sch.balance)} left.</div>`
+    : '<div class="note" style="margin:2px 0 8px">Nothing is set aside for the card each week, so there is no schedule yet.</div>';
 
   // What the edits actually buy you, and what to do about it.
   const d = (x) => parseYmd(x).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  let outcome = '';
-  if (sch.edited && sch.shortfall > 0.005) {
-    const spreadable = sch.payments.filter((p) => !p.paid && !p.manual).length;
-    outcome = `<div class="warn soft" style="margin:10px 0 0">
-      <b>This leaves ${money(sch.shortfall)} unpaid.</b>
-      Paying these amounts clears ${money(round(sch.balance - sch.shortfall))} of ${money(sch.balance)} by ${d(sch.plannedEnd)}.
-      </div>
-      ${spreadable ? `<button class="btn block" data-act="cc-spread" style="margin-top:8px">Spread the ${money(sch.shortfall)} over the other ${spreadable} ${spreadable === 1 ? 'week' : 'weeks'}</button>` : ''}`;
-  } else if (sch.edited && sch.dropped > 0) {
-    outcome = `<div class="warn soft good" style="margin:10px 0 0">
-      <b>${sch.dropped} payment${sch.dropped === 1 ? '' : 's'} earlier.</b>
-      Paying these amounts clears the card on ${d(sch.payoffDate)} instead of ${d(sch.plannedEnd)}.
-      </div>
-      <button class="btn block" data-act="cc-apply" data-id="${sch.payoffDate}" style="margin-top:8px">Make ${d(sch.payoffDate)} the plan — ${money(round(sch.balance / Math.max(1, sch.weeks)))} a week</button>`;
-  } else if (sch.edited) {
-    outcome = `<button class="btn block" data-act="cc-apply" data-id="${sch.payoffDate || sch.plannedEnd}" style="margin-top:10px">Make this the plan — even it out at ${money(round(sch.balance / Math.max(1, sch.weeks)))} a week</button>`;
-  }
+  // An adjustment's only job is to move the finish line, so that's all this says.
+  const earlier = sch.edited && sch.plannedEnd && sch.payoffDate && sch.payoffDate < sch.plannedEnd;
+  const later = sch.edited && sch.plannedEnd && sch.payoffDate && sch.payoffDate > sch.plannedEnd;
+  const outcome = !sch.edited ? ''
+    : earlier ? `<div class="warn soft good" style="margin:10px 0 0">
+        <b>${d(sch.payoffDate)} instead of ${d(sch.plannedEnd)}.</b>
+        Paying these amounts clears the card ${Math.round((parseYmd(sch.plannedEnd) - parseYmd(sch.payoffDate)) / 604800000)} week(s) sooner.</div>`
+    : later ? `<div class="warn soft" style="margin:10px 0 0">
+        <b>${d(sch.payoffDate)} instead of ${d(sch.plannedEnd)}.</b>
+        Paying less now pushes the finish back.</div>`
+    : '';
 
   return `<div class="plan">
     ${head}
@@ -459,29 +454,11 @@ function cardSection() {
   // Two different ways to fall short, which need different answers.
   //   impossible — the plan asks for more than every penny you have.
   //   not set high enough — it's reachable, this choice just doesn't reach it.
-  const af = cp.afford;
-  const curShort = cp.mix.short;
-  const payLeft = Math.max(1, cp.weeks);
-  const shortNote = af.shortPerWeek > 0.005 ? `<div class="warn">
-      <b>This plan is more than you can pay.</b>
-      Clearing ${money(cp.balance)} by then needs ${money(cp.perWeek)} a week, but even with nothing at all to spend or save you could only find ${money(af.max)}.
-      You'd be <b>${money(af.shortPerWeek)} short every week</b> — ${money(af.totalShort)} over the ${payLeft} payment${payLeft === 1 ? '' : 's'} left.
-      ${af.byDate ? `The soonest you could actually clear it is <b>${shortDate(parseYmd(af.byDate))}</b>, at ${money(af.perWeekThen)} a week.` : ''}
-      </div>
-      ${af.byDate ? `<button class="btn block" data-act="cc-afford-date" data-id="${af.byDate}">Move the date to ${shortDate(parseYmd(af.byDate))}</button>` : ''}`
-    : curShort > 0.005 ? `<div class="warn soft">
-      <b>This doesn't cover the plan.</b>
-      It needs ${money(cp.perWeek)} a week and this leaves you <b>${money(curShort)} short</b> — ${money(round(curShort * payLeft))} over the ${payLeft} payment${payLeft === 1 ? '' : 's'} left.
-      You could find ${money(af.max)} a week in total, so it is reachable — just not at these percentages.
-      </div>`
-    : '';
 
   const planBlock = wp.cardBalance > 0 ? `
     <div class="week"><span class="muted">Pay off ${money(cp.balance)}</span><b>${money(cp.perWeek)}/Friday</b></div>
+    ${cp.perWeek <= 0.005 ? '<div class="warn soft">Nothing is going to the card, so the balance stays where it is. Raise a percentage below to start clearing it.</div>' : ''}
     ${wp.owed - cp.balance > 0.005 ? `<div class="note" style="margin:2px 0 8px">You owe ${money(wp.owed)}. ${money(round(wp.owed - cp.balance))} of that is this week's budgeted spending, which your weekly budget already covers, so the paydown plan works on the rest.</div>` : ''}
-    <div class="field" style="margin:8px 0 2px"><label>Pay off by<br><span class="muted" style="font-size:.8rem">${cc.payoffBy ? 'custom date' : 'default: end of this month'}</span></label>
-      <input type="date" value="${cc.payoffBy || ''}" min="${today()}" data-cc="payoffBy"></div>
-    ${shortNote}
     <details class="collapse" ${openAttr('cc-strategy')}><summary>Where the money comes from · <b class="${cp.mix.short > 0 ? 'negtext' : 'goodtext'}">${money(cp.mix.freed)} of ${money(cp.perWeek)}</b></summary>
       ${mixEditor(cp)}</details>
     ${payoffScheduleHTML(wp.sch)}
@@ -599,19 +576,9 @@ function planValues() {
     pay, bills, groceries, everyday, savings, extra, leftover };
 }
 
-const shortKey = (wp) => `${S().cc.payoffBy || 'auto'}|${round(wp.cardAsked)}|${round(wp.cardShort)}`;
-const shortHidden = (wp) => S().cc.shortAck === shortKey(wp);
-
-function calloutHTML(leftover, cardShort = 0, wp = null) {
+function calloutHTML(leftover) {
   if (leftover < 0) return `You're <b>${money(-leftover)}</b> short this week — trim a line above or change your card strategy.`;
   // Nothing left over is only good news if the card is actually being covered.
-  if (cardShort > 0.005) {
-    const total = wp ? wp.cardShortTotal : 0;
-    const by = S().cc.payoffBy ? shortDate(parseYmd(S().cc.payoffBy)) : 'the payoff date';
-    return `This week puts <b>${money(cardShort)}</b> less on the card than the payoff date needs.`
-      + (total > 0.005 ? ` Carry on like this and you'd still owe <b>${money(total)}</b> on ${by} — that's the lump sum it would take to finish it off.` : '')
-      + ` <button class="link" data-act="short-hide">Hide this</button>`;
-  }
   return `You've got <b>${money(leftover)}</b> left over this week after everything.`;
 }
 
@@ -621,8 +588,7 @@ function planRecalc() {
   const cb = $('#plan-combined'); if (cb) cb.textContent = money(round(p.everyday + p.extra));
   const lo = $('#plan-leftover'); if (lo) lo.textContent = money(p.leftover);
   const loRow = $('#plan-leftover-row'); if (loRow) { loRow.classList.toggle('neg', p.leftover < 0); loRow.classList.toggle('total', p.leftover >= 0); }
-  const cs = shortHidden(p.wp) ? 0 : (p.wp.cardShort || 0);
-  const co = $('#plan-callout'); if (co) { co.className = 'callout ' + (p.leftover < 0 || cs > 0.005 ? 'bad' : 'good'); co.innerHTML = calloutHTML(p.leftover, cs, p.wp); }
+  const co = $('#plan-callout'); if (co) { co.className = 'callout ' + (p.leftover < 0 ? 'bad' : 'good'); co.innerHTML = calloutHTML(p.leftover); }
   const rb = $('#plan-reset-btn'); if (rb) rb.hidden = false;
 }
 
@@ -657,9 +623,7 @@ function planTab() {
   ].filter(Boolean).join(' + ');
   const cardNote = wp.cardBalance > 0
     ? `Card paydown <b>${money(rc.extra)}</b>${cuts ? ` = ${cuts}` : ' from your leftover'} · balance ${money(sch.balance)}`
-      + (wp.cardShort > 0.005
-        ? ` — <b class="negtext">${money(wp.cardShort)} short</b> of the ${money(wp.cardAsked)} a week this payoff date needs.`
-        : '')
+
     : '';
 
   // Indented editable sub-row (used inside the merged Spending + card group).
@@ -677,7 +641,7 @@ function planTab() {
     ? `<div class="trow grouphdr"><span>Spending + credit card</span><span class="b">${money(st.everyday)}</span><span class="n" id="plan-combined">${money(p.everyday + p.extra)}</span></div>
        ${subrow('Spending', 'everyday')}
        ${liveChip}
-       ${subrow('Card paydown' + (wp.cardShort > 0.005 ? ` <span class="shorttag">${money(wp.cardShort)} short</span>` : ''), 'extra', 0)}`
+       ${subrow('Card paydown', 'extra', 0)}`
     : `${erow('Everyday spending', 'everyday', liveChip)}${erow('Extra', 'extra')}`;
 
   // Where the trimmed spending number actually comes from.
@@ -699,8 +663,7 @@ function planTab() {
       ${erow('Savings', 'savings')}
       <div class="trow ${p.leftover < 0 ? 'neg' : 'total'}" id="plan-leftover-row"><span>Leftover / extra</span><span class="b">${money(p.hasCard ? st.extra : 0)}</span><span class="n" id="plan-leftover">${money(p.leftover)}</span></div>
     </div>
-    <div class="callout ${p.leftover < 0 || (wp.cardShort > 0.005 && !shortHidden(wp)) ? 'bad' : 'good'}" id="plan-callout">${calloutHTML(p.leftover, shortHidden(wp) ? 0 : wp.cardShort, wp)}</div>
-    ${wp.cardShort > 0.005 && shortHidden(wp) ? `<button class="link shortshow" data-act="short-show">⚠︎ ${money(wp.cardShort)} a week short · ${money(wp.cardShortTotal)} by the end — show</button>` : ''}
+    <div class="callout ${p.leftover < 0 ? 'bad' : 'good'}" id="plan-callout">${calloutHTML(p.leftover)}</div>
     <button class="btn block" id="plan-reset-btn" data-act="plan-reset" ${edited ? '' : 'hidden'}>↺ Reset to recommended</button>
     ${trimNote}
     ${cardNote ? `<p class="note">${cardNote}</p>` : ''}`;
@@ -988,7 +951,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=114'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=117'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -2176,18 +2139,6 @@ document.addEventListener('click', (e) => {
       saveSettings(); render();
       return toast(`Tracked balance set to ${money(r.target)}`);
     }
-    case 'short-hide': {
-      const wp = weekPlan(S(), store.txs, planNow());
-      S().cc = { ...S().cc, shortAck: shortKey(wp) };
-      saveSettings(); render();
-      return toast('Hidden — it comes back if the plan changes');
-    }
-    case 'short-show': { S().cc = { ...S().cc, shortAck: null }; saveSettings(); return render(); }
-    case 'cc-afford-date': {
-      S().cc = { ...S().cc, payoffBy: id };
-      saveSettings(); render();
-      return toast('Payoff date moved to something you can actually pay');
-    }
     case 'cc-split-cover': {
       const now = new Date();
       const cp2 = cardPlan(S(), planTxsFor(S(), store.txs, now), now);
@@ -2211,24 +2162,6 @@ document.addEventListener('click', (e) => {
       S().cc = { ...S().cc, paidThrough: 'more:' + w.payday };
       saveSettings(); render();
       return toast('Reopened — add the rest when you can');
-    }
-    case 'cc-apply': {
-      // Keep the finish date the edits produced, and let every week carry an
-      // equal share of it again.
-      S().cc = { ...S().cc, payoffBy: id, planEdits: {} };
-      saveSettings(); render();
-      return toast(`Plan set to clear by ${shortDate(parseYmd(id))}`);
-    }
-    case 'cc-spread': {
-      const sch = weekPlan(S(), store.txs, new Date()).sch;
-      const open = sch.payments.filter((p) => !p.paid && !p.manual);
-      if (!open.length || sch.shortfall <= 0.005) return;
-      const add = round(sch.shortfall / open.length);
-      const e = { ...(S().cc.planEdits || {}) };
-      open.forEach((p) => { e[p.date] = round(p.amount + add); });
-      S().cc = { ...S().cc, planEdits: e };
-      saveSettings(); render();
-      return toast(`${money(add)} added to each of the other ${open.length}`);
     }
     case 'cc-pay-clear': { const e = { ...(S().cc.planEdits || {}) }; delete e[id]; S().cc = { ...S().cc, planEdits: e }; saveSettings(); return render(); }
     case 'cc-edits-reset': { S().cc = { ...S().cc, planEdits: {} }; saveSettings(); return render(); }
@@ -2429,7 +2362,6 @@ document.addEventListener('change', (e) => {
     S().cc = { ...S().cc, splitPct: { ...splitPct(S()), [side]: v } };
     saveSettings(false); render(); return;
   }
-  else if (t.dataset.cc === 'payoffBy') { S().cc = { ...S().cc, payoffBy: t.value || null }; saveSettings(); }
   else if (t.dataset.ccPay || t.dataset.ccDelta) {
     const date = t.dataset.ccPay || t.dataset.ccDelta;
     const sch = weekPlan(S(), store.txs, new Date()).sch;
