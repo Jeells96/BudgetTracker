@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=121';
-import { TRANSFERS } from './defaults.js?v=121';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=121';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=122';
+import { TRANSFERS } from './defaults.js?v=122';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=122';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -147,7 +147,7 @@ function home() {
     ? `<div class="rollover">Weekly ${money(ws.planBudget)} − ${money(ws.trimmedByCard)} freed for the card = <b>${money(ws.baseBudget)}</b> to spend this week.</div>`
     : '';
   const rollover = weekly && ws.overage > 0 && !ws.reset
-    ? `<div class="rollover">You went ${money(ws.overage)} over last week. It's on the card, so <b>this week's ${money(ws.budget)} still stands</b> — the card paydown clears it, rather than docking you twice for the same spending. <button class="link" data-act="overage-view">Review</button> · <button class="link" data-act="week-reset">Forgive</button></div>`
+    ? `<div class="rollover">You went ${money(ws.overage)} over last week, so it's come off this week — <b>${money(ws.budget)} to spend</b> instead of ${money(ws.baseBudget)}. <button class="link" data-act="overage-view">Review</button> · <button class="link" data-act="week-reset">Forgive it</button></div>`
     : '';
   const forgivenNote = weekly && ws.forgiven > 0
     ? `<div class="rollover info">Last week's ${money(ws.forgiven)} over-spend is forgiven — it isn't trimming this week. <button class="link" data-act="week-unreset">Bring the penalty back</button></div>`
@@ -960,7 +960,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=121'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=122'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -2030,7 +2030,7 @@ function openOverage() {
       <div class="label">You went over last week by</div>
       <div class="big ${over > 0 ? 'neg' : ''}">${money(over)}</div>
       <div class="note" style="margin:8px 0 0">${over > 0
-        ? "It's on the card, spread across the paydays you have left — this week's budget is untouched. Uncheck a purchase to forgive it and it stops counting."
+        ? 'That comes off this week. Uncheck a purchase to forgive it — it stops counting toward last week, so it stops trimming this week.'
         : 'Nothing went over last week.'}</div></div>
     <div class="card">${rows}</div>
     ${over > 0 ? '<button class="btn block" data-act="week-reset" style="margin-top:12px">Forgive the entire overage</button>' : ''}</div>`;

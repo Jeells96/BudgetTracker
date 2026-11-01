@@ -211,16 +211,17 @@ export function weekStats(s, txs, now = new Date()) {
   // A goal replaces the trim rather than stacking with it, so the note explaining
   // "trimmed for the card" doesn't appear next to a number you chose yourself.
   const trimmedByCard = goal != null ? 0 : Math.max(0, round(s.weeklyBudget - auto));
-  // Last week's over-spend was charged to the card, so the payoff plan already
-  // spreads it across the paydays you have left. Docking this week's spending too
-  // would charge you for it twice, so the week's budget stands as planned.
+  // Going over last week comes off this week, so the correction is immediate and
+  // visible rather than disappearing into the payoff plan. It's taken off the
+  // budget you actually had — after whatever is going to the card — and
+  // forgiving a purchase, or the whole week, is the way out.
   const prevStart = weekStart(addDays(parseYmd(ws), -1), startDay);
   const prevLeft = round(everydayBeforeOverage(s, txs, now) - spentBetween(prevStart, ws));
   const reset = s.weekResetAt === ws;
-  const carryover = 0;
   const overage = prevLeft < 0 ? round(-prevLeft) : 0;        // last week's over-spend
   const forgiven = reset && overage > 0 ? overage : 0;
-  const budget = round(base);
+  const carryover = reset ? 0 : overage;
+  const budget = Math.max(0, round(base - carryover));
   return { start: ws, end, ids, spent, baseBudget: base, goal, planBudget: goal != null ? goal : s.weeklyBudget, trimmedByCard, carryover, overage, forgiven, budget, left: round(budget - spent), reset };
 }
 
