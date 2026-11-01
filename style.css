@@ -647,3 +647,12 @@ details.sch-row.man > summary .sch-tot { color:var(--accent); }
 .se-row.tot > span:first-child { color:var(--ink); font-weight:500; }
 .se-in { flex:none; display:flex; align-items:center; gap:6px; }
 .se-in .ccinput { width:110px; text-align:right; }
+
+/* Separating part of a purchase into another category */
+.sepbox { border:1px solid var(--accent); border-radius:var(--r); padding:12px 13px; margin:10px 0;
+  background:var(--accent-soft); }
+.sepbox .editlbl { margin-top:12px; }
+.sepbox .sheet-input { margin-bottom:0; }
+.sepbox .cats.edit { margin:8px 0 2px; }
+.sepchips { display:flex; flex-wrap:wrap; gap:7px; margin:10px 0 2px; }
+.sepchips .muted { flex-basis:100%; }

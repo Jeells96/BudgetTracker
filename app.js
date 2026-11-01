@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=117';
-import { TRANSFERS } from './defaults.js?v=117';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=117';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=118';
+import { TRANSFERS } from './defaults.js?v=118';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=118';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -951,7 +951,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=117'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=118'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -1563,7 +1563,7 @@ const logCat = (id) => logCats().find((c) => c.id === id);
 
 // ----- add entries (category first, then amount → description; Save or Add another) -----
 function openFlow(opts = {}) {
-  flow = { step: opts.category ? 2 : 1, category: opts.category || null, amt: opts.amt || '', note: opts.note || '', date: opts.date || today(), pay: 'credit', count: 0, pendingId: opts.pendingId || null, amtLocked: !!opts.amtLocked, splitting: false, hasTotal: true, total: '', splits: [], vehicle: null };
+  flow = { step: opts.category ? 2 : 1, category: opts.category || null, amt: opts.amt || '', note: opts.note || '', date: opts.date || today(), pay: 'credit', count: 0, pendingId: opts.pendingId || null, amtLocked: !!opts.amtLocked, splitting: false, hasTotal: true, total: '', splits: [], parts: [], sep: null, vehicle: null };
   drawFlow(); $('#sheet').hidden = false;
 }
 
@@ -1641,6 +1641,11 @@ function drawFlow() {
       <input class="sheet-input" id="f-date" type="date" value="${f.date}" max="${today()}">
       ${payToggle}
       ${exToggle}
+      ${c.type === 'expense' && !f.splitting && f.parts.length ? `<div class="sepchips">${f.parts.map((x, j) =>
+        `<button class="splitchip" data-flow="delpart" data-i="${j}">${money(x.amount)} ${esc((cat(x.category) || {}).name || '')} <span class="x-mini">✕</span></button>`).join('')}
+        <div class="muted" style="font-size:.78rem;margin-top:4px">${esc(c.name)} keeps ${money(round(amtNum - f.parts.reduce((a, x) => a + x.amount, 0)))}</div></div>` : ''}
+      ${c.type === 'expense' && !f.splitting ? (f.sep ? sepPanel(f.sep, 'flow', round(amtNum - f.parts.reduce((a, x) => a + x.amount, 0)))
+        : `<button class="btn block" data-flow="sep">⊟ Separate costs<br><span class="muted" style="font-size:.78rem">part of this was a different category</span></button>`) : ''}
       ${c.type === 'expense' && !f.splitting ? `<label class="exrow"><input type="checkbox" id="f-ret" ${f.returning ? 'checked' : ''}> ↩︎ A return is coming <span class="muted">(set it up after saving)</span></label>` : ''}
       ${single
         ? `<button class="btn primary block" data-flow="save" ${saveDis}>${f.splitting ? `Save ${f.splits.length} charges` : 'Save &amp; log it'}</button>`
@@ -1667,6 +1672,16 @@ function flowCommit() {
     // log each charge separately so they match the credit-card statement line items
     f.splits.forEach((amt) => addTx(mk(amt)));
     result = { ...mk(f.splits.reduce((a, x) => a + x, 0)), _count: f.splits.length };
+  } else if (f.parts && f.parts.length) {
+    // Parts of the total that weren't this category each become their own entry,
+    // and this one keeps what's left.
+    const total = round(parseFloat(f.amt) || 0);
+    const taken = round(f.parts.reduce((a, x) => a + x.amount, 0));
+    const keep = round(total - taken);
+    f.parts.forEach((x) => addTx(decorate({ type: 'expense', amount: x.amount, category: x.category, note, date })));
+    result = mk(keep);
+    if (keep > 0.005) addTx(result);
+    result = { ...result, _parts: f.parts.length };
   } else {
     result = mk(parseFloat(f.amt));
     addTx(result);
@@ -1762,6 +1777,18 @@ function flowClick(btn) {
       return drawFlow();
     }
     case 'back': f.step = (f.amtLocked && f.step === 3) ? 1 : f.step - 1; if (f.step < 1) f.step = 1; return drawFlow();
+    case 'sep': f.sep = { amt: '', cat: null, not: f.category }; return drawFlow();
+    case 'sep-cancel': f.sep = null; return drawFlow();
+    case 'sep-cat': { const i = $('#sep-amt'); if (i) f.sep.amt = i.value; f.sep.cat = btn.dataset.v; return drawFlow(); }
+    case 'sep-go': {
+      const i = $('#sep-amt'); if (i) f.sep.amt = i.value;
+      const amt = round(parseFloat(f.sep.amt) || 0);
+      const left = round((parseFloat(f.amt) || 0) - f.parts.reduce((a, x) => a + x.amount, 0));
+      if (!(amt > 0.005) || amt >= left - 0.005 || !f.sep.cat) return;
+      f.parts.push({ amount: amt, category: f.sep.cat });
+      f.sep = null; return drawFlow();
+    }
+    case 'delpart': { f.parts.splice(+btn.dataset.i, 1); return drawFlow(); }
     case 'save': {
       if (!f.splitting && !(parseFloat(f.amt) > 0)) return;
       if (!gasOk(f)) return;
@@ -1777,6 +1804,7 @@ function flowClick(btn) {
 
 function savedMsg(tx) {
   const ms = MS();
+  if (tx._parts) return `Logged ${money(tx.amount)} ${cat(tx.category)?.name || ''} + ${tx._parts} separated`;
   if (tx._count) return `Logged ${tx._count} charges · ${money(tx.amount)} total · ${cat(tx.category)?.name || ''}`;
   if (tx.type === 'income') return `Added ${money(tx.amount)} income`;
   if (tx.type === 'transfer') return tx.category === 'bills' ? `Moved ${money(tx.amount)} to bills · ${ms.billsLeft ? money(ms.billsLeft) + ' still needed' : 'fully funded ✓'}`
@@ -1798,6 +1826,29 @@ function syncEditInputs() {
   if (d) edit.date = d.value || edit.date;
   const ex = $('#e-ex'); if (ex) edit.exAvg = ex.checked;
 }
+/**
+ * "Not all of this was groceries": peel an amount off into another category.
+ *
+ * Inline rather than its own sheet, so nothing has to be stacked and dismissed
+ * to get back to what you were doing. `sep` is {amt, cat} on whichever of the
+ * flow or the edit sheet is using it.
+ */
+function sepPanel(sep, ns, max) {
+  const amt = round(parseFloat(sep.amt) || 0);
+  const ok = amt > 0.005 && amt < max - 0.005 && sep.cat;
+  const picked = sep.cat ? cat(sep.cat) : null;
+  return `<div class="sepbox">
+    <label class="editlbl" style="margin-top:0">How much of the ${money(max)} wasn't this?</label>
+    <input class="sheet-input" id="sep-amt" type="text" inputmode="decimal" value="${esc(sep.amt)}" placeholder="0" autocomplete="off">
+    <label class="editlbl">What was it?</label>
+    <div class="cats edit">${S().categories.filter((c) => c.id !== sep.not).map((c) =>
+      `<button data-${ns}="sep-cat" data-v="${esc(c.id)}" class="${sep.cat === c.id ? 'on' : ''}"><span class="e">${c.emoji}</span>${esc(c.name)}</button>`).join('')}</div>
+    <button class="btn primary block" data-${ns}="sep-go" ${ok ? '' : 'disabled style="opacity:.4"'}>${
+      ok ? `Move ${money(amt)} to ${esc(picked.name)} · ${money(round(max - amt))} stays` : 'Pick an amount and a category'}</button>
+    <button class="btn block" data-${ns}="sep-cancel">Cancel</button>
+  </div>`;
+}
+
 function drawEdit() {
   const e = edit, el = $('#sheet');
   const items = e.type === 'transfer' ? TRANSFERS : S().categories;
@@ -1816,6 +1867,8 @@ function drawEdit() {
       <button data-edit="pay" data-v="credit" class="${(e.pay || 'credit') !== 'cash' ? 'on' : ''}">💳 Credit card</button>
       <button data-edit="pay" data-v="cash" class="${e.pay === 'cash' ? 'on' : ''}">💵 Debit / cash</button></div>` : ''}
     ${e.type === 'expense' && cat(e.category)?.useAvg ? `<label class="exrow"><input type="checkbox" id="e-ex" ${e.exAvg ? 'checked' : ''}> Exclude from the ${esc(cat(e.category).name)} average <span class="muted">(unusual trip)</span></label>` : ''}
+    ${e.sep ? sepPanel(e.sep, 'edit', round(e.amount))
+      : (e.type === 'expense' ? `<button class="btn block" data-edit="sep">⊟ Separate costs<br><span class="muted" style="font-size:.78rem">part of this was a different category</span></button>` : '')}
     <button class="btn primary block" data-edit="save">Save changes</button>
     ${e.type === 'expense' ? `<button class="btn block" data-edit="return">↩︎ Plan a return</button>` : ''}
     <button class="btn danger block" data-edit="delete">Delete</button></div>`;
@@ -1828,6 +1881,22 @@ function editClick(btn) {
     case 'cat': syncEditInputs(); e.category = v; return drawEdit();
     case 'pay': syncEditInputs(); e.pay = v; return drawEdit();
     case 'return': syncEditInputs(); return openReturnPlan(e);
+    case 'sep': syncEditInputs(); e.sep = { amt: '', cat: null, not: e.category }; return drawEdit();
+    case 'sep-cancel': e.sep = null; return drawEdit();
+    case 'sep-cat': { const i = $('#sep-amt'); if (i) e.sep.amt = i.value; e.sep.cat = v; return drawEdit(); }
+    case 'sep-go': {
+      const i = $('#sep-amt'); if (i) e.sep.amt = i.value;
+      const amt = round(parseFloat(e.sep.amt) || 0);
+      if (!(amt > 0.005) || amt >= e.amount - 0.005 || !e.sep.cat) return;
+      // The part that wasn't this becomes its own entry; this one keeps the rest.
+      addTx({ type: 'expense', amount: amt, category: e.sep.cat, note: (e.note || '').trim(),
+              date: e.date, pay: e.pay === 'cash' ? 'cash' : 'credit', src: e.src });
+      e.amount = round(e.amount - amt);
+      updateTx(e.id, { amount: e.amount });
+      const moved = cat(e.sep.cat);
+      e.sep = null; drawEdit(); render();
+      return toast(`${money(amt)} moved to ${moved ? moved.name : 'another category'}`);
+    }
     case 'save': {
       syncEditInputs();
       if (!(e.amount > 0)) return toast('Enter an amount');
