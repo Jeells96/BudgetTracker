@@ -171,7 +171,10 @@ h2 { font-size:.7rem; font-weight:600; text-transform:uppercase; letter-spacing:
 .btn.mini.good { color:var(--good); border-color:color-mix(in srgb,var(--good) 34%,transparent); }
 .twobtn { display:flex; gap:10px; margin-top:14px; }
 .twobtn .btn.block { margin-top:0; flex:1; }
-.btn:disabled { opacity:.42; }
+.btn:disabled { opacity:.5; }
+/* A dimmed green button with dark text on it is unreadable, and the label is
+   exactly what says how to enable it — so a disabled primary drops the fill. */
+.btn.primary:disabled { opacity:1; background:var(--raise); border-color:var(--hair); color:var(--muted); font-weight:500; }
 
 /* chips wrap — never a horizontal scroller (that traps panning when zoomed) */
 .chips { display:flex; flex-wrap:wrap; gap:7px; padding:2px 0 10px; }
@@ -425,6 +428,10 @@ hr.sep { border:0; border-top:1px solid var(--hair); margin:18px 0; }
 .ovrow:first-child { border-top:0; }
 .ovrow input { width:19px; height:19px; flex:none; accent-color:var(--accent); }
 .ovbody { flex:1; min-width:0; }
+/* Amount and note on one line, the date under it — run together they wrapped
+   into a three-line block with the tag stranded beside it. */
+.ovbody .ov-t { display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.ovbody .ov-d { display:block; font-size:.76rem; color:var(--muted); margin-top:2px; }
 .ovrow.off .ovbody { opacity:.45; text-decoration:line-through; }
 .ovtag { font-size:.66rem; color:var(--muted); flex:none; }
 

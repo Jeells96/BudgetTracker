@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=127';
-import { TRANSFERS } from './defaults.js?v=127';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=127';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=128';
+import { TRANSFERS } from './defaults.js?v=128';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=128';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -135,7 +135,7 @@ function home() {
       <div class="label">Left to spend ${weekRangeLabel(ws)} <span class="hint">tap for breakdown ›</span></div>
       <div class="big ${ws.left < 0 ? 'neg' : ''}">${money(ws.left)}</div>
       <div class="bar ${barClass(ws.spent, ws.budget)}"><i style="width:${pct(ws.spent, ws.budget)}%"></i></div>
-      <div class="note" style="margin:8px 0 0">${money(ws.spent)} of ${money(ws.budget)}${ws.carryover < 0 ? ` <span class="negtext">(incl. ${money(ws.carryover)} rolled over)</span>` : ''} · ${ws.ids.map((i) => esc(cat(i)?.name)).join(', ')}</div>
+      <div class="note" style="margin:8px 0 0">${money(ws.spent)} of ${money(ws.budget)} · ${ws.ids.map((i) => esc(cat(i)?.name)).join(', ')}</div>
       <div class="stats">
         <div><b>${money(ws.spent)}</b><span>Spent this week</span></div>
         ${stat3}
@@ -274,7 +274,7 @@ function txRow(t) {
 
 function billsAcctCard(s, now = new Date()) {
   const bp = billsProjection(s, store.txs, now);
-  const asOfLabel = bp.hasBal ? 'as of ' + shortDate(parseYmd(bp.asOf)) + (bp.staleDays >= 1 ? ` · ${bp.staleDays} day${bp.staleDays === 1 ? '' : 's'} ago` : '') : 'enter your bank balance to start';
+  const asOfLabel = bp.hasBal ? 'as of ' + tightDate(parseYmd(bp.asOf)) + (bp.staleDays >= 1 ? ` · ${bp.staleDays} day${bp.staleDays === 1 ? '' : 's'} ago` : '') : 'enter your bank balance to start';
   const firstLabel = parseYmd(bp.firstDue).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   const verdict = !bp.hasBal ? ''
     : bp.covered
@@ -496,7 +496,7 @@ function cardSection() {
   // "purchases since", a reset button, a mode toggle and Match — most of which
   // did the same thing by different routes.
   const setup = auto ? `
-      <div class="field"><label>What the card actually is<br><span class="muted" style="font-size:.8rem">${det.asOf ? 'last set ' + shortDate(parseYmd(det.asOf)) : 'type it once and tracking takes over'}</span></label>
+      <div class="field"><label>What the card actually is<br><span class="muted" style="font-size:.8rem">${det.asOf ? 'last set ' + tightDate(parseYmd(det.asOf)) : 'type it once and tracking takes over'}</span></label>
         <input type="text" inputmode="decimal" value="${fmtNum(cc.start || '')}" placeholder="0" data-cc="start"></div>
       <div class="ccbreak">
         <div><span>Set to</span><b>${money(det.start)}</b></div>
@@ -527,7 +527,7 @@ function cardSection() {
     ${retBlock}
     ${setup}
     ${modeToggle}
-    <div class="note">Statement closes the ${ordinal(cyc.endDay)} · cycle ${shortDate(parseYmd(cyc.start))} – ${shortDate(parseYmd(cyc.end))}</div>
+    <div class="note">Statement closes the ${ordinal(cyc.endDay)} · cycle ${tightDate(parseYmd(cyc.start))} – ${tightDate(parseYmd(cyc.end))}</div>
     <button class="btn block" data-act="log-xfer" data-id="card">+ Log a card payment</button></div>`;
 }
 
@@ -985,7 +985,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=127'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=128'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -1340,7 +1340,7 @@ function bankBlock() {
 
   const rows = b.inbox.map((it) => `<div class="qrow">
     <div class="top"><span class="nm">${esc(it.note || 'Purchase')}</span><span class="amt">${money(it.amount)}</span></div>
-    <div class="sub">${esc(shortDate(parseYmd(it.date)))}${it.account ? ' · ' + esc(it.account) : ''}${it.pending ? ' · pending' : ''}</div>
+    <div class="sub">${esc(tightDate(parseYmd(it.date)))}${it.account ? ' · ' + esc(it.account) : ''}${it.pending ? ' · pending' : ''}</div>
     <select data-inbox-cat="${esc(it.id)}">${opts(bankUI.pick[it.id] || '')}</select>
     <div class="acts">
       <button class="btn" data-act="inbox-accept" data-id="${esc(it.id)}"${off('row-' + it.id)}>✓ Add</button>
@@ -1456,7 +1456,7 @@ function drawActivity() {
     : !rows.length ? '<div class="empty" style="padding:22px">Nothing here in this period.</div>'
     : rows.map((t) => `<button class="actrow" data-act="activity-log" data-id="${esc(t.id)}">
         <div class="ar-b"><div class="ar-t">${esc(t.name || 'Transaction')}</div>
-          <div class="ar-s">${esc(shortDate(parseYmd(t.date)))} · ${esc(t.account)}${t.pending ? ' · pending' : ''}</div></div>
+          <div class="ar-s">${esc(tightDate(parseYmd(t.date)))} · ${esc(t.account)}${t.pending ? ' · pending' : ''}</div></div>
         <b class="ar-a ${t.outgoing ? '' : 'in'}">${t.outgoing ? '' : '+'}${money(t.amount)}</b></button>`).join('');
   $('#sheet').innerHTML = `<div class="panel"><div class="head">
       <span style="width:40px"></span><span class="step">All bank activity</span><button data-act="sheet-close" aria-label="Close">✕</button></div>
@@ -1500,7 +1500,7 @@ function addPending(amt) {
 }
 function openTrack() { track = { amt: '', count: 0 }; drawTrack(); $('#sheet').hidden = false; }
 function drawTrack() {
-  const f = track, amtNum = parseFloat(f.amt) || 0, dis = amtNum ? '' : 'disabled style="opacity:.4"';
+  const f = track, amtNum = parseFloat(f.amt) || 0, dis = amtNum ? '' : 'disabled';
   $('#sheet').innerHTML = `<div class="panel"><div class="head"><span style="width:40px"></span><span class="step">Track later</span><button data-track="close" aria-label="Close">✕</button></div>
     <div class="q">Just the price</div>
     
@@ -1620,8 +1620,8 @@ function drawFlow() {
     const subNum = parseFloat(f.amt) || 0;
     title = 'Split into charges';
     const chips = f.splits.map((x, j) => `<button class="splitchip" data-flow="delsplit" data-i="${j}">${money(x)} <span class="x-mini">✕</span></button>`).join('');
-    const addDis = (subNum > 0 && (!f.hasTotal || subNum <= remaining + 0.001)) ? '' : 'disabled style="opacity:.4"';
-    const nextDis = (f.splits.length && (!f.hasTotal || remaining === 0)) ? '' : 'disabled style="opacity:.4"';
+    const addDis = (subNum > 0 && (!f.hasTotal || subNum <= remaining + 0.001)) ? '' : 'disabled';
+    const nextDis = (f.splits.length && (!f.hasTotal || remaining === 0)) ? '' : 'disabled';
     const stat = f.hasTotal
       ? `<div class="splitstat"><div><span>Order total</span><b>${money(total)}</b></div><div><span>Remaining</span><b class="${remaining < 0 ? 'negtext' : remaining === 0 ? 'goodtext' : ''}">${money(remaining)}</b></div></div>`
       : `<div class="splitstat"><div><span>Charges</span><b>${f.splits.length}</b></div><div><span>So far</span><b>${money(allocated)}</b></div></div>`;
@@ -1636,7 +1636,7 @@ function drawFlow() {
   } else if (f.step === 2) {
     const isExpense = c.type === 'expense';
     title = isExpense ? 'Step 2 of 3' : 'Step 2 of 2';
-    const dis = amtNum ? '' : 'disabled style="opacity:.4"';
+    const dis = amtNum ? '' : 'disabled';
     const actions = isExpense
       ? `<button class="btn primary block" data-flow="next" ${dis}>Continue</button>
          <label class="exrow" style="justify-content:center"><input type="checkbox" id="f-splittotal" checked> First amount is the order total</label>
@@ -1668,8 +1668,8 @@ function drawFlow() {
     const noteField = isGas
       ? (f.vehicle === 'Other' ? `<input class="sheet-input" id="f-note" type="text" placeholder="Which vehicle / what for?" value="${esc(f.note)}" autocomplete="off">` : '')
       : `<input class="sheet-input" id="f-note" type="text" placeholder="${ph}" value="${esc(f.note)}" autocomplete="off">`;
-    const gasReady = !isGas || (f.vehicle && f.vehicle !== 'Other') || (f.vehicle === 'Other');
-    const saveDis = gasReady ? '' : 'disabled style="opacity:.4"';
+    const gasReady = !isGas || !!f.vehicle;
+    const saveDis = gasReady ? '' : 'disabled';
     body = `<div class="q">${isGas ? 'Gas details' : 'Add a description'}</div>
       <div class="summary"><div class="emoji" style="background:var(--card)">${c.emoji}</div><div><b>${money(shownAmt)}</b>${splitNote}</div></div>
       ${vehPick}
@@ -1686,7 +1686,8 @@ function drawFlow() {
       ${single
         ? `<button class="btn primary block" data-flow="save" ${saveDis}>${f.splitting ? `Save ${f.splits.length} charges` : 'Save &amp; log it'}</button>`
         : `<div class="twobtn"><button class="btn block" data-flow="again" ${saveDis}>+ Add another</button><button class="btn primary block" data-flow="save" ${saveDis}>Save</button></div>
-      ${f.count ? `<p class="note" style="text-align:center;margin-bottom:0">${f.count} added under ${esc(c.name)} so far</p>` : `<p class="note" style="text-align:center;margin-bottom:0">“Add another” keeps ${esc(c.name)} selected for the next item.</p>`}`}`;
+      ${f.count ? `<p class="note" style="text-align:center;margin-bottom:0">${f.count} added under ${esc(c.name)} so far</p>` : `<p class="note" style="text-align:center;margin-bottom:0">“Add another” keeps ${esc(c.name)} selected for the next item.</p>`}`}
+      ${gasReady ? '' : '<p class="note" style="text-align:center;margin:6px 0 0">Pick a vehicle to save this one.</p>'}`;
   }
   el.innerHTML = `<div class="panel"><div class="head">
     ${f.step > 1 ? '<button data-flow="back" aria-label="Back">←</button>' : '<span style="width:40px"></span>'}
@@ -1879,7 +1880,7 @@ function sepPanel(sep, ns, max) {
     <label class="editlbl">What was it?</label>
     <div class="cats edit">${S().categories.filter((c) => c.id !== sep.not).map((c) =>
       `<button data-${ns}="sep-cat" data-v="${esc(c.id)}" class="${sep.cat === c.id ? 'on' : ''}"><span class="e">${c.emoji}</span>${esc(c.name)}</button>`).join('')}</div>
-    <button class="btn primary block" data-${ns}="sep-go" ${ok ? '' : 'disabled style="opacity:.4"'}>${
+    <button class="btn primary block" data-${ns}="sep-go" ${ok ? '' : 'disabled'}>${
       ok ? `Move ${money(amt)} to ${esc(picked.name)} · ${money(round(max - amt))} stays` : 'Pick an amount and a category'}</button>
     <button class="btn block" data-${ns}="sep-cancel">Cancel</button>
   </div>`;
@@ -2031,7 +2032,6 @@ function toast(msg) {
 }
 
 // ----- this month, week by week -----
-const shortDate = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
 // Last week's over-spend that penalizes this week — review each purchase and
 // forgive (ignore) the ones you don't want carried over.
@@ -2047,7 +2047,7 @@ function openOverage() {
     const c = cat(t.category);
     return `<label class="ovrow ${t.exBudget ? 'off' : ''}">
       <input type="checkbox" data-ovignore="${t.id}" ${t.exBudget ? '' : 'checked'}>
-      <span class="ovbody"><b>${money(t.amount)}</b> <span class="muted">${esc(t.note || (c ? c.name : t.category))} · ${shortDate(parseYmd(t.date))}</span></span>
+      <span class="ovbody"><span class="ov-t"><b>${money(t.amount)}</b> <span class="muted">${esc(t.note || (c ? c.name : t.category))}</span></span><span class="ov-d">${tightDate(parseYmd(t.date))}</span></span>
       <span class="ovtag">${t.exBudget ? 'ignored' : 'counts'}</span></label>`;
   }).join('') : '<div class="empty">No weekly-budget purchases last week.</div>';
 
@@ -2090,7 +2090,7 @@ function openWeek() {
   }
 
   const weekRows = weeks.map((w) => {
-    const rng = `${shortDate(parseYmd(w.from))} – ${shortDate(addDays(parseYmd(w.to), -1))}`;
+    const rng = `${tightDate(parseYmd(w.from))} – ${tightDate(addDays(parseYmd(w.to), -1))}`;
     const body = w.txsIn.length ? w.txsIn.map(txRow).join('') : '<div class="empty">Nothing this week.</div>';
     return `<details class="wk-week"${w.isNow ? ' open' : ''}><summary>
       <span class="wk-left"><span class="wk-n">Week ${w.n}${w.isNow ? ' · now' : ''}</span><span class="wk-range">${rng}</span></span>
@@ -2111,7 +2111,10 @@ function openWeek() {
       <div class="label">Left to spend this week</div>
       <div class="big ${ws.left < 0 ? 'neg' : ''}">${money(ws.left)}</div>
       <div class="bar ${barClass(ws.spent, ws.budget)}"><i style="width:${pct(ws.spent, ws.budget)}%"></i></div>
-      <div class="note" style="margin:8px 0 0">${money(ws.spent)} of ${money(ws.budget)} everyday budget${ws.trimmedByCard > 0 ? ` <span class="muted">(spend-less card plan: trimmed ${money(ws.trimmedByCard)})</span>` : ''}${ws.carryover < 0 ? ` <span class="negtext">(incl. ${money(ws.carryover)} rolled over)</span>` : ''}</div></div>
+      <div class="note" style="margin:8px 0 0">${[`${money(ws.spent)} of ${money(ws.budget)} everyday budget`]
+        .concat(ws.trimmedByCard > 0 ? [`<span class="muted">${money(ws.trimmedByCard)} of it goes to the card</span>`] : [])
+        .concat(ws.carryover > 0 ? [`<span class="negtext">${money(ws.carryover)} docked for last week</span>`] : [])
+        .join(' · ')}</div></div>
     <h2>Week by week</h2><div class="card" style="padding:4px 18px">${weekRows}</div>
     <h2>This week by category</h2><div class="card">${catRows}</div></div>`;
   $('#sheet').className = 'sheet page';
@@ -2160,14 +2163,14 @@ function openTrends() {
   const max = Math.max(1, ...t.months.map((m) => m.spent));
   const tile = (label, val) => `<div class="tile"><b>${money(val)}</b><span>${label}</span></div>`;
   const rows = t.months.map((m) => {
-    const label = parseYmd(m.month + '-01').toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+    const label = moYr(m.month + '-01');
     const sub = [`Saved ${money(m.savings)}`, `Income ${money(m.income)}`, `Bills ${money(m.bills)}`].concat(m.card ? [`Card ${money(m.card)}`] : []).join(' · ');
     return `<div class="tr-month"><div class="tr-top"><span>${label}</span><b>${money(m.spent)} spent</b></div>
       <div class="bar"><i style="width:${pct(m.spent, max)}%"></i></div>
       <div class="tr-sub">${sub}</div></div>`;
   }).join('');
   $('#sheet').innerHTML = `<div class="panel sheet-page"><div class="head">
-    <button class="backbtn" data-act="sheet-close" aria-label="Back">← Back</button><span class="step">Monthly trends</span><span style="width:40px"></span></div>
+    <button class="backbtn" data-act="sheet-close" aria-label="Back">←</button><span class="step">Monthly trends</span><span style="width:28px"></span></div>
     <p class="lead">Averages across ${t.count} month${t.count === 1 ? '' : 's'} of data.</p>
     <div class="tiles">${tile('Avg spent / mo', t.avg.spent)}${tile('Avg saved / mo', t.avg.savings)}${tile('Avg income / mo', t.avg.income)}</div>
     <div class="tiles" style="margin-top:8px">${tile('Avg to bills / mo', t.avg.bills)}${tile('Avg card paid / mo', t.avg.card)}</div>
