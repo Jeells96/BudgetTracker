@@ -222,7 +222,18 @@ select[data-set] { background:var(--raise); border:1px solid var(--hair); border
 .editlbl { display:block; font-size:.68rem; text-transform:uppercase; letter-spacing:.1em;
   color:var(--muted); margin:14px 2px 7px; font-weight:600; }
 input:focus, select:focus, textarea:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
-.cellx { flex:none; background:none; color:var(--muted); font-size:.8rem; padding:3px 2px; line-height:1; }
+.cellx { flex:none; background:none; color:var(--muted); font-size:.8rem; padding:3px 3px; line-height:1; }
+
+/* Small icon buttons keep their width — widening them would just make each one
+   overlap the control beside it — but take the row's full height as tap area.
+   Vertical slop is free here and it's what a thumb actually misses by. */
+.cellx, .selbox, .field .x, .loose-row > .x, .btn.mini { position:relative; }
+.cellx::after, .field .x::after, .loose-row > .x::after, .btn.mini::after, .selbox::before {
+  content:''; position:absolute; left:0; right:0; top:50%; translate:0 -50%; height:max(100%, 40px);
+}
+/* A 13px box is hard to hit even with the label beside it. */
+.field.weekly input[type=checkbox], .exrow input[type=checkbox], .paytoggle input[type=checkbox] {
+  width:17px; height:17px; flex:none; accent-color:var(--accent); }
 .exrow { display:flex; align-items:center; gap:10px; margin:14px 2px 2px; font-size:.88rem; }
 .searchrow { display:flex; gap:8px; align-items:center; margin-bottom:10px; }
 .searchrow .sheet-input { margin:0; flex:1; } .searchrow .chip { flex:none; }
@@ -268,7 +279,7 @@ hr.sep { border:0; border-top:1px solid var(--hair); margin:18px 0; }
 .plan-table .trow > span:first-child { line-height:1.25; font-weight:500; }
 .plan-table .trow span.b, .plan-table .trow span.n { text-align:right; }
 .plan-table .trow span.b { color:var(--muted); font-size:.82rem; }
-.plan-table .trow span.n { font-weight:600; display:flex; align-items:center; justify-content:flex-end; gap:2px; }
+.plan-table .trow span.n { font-weight:600; display:flex; align-items:center; justify-content:flex-end; gap:5px; }
 .plan-table .head { font-size:.6rem; color:var(--muted); text-transform:uppercase; letter-spacing:.09em; }
 .plan-table .head .b, .plan-table .head .n { white-space:normal; line-height:1.2; align-self:end; font-weight:600; }
 .plan-table .total { font-weight:600; } .plan-table .neg .n { color:var(--bad); }
