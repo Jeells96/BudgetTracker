@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=128';
-import { TRANSFERS } from './defaults.js?v=128';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=128';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=129';
+import { TRANSFERS } from './defaults.js?v=129';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=129';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -985,7 +985,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=128'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=129'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -1339,7 +1339,7 @@ function bankBlock() {
     + TRANSFERS.map((t) => `<option value="t:${esc(t.id)}" ${picked === 't:' + t.id ? 'selected' : ''}>${t.emoji} ${esc(t.name)}</option>`).join('');
 
   const rows = b.inbox.map((it) => `<div class="qrow">
-    <div class="top"><span class="nm">${esc(it.note || 'Purchase')}</span><span class="amt">${money(it.amount)}</span></div>
+    <div class="top"><span class="nm">${esc(it.note || 'Purchase')}</span><span class="amt${it.type === 'income' ? ' in' : ''}">${it.type === 'income' ? '+' : ''}${money(it.amount)}</span></div>
     <div class="sub">${esc(tightDate(parseYmd(it.date)))}${it.account ? ' · ' + esc(it.account) : ''}${it.pending ? ' · pending' : ''}</div>
     <select data-inbox-cat="${esc(it.id)}">${opts(bankUI.pick[it.id] || '')}</select>
     <div class="acts">
@@ -1537,12 +1537,14 @@ function openPending() {
 
 function drawPending() {
   const pend = (S().pending || []).slice().sort((a, b) => b.date.localeCompare(a.date));
-  const rows = !pend.length ? '' : pend.map((x) => `<div class="loose-row">${x.source === 'plaid' && x.note
-    ? `<button class="x" data-act="pending-ignore" data-id="${esc(x.id)}" title="Always ignore ${esc(x.note)}" aria-label="Always ignore">🚫</button>` : ''}
+  const rows = !pend.length ? '' : pend.map((x) => `<div class="loose-row">
     <button class="loose" data-act="finish-item" data-id="${esc(x.id)}"><div class="emoji">🕗</div>
       <div class="body"><div class="t">${money(x.amount)}${x.note ? ` · ${esc(x.note)}` : ''}</div><div class="s">${
         x.source === 'plaid' ? esc(x.account || 'from your bank') : 'added'
-      } · ${tightDate(parseYmd(x.date))}${x.pend ? ' · pending' : ''} · tap to finish</div></div><span class="chev">›</span></button>
+      } · ${tightDate(parseYmd(x.date))}${x.pend ? ' · pending' : ''}</div></div><span class="chev">›</span></button>
+    ${x.source === 'plaid' && x.note
+      ? `<button class="x" data-act="pending-ignore" data-id="${esc(x.id)}" title="Always ignore ${esc(x.note)}" aria-label="Always ignore">🚫</button>`
+      : '<span class="x" aria-hidden="true"></span>'}
     <button class="x" data-act="pending-del" data-id="${esc(x.id)}" aria-label="Discard">✕</button></div>`).join('');
   $('#sheet').innerHTML = `<div class="panel"><div class="head"><span style="width:40px"></span><span class="step">Loose logs to finish</span><button data-act="sheet-close" aria-label="Later">✕</button></div>
     ${progressHTML()}
@@ -1556,7 +1558,7 @@ function drawPending() {
 }
 
 // ----- edit a bill: fixed amount, past-month history, 12-month average -----
-const monthLabelShort = (ym) => parseYmd(ym + '-01').toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+const monthLabelShort = (ym) => moYr(ym + '-01');
 const prevYm = (ym) => { const d = parseYmd(ym + '-01'); d.setMonth(d.getMonth() - 1); return ymd(d).slice(0, 7); };
 function openBillEdit(i) { billEdit = i; drawBillEdit(); $('#sheet').hidden = false; }
 function drawBillEdit() {

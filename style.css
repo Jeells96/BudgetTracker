@@ -143,8 +143,11 @@ h2 { font-size:.7rem; font-weight:600; text-transform:uppercase; letter-spacing:
   font-weight:600; font-size:.85rem; flex:none; color:var(--muted); }
 
 .loose-row { display:flex; align-items:center; gap:6px; border-top:1px solid var(--hair); }
+.loose-row > .x { width:30px; flex:none; }
 .loose-row:first-of-type { border-top:0; }
-.loose { flex:1; display:flex; align-items:center; gap:12px; width:100%; text-align:left; background:none; padding:13px 0; }
+.loose { flex:1; min-width:0; display:flex; align-items:center; gap:12px; width:100%; text-align:left; background:none; padding:13px 0; }
+.loose .body { flex:1; min-width:0; }
+.loose .t, .loose .s { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .loose .t { font-weight:600; } .loose .s { font-size:.78rem; color:var(--muted); }
 .loose .chev { margin-left:auto; }
 
@@ -239,6 +242,9 @@ hr.sep { border:0; border-top:1px solid var(--hair); margin:18px 0; }
 
 /* ---------- collapsible sections ---------- */
 .psec { background:var(--surface); border:1px solid var(--hair); border-radius:var(--r2); margin-bottom:12px; }
+/* Nested inside a card (Banking), a psec sat flush against the button above it,
+   so the two borders merged into one odd shape. */
+.btn.block + .psec { margin-top:12px; }
 .psec > summary { list-style:none; cursor:pointer; display:flex; align-items:center; justify-content:space-between;
   gap:10px; padding:17px 18px; font-weight:550; font-size:.98rem; letter-spacing:-.005em; }
 .psec > summary::-webkit-details-marker { display:none; }
@@ -523,9 +529,10 @@ nav#tabs button.on { background:var(--ink); color:var(--canvas); }
   display:block; width:100%; margin-top:9px; padding:11px 12px; font-size:.88rem;
   text-align:left; background:var(--raise); border:1px solid var(--hair); border-radius:10px; }
 
-.qrow .top { display:flex; align-items:baseline; gap:12px; }
+.qrow .top { display:flex; align-items:flex-start; gap:12px; }
 .qrow .top .nm { flex:1; }
 .qrow .amt { flex:none; font-weight:600; font-variant-numeric:tabular-nums; }
+.qrow .amt.in { color:var(--good); }
 .qrow .acts { display:flex; gap:8px; margin-top:9px; }
 .qrow .acts .btn { flex:1; padding:10px; font-size:.86rem; }
 
