@@ -1,6 +1,6 @@
-import { firebaseConfig } from './firebase-config.js?v=124';
-import { DEFAULT_SETTINGS } from './defaults.js?v=124';
-import { HISTORY } from './history.js?v=124';
+import { firebaseConfig } from './firebase-config.js?v=127';
+import { DEFAULT_SETTINGS } from './defaults.js?v=127';
+import { HISTORY } from './history.js?v=127';
 
 const LS_KEY = 'budget-tracker-v2';
 const CDN = 'https://www.gstatic.com/firebasejs/11.0.2/';
@@ -37,16 +37,13 @@ function normalize(s) {
     mode: cc.mode || 'auto',
     manual: cc.manual ?? cc.balance ?? 0,
     chargesAdj: cc.chargesAdj || 0,
-    strategy: cc.strategy || 'extra',
     // Shares of the week's shortfall taken from each side of a "split".
     splitPct: (cc.splitPct && typeof cc.splitPct === 'object')
       ? { left: cc.splitPct.left == null ? 100 : +cc.splitPct.left || 0,
           spend: +cc.splitPct.spend || 0, save: +cc.splitPct.save || 0 }
       : { left: 100, spend: 0, save: 0 },
     paidThrough: cc.paidThrough ?? null,
-    payoffBy: cc.payoffBy ?? null,
     planEdits: (cc.planEdits && typeof cc.planEdits === 'object') ? cc.planEdits : {},
-    shortAck: cc.shortAck || null,   // a silenced underfunding warning
     // What the bank itself says, kept beside the log rather than replacing it.
     plaidBal: (cc.plaidBal && typeof cc.plaidBal === 'object')
       ? { ...cc.plaidBal, pending: +cc.plaidBal.pending || 0 } : null

@@ -124,8 +124,8 @@ export function monthStats(s, txs, month, now = new Date()) {
 
 // The everyday spending budget held to each week (the card no longer trims it —
 // everyday money flows to the card, but the budget amount itself is unchanged).
-// Your everyday weekly budget after the card strategy. "Spend less" / "Split" cut
-// it to free money for the card; the cut amount is what goes to the card that week.
+// Your everyday weekly budget after whatever share of it goes to the card; that
+// share is what reaches the card that week.
 // Spending you cover with your normal weekly budget is self-funding: you charge it
 // and your allowance pays it back, so it must not inflate the payoff plan or you'd
 // be asked to pay for the same money twice. Going OVER the allowance is different —
@@ -180,13 +180,13 @@ export function planTxsFor(s, txs, now = new Date()) {
   return planTxs(s, txs, allowance, now);
 }
 
-// Your everyday weekly budget after the card strategy. "Spend less" / "Split" cut it
-// to free money for the card; the cut amount is what goes to the card that week.
+// Your everyday weekly budget after whatever share of it goes to the card; that
+// share is what reaches the card that week.
 export function effectiveEveryday(s, txs = [], now = new Date()) {
   return adjustedFrom(s, planTxsFor(s, txs, now), now);
 }
 
-// A spending goal you set yourself. It beats the card trim and every strategy:
+// A spending goal you set yourself. It beats the card trim:
 // the whole point is to say "this is what I'm spending this week" and have the
 // rest of the plan arrange itself around that. null means work it out for me.
 export function weeklyGoal(s) {
@@ -303,14 +303,6 @@ export function nextPayday(now = new Date(), startDay = 5) {
   d.setDate(d.getDate() + ((startDay - d.getDay() + 7) % 7));
   return d;
 }
-// The next payday strictly AFTER today (what this payday's funding must last until).
-export function nextPaydayAfter(now = new Date(), startDay = 5) {
-  const d = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  let off = (startDay - d.getDay() + 7) % 7; if (off === 0) off = 7;
-  d.setDate(d.getDate() + off);
-  return d;
-}
-
 // Forward look at the bills account from a MANUAL balance you typed (as of a date).
 // The goal is to have the NEXT 1st-of-month bills funded before the 1st, so the
 // horizon runs from the as-of date through that 1st: the bills still due this month
@@ -386,10 +378,6 @@ export function paydaysLeft(now = new Date(), startDay = 5, from = null) {
   while (d <= end && guard++ < 10) { n++; d = addDays(d, 7); }
   return Math.max(1, n);
 }
-// Remaining UNPAID paydays this month (skips a week you've already paid for).
-export function remainingPaydays(s, txs, now = new Date(), startDay = 5) {
-  return paydaysLeft(now, startDay, firstUnpaidPayday(s, txs, now, startDay));
-}
 // A dated payment schedule: the balance split evenly across `weeks` paydays,
 // starting from `start` (a Date; defaults to the upcoming payday). Splitting the
 // remaining balance each step self-corrects rounding — no stranded penny at the end.
@@ -408,8 +396,8 @@ export function paymentSchedule(bal, weeks, now = new Date(), startDay = 5, star
 }
 
 // Card payoff: spread the CURRENT balance across the paydays left this month. The
-// money comes from your leftover; if that's short, the strategy frees more (spend/
-// save/split) or you stretch it longer. Everyday spending is committed, NOT a source.
+// money comes from whatever share of your leftover, spending and savings you've
+// set aside for it.
 // Over/underpaying one week redistributes automatically: the balance already reflects
 // the payment, and the divisor drops the week you marked paid.
 // When the card should be paid off by: your custom date if set, else the end of
@@ -524,7 +512,7 @@ export function cardPlan(s, txs, now = new Date()) {
 
   // The most this week could possibly give the card: your leftover plus every
   // penny of spending and saving. If the plan asks for more than that, no choice
-  // of strategy can reach it and saying which is least short is beside the point.
+  // mix of percentages can reach it.
   const maxWeekly = round(extra + (s.weeklyBudget || 0) + (s.weeklySavings || 0));
   const shortPerWeek = round(Math.max(0, perWeek - maxWeekly));
   const weeksNeeded = maxWeekly > 0.005 ? Math.ceil(round(bal / maxWeekly) * 100) / 100 : Infinity;
@@ -556,7 +544,7 @@ export function cardPlan(s, txs, now = new Date()) {
 
 // Standard week (your plan from Settings) vs Recommended week:
 //  - "To bills account" = what to move this payday to stay covered to next Friday
-//  - The card payment comes from your chosen strategy; everyday spending stays put
+//  - The card payment comes from the shares you set aside for it
 export function weekPlan(s, txs, now = new Date()) {
   const sw = standardWeek(s);
   const bt = billsProjection(s, txs, now);
@@ -596,8 +584,6 @@ export function weekPlan(s, txs, now = new Date()) {
     leftover = round(pay - bills - groceries - everyday - savings - extra);
   }
 
-  // Freed but not handed over — offered as a choice rather than taken quietly.
-  const surplus = round(Math.max(0, avail - (cp.balance > 0 ? cp.perWeek : 0)));
 
   return {
     standard: sw,
@@ -606,14 +592,6 @@ export function weekPlan(s, txs, now = new Date()) {
     // What the week actually puts on the card, against what the payoff plan
     // asked for. A plan can be underfunded without anything being wrong with
     // the arithmetic, and the Plan page has to say so rather than look settled.
-    // Short is measured against everything the week could free, not against
-    // what it chose to hand over, or capping the payment would look like a gap.
-    cardShort: round(Math.max(0, (cp.balance > 0 ? cp.perWeek : 0) - Math.max(avail, extra))),
-    surplus,
-    // What would still be owed on the payoff date if every week went like this
-    // one — the lump sum that would have to make up the difference.
-    cardShortTotal: round(Math.max(0, (cp.balance > 0 ? cp.perWeek : 0) - Math.max(avail, extra)) * Math.max(1, cp.weeks)),
-    cardAsked: cp.balance > 0 ? cp.perWeek : 0,
     cp,                                            // so the card section shows the same figures
     owed: cardBalance(s, txs),                     // what the statement says, before any of that
     mix, cardBalance: cp.balance, cardPerWeek: cp.perWeek, cardNeed: cp.need,

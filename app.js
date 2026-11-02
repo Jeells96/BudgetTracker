@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=124';
-import { TRANSFERS } from './defaults.js?v=124';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=124';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=127';
+import { TRANSFERS } from './defaults.js?v=127';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=127';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -22,6 +22,10 @@ const dayLabel = (s) => {
 const ordinal = (n) => n + (['th', 'st', 'nd', 'rd'][(n % 100 >> 3) ^ 1 && n % 10 < 4 ? n % 10 : 0]);
 // Dates always show the year.
 const moDay = (s) => parseYmd(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+// Tight lists drop the year when it's this one — "Nov 1" instead of "Nov 1, 2026" —
+// so a long merchant name keeps the room instead. Other years still say so.
+const tightDate = (d) => d.toLocaleDateString('en-US', d.getFullYear() === new Date().getFullYear()
+  ? { month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric', year: 'numeric' });
 const moYr = (s) => parseYmd(s).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
 
 const ui = { tab: 'home', month: monthKey(new Date()), filter: 'all', all: false, q: '', planDraft: {}, planLive: true, openCat: null, openLoan: null, weekOff: 0 };
@@ -260,7 +264,7 @@ function txRow(t) {
   const ccDot = (t.type === 'expense' && t.pay === 'credit' ? ' <span class="cc-dot" title="Credit card">💳</span>' : '')
     + (t.returned > 0 ? ' <span class="ex-tag ret">returning</span>' : '')
     + (t.exAvg ? ' <span class="ex-tag" title="Excluded from average">excl. avg</span>' : '');
-  const dateStr = parseYmd(t.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const dateStr = tightDate(parseYmd(t.date));
   const picked = sel.ids.has(t.id);
   return `<div class="tx${picked ? ' selected' : ''}">
     <button class="selbox${picked ? ' on' : ''}" data-act="tx-toggle" data-id="${esc(t.id)}" aria-label="Select for total"></button>
@@ -339,7 +343,8 @@ function weekDoneRow() {
 function payoffScheduleHTML(sch) {
   if (!sch.payments.length) return '';
   const thisFri = ymd(nextPayday(new Date(), S().weekStartDay ?? 5));
-  const dated = (d) => parseYmd(d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+  const dated = (d) => { const x = parseYmd(d); return x.toLocaleDateString('en-US', x.getFullYear() === new Date().getFullYear()
+    ? { weekday: 'short', month: 'short', day: 'numeric' } : { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }); };
   const label = (d) => d === thisFri ? `This ${dated(d)}` : dated(d);
   // Three numbers per payday: what the plan asks, what you're changing it by,
   // and what you'd actually pay. The adjustment is the one you reach for most,
@@ -380,9 +385,8 @@ function payoffScheduleHTML(sch) {
         ${revert}
       </div></details>`;
   }).join('');
-  const schHead = '';
   const endD = sch.payoffDate || sch.end;
-  const head = `<div class="week"><span class="muted">Payoff plan · ${sch.weeks} payment${sch.weeks === 1 ? '' : 's'}</span><b class="goodtext">clear by ${parseYmd(endD).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</b></div>`;
+  const head = `<div class="week schhead"><span class="muted">Payoff plan · ${sch.weeks} payment${sch.weeks === 1 ? '' : 's'}</span><b class="goodtext">clear by ${tightDate(parseYmd(endD))}</b></div>`;
 
   // Where the repeated figure comes from. It's just the balance shared out, but
   // nothing on the page said so.
@@ -397,7 +401,7 @@ function payoffScheduleHTML(sch) {
     : '<div class="note" style="margin:2px 0 8px">Nothing is set aside for the card each week, so there is no schedule yet.</div>';
 
   // What the edits actually buy you, and what to do about it.
-  const d = (x) => parseYmd(x).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const d = (x) => tightDate(parseYmd(x));
   // An adjustment's only job is to move the finish line, so that's all this says.
   const earlier = sch.edited && sch.plannedEnd && sch.payoffDate && sch.payoffDate < sch.plannedEnd;
   const later = sch.edited && sch.plannedEnd && sch.payoffDate && sch.payoffDate > sch.plannedEnd;
@@ -413,7 +417,7 @@ function payoffScheduleHTML(sch) {
   return `<div class="plan">
     ${head}
     ${why}
-    <div class="sched">${schHead}${rows}</div>
+    <div class="sched">${rows}</div>
     ${outcome}</div>`;
 }
 
@@ -598,7 +602,7 @@ function planValues() {
 }
 
 function calloutHTML(leftover) {
-  if (leftover < 0) return `You're <b>${money(-leftover)}</b> short this week — trim a line above or change your card strategy.`;
+  if (leftover < 0) return `You're <b>${money(-leftover)}</b> short this week — trim a line above, or send less of it to the card.`;
   // Nothing left over is only good news if the card is actually being covered.
   return `You've got <b>${money(leftover)}</b> left over this week after everything.`;
 }
@@ -625,7 +629,7 @@ function planTab() {
   const goal = weeklyGoal(s);
   const goalRow = `<div class="goalrow ${goal != null ? 'on' : ''}">
     <div class="g-n">Weekly spending goal<div class="g-s">${goal != null
-      ? 'Yours — overrides the card trim and every strategy'
+      ? 'Yours — overrides the card trim'
       : `Working it out for you · ${money(wp.rec.everyday)} this week`}</div></div>
     <input type="text" inputmode="decimal" placeholder="auto" value="${goal != null ? fmtNum(goal) : ''}" data-weeklygoal>
     ${goal != null ? '<button class="cellx" data-act="goal-clear" title="Back to automatic">↺</button>' : ''}</div>`;
@@ -693,7 +697,8 @@ function planTab() {
   // rest start collapsed. (Native <details>, so open/closed is remembered per tap.)
   const sec = (title, body, open = false) => `<details class="psec" ${openAttr('psec-' + title.replace(/[^a-z]/gi, '').slice(0, 20), open)}><summary><span class="psec-t">${title}</span><span class="psec-caret">›</span></summary><div class="psec-body">${body}</div></details>`;
   const billsAcctBody = billsAcctCard(s) + `<button class="btn block" data-act="log-xfer" data-id="bills" style="margin-top:8px">+ Log a transfer to the bills account</button>`;
-  const baTag = bt.hasBal ? (bt.covered ? ' · covered' : ' · short ' + money(bt.shortfall)) : '';
+  // Bare, the row looked unfinished next to the three that carry a figure.
+  const baTag = bt.hasBal ? (bt.covered ? ' · covered' : ' · short ' + money(bt.shortfall)) : ' · add your balance';
 
   return `${header('Plan', false)}
     ${sec("This week's plan", plannerBody, true)}
@@ -721,7 +726,9 @@ function finance() {
       <div class="fh-sub">${active.length} active loan${active.length === 1 ? '' : 's'}${paidCount ? ` · ${paidCount} paid off` : ''}</div>
       <div class="fh-grid">
         <div><span>Interest left</span><b>${money(totalInterest)}</b></div>
-        <div><span>Saving with extra</span><b class="goodtext">${totalSaved > 0 ? money(totalSaved) : '—'}</b></div>
+        <div><span>Saving with extra</span>${totalSaved > 0
+          ? `<b class="goodtext">${money(totalSaved)}</b>`
+          : '<b class="fh-none">nothing extra yet</b>'}</div>
       </div>
     </div>
     <h2>Loans</h2>
@@ -833,6 +840,9 @@ function activityList() {
 
 // The activity log, folded into the Home tab (search + filters + full list).
 function activityBlock() {
+  // Before anything is logged, the search box and nine filter chips were just
+  // furniture stacked on top of "Nothing here."
+  if (!store.txs.length) return `<div class="acthead"><h2>Activity</h2></div><div id="actlist">${activityList()}</div>`;
   const chips = [['all', 'All'], ...S().categories.map((c) => [c.id, c.emoji + ' ' + c.name]), ['income', '💰 Income'], ['transfer', '🏦 Bills/Savings/Card']]
     .map(([id, l]) => `<button class="chip ${ui.filter === id ? 'on' : ''}" data-act="filter" data-id="${esc(id)}">${esc(l)}</button>`).join('');
   return `<div class="acthead"><h2>Activity</h2>${ui.all ? '<span class="muted">Whole history</span>' : ''}</div>
@@ -872,11 +882,11 @@ function settings() {
     }).join('')}
       <button class="btn block" data-act="addcat">+ Add category</button></div>
     <h2>Bills &amp; due days</h2><div class="card">
-      <div class="field bill-head"><span style="flex:1">Bill</span><span style="width:84px;text-align:right">Amount</span><span style="width:46px;text-align:center">Day</span><span style="width:64px"></span></div>
+      <div class="field bill-head billrow"><span style="flex:1">Bill</span><span style="width:78px;text-align:right">Amount</span><span style="width:44px;text-align:center">Day</span><span style="width:64px"></span></div>
       ${s.bills.map((b, i) => `
-      <div class="field"><input class="name" type="text" value="${esc(b.name)}" data-bill="${i}" data-field="name">
-        <input type="text" inputmode="decimal" value="${fmtNum(b.useAvg ? billAmount(b) : b.amount)}" ${b.useAvg ? 'disabled title="Using 12-month average"' : ''} data-bill="${i}" data-field="amount" style="width:84px">
-        <input type="number" inputmode="numeric" min="1" max="31" value="${b.day}" data-bill="${i}" data-field="day" style="width:46px;text-align:center">
+      <div class="field billrow"><input class="name" type="text" value="${esc(b.name)}" data-bill="${i}" data-field="name">
+        <input type="text" inputmode="decimal" value="${fmtNum(b.useAvg ? billAmount(b) : b.amount)}" ${b.useAvg ? 'disabled title="Using 12-month average"' : ''} data-bill="${i}" data-field="amount" style="width:78px">
+        <input type="number" inputmode="numeric" min="1" max="31" value="${b.day}" data-bill="${i}" data-field="day" style="width:44px;text-align:center">
         <button class="btn mini ${b.useAvg ? 'on' : ''}" data-act="billedit" data-i="${i}" aria-label="Edit history">📝</button>
         <button class="x" data-act="delbill" data-i="${i}" aria-label="Delete">✕</button></div>`).join('')}
       <button class="btn block" data-act="addbill">+ Add bill</button>
@@ -975,7 +985,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=124'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=127'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -1532,7 +1542,7 @@ function drawPending() {
     <button class="loose" data-act="finish-item" data-id="${esc(x.id)}"><div class="emoji">🕗</div>
       <div class="body"><div class="t">${money(x.amount)}${x.note ? ` · ${esc(x.note)}` : ''}</div><div class="s">${
         x.source === 'plaid' ? esc(x.account || 'from your bank') : 'added'
-      } · ${parseYmd(x.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}${x.pend ? ' · pending' : ''} · tap to finish</div></div><span class="chev">›</span></button>
+      } · ${tightDate(parseYmd(x.date))}${x.pend ? ' · pending' : ''} · tap to finish</div></div><span class="chev">›</span></button>
     <button class="x" data-act="pending-del" data-id="${esc(x.id)}" aria-label="Discard">✕</button></div>`).join('');
   $('#sheet').innerHTML = `<div class="panel"><div class="head"><span style="width:40px"></span><span class="step">Loose logs to finish</span><button data-act="sheet-close" aria-label="Later">✕</button></div>
     ${progressHTML()}
@@ -2421,7 +2431,7 @@ document.addEventListener('change', (e) => {
       const on = weeklyGoal(S()) != null;
       row.classList.toggle('on', on);
       const sub = row.querySelector('.g-s');
-      if (sub) sub.textContent = on ? 'Yours — overrides the card trim and every strategy' : 'Working it out for you';
+      if (sub) sub.textContent = on ? 'Yours — overrides the card trim' : 'Working it out for you';
     }
     return;
   }

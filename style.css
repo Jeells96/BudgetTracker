@@ -45,7 +45,7 @@ input, select, textarea { font:inherit; color:inherit; }
 .big, .fh-big, .amount, .amt, .a, .b, .n, .bb, .p, .tot b, .stats b, .tile b,
 .loan-stats b, .loan-summary b, .fh-grid b, .savebox b, .invout .big, .seltot,
 .ccbreak b, .splitstat b, .wk-nums b, .plancell, .ccinput, .fin-num, .sch-row b,
-.planner .prow b, .trow .b, .trow .n, .bill .amt, .wk-amt b, .tr-top b {
+.planner .prow b, .trow .b, .trow .n, .bill .amt, .wk-amt b, .tr-top b, .cat .row .a {
   font-variant-numeric:tabular-nums; font-feature-settings:"tnum" 1;
 }
 
@@ -105,21 +105,23 @@ h2 { font-size:.7rem; font-weight:600; text-transform:uppercase; letter-spacing:
   width:100%; text-align:left; background:none; }
 .cat:first-child { border-top:0; padding-top:2px; }
 .cat .body { flex:1; min-width:0; }
-.cat .row { display:flex; justify-content:space-between; gap:10px; margin-bottom:8px; }
-.cat .row .n { font-weight:550; letter-spacing:-.005em; }
-.cat .row .a { color:var(--muted); font-size:.85rem; white-space:nowrap; }
-.cat .nobudget { font-size:.82rem; color:var(--muted); }
+.cat .row { display:flex; justify-content:space-between; gap:8px; margin-bottom:8px; }
+/* "$1,372.86 / $5,462.97" next to "Bills account" overran the row by a pixel and
+   wrapped the name, so the figure is a notch smaller and the name truncates
+   instead of doubling the row's height. */
+.cat .row .n { font-weight:550; letter-spacing:-.005em; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.cat .row .a { color:var(--muted); font-size:.82rem; white-space:nowrap; flex:none; }
 .cat .chev, .tx .chev, .loose .chev { color:var(--muted); opacity:.45; font-size:1.1rem; align-self:center; transition:transform .18s; }
 .cat.open .chev { transform:rotate(90deg); }
 .emoji { width:34px; height:34px; border-radius:10px; background:var(--raise); display:grid; place-items:center; font-size:1rem; flex:none; }
 
-.tx { display:flex; align-items:center; gap:12px; padding:0; border-top:1px solid var(--hair); position:relative; }
+.tx { display:flex; align-items:center; gap:10px; padding:0; border-top:1px solid var(--hair); position:relative; }
 .tx:first-child { border-top:0; }
-.tx-main { flex:1; min-width:0; display:flex; align-items:center; gap:12px; padding:13px 0; width:100%; text-align:left; background:none; }
+.tx-main { flex:1; min-width:0; display:flex; align-items:center; gap:10px; padding:13px 0; width:100%; text-align:left; background:none; }
 .tx .body { flex:1; min-width:0; }
 .tx .t { font-weight:550; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; letter-spacing:-.005em; }
-.tx .s { font-size:.78rem; color:var(--muted); }
-.tx .amt { font-weight:600; } .tx .amt.in { color:var(--good); } .tx .amt.xfer { color:var(--muted); }
+.tx .s { font-size:.78rem; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.tx .amt { font-weight:600; flex:none; font-variant-numeric:tabular-nums; font-feature-settings:"tnum" 1; } .tx .amt.in { color:var(--good); } .tx .amt.xfer { color:var(--muted); }
 .tx.selected { background:var(--accent-soft); border-radius:12px; }
 .selbox { width:21px; height:21px; border-radius:999px; border:1.5px solid var(--hair); flex:none;
   display:grid; place-items:center; color:var(--accent-ink); font-size:.72rem; font-weight:700; background:none; }
@@ -193,6 +195,15 @@ h2 { font-size:.7rem; font-weight:600; text-transform:uppercase; letter-spacing:
 .field input[type=text], .field input[type=number], .field input[type=date], .field input[type=month], .field select {
   background:var(--raise); border:1px solid var(--hair); border-radius:10px; padding:9px 11px; width:118px; text-align:right; min-width:0; }
 .field input.name { width:auto; flex:1; text-align:left; }
+/* Bills pack four controls into a phone row, so every column is measured:
+   the names are the part that gets squeezed out first. */
+.field.billrow { gap:6px; }
+.field.billrow .btn.mini { width:28px; height:28px; }
+.field.billrow .x { width:24px; }
+.field.billrow input { padding-left:8px; padding-right:8px; }
+.field.billrow input[type=number] { padding-left:5px; padding-right:5px; }
+.field.billrow input[type=number]::-webkit-inner-spin-button,
+.field.billrow input[type=number]::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
 .field input[type=month] { flex:1; text-align:left; }
 .field .x { color:var(--bad); width:30px; height:30px; font-size:1rem; flex:none; }
 .field.weekly { flex-wrap:wrap; }
@@ -268,6 +279,10 @@ hr.sep { border:0; border-top:1px solid var(--hair); margin:18px 0; }
 /* ---------- credit card ---------- */
 .week { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:12px; }
 .week b { font-size:1.1rem; font-weight:600; }
+/* The payoff header is a summary line, not a headline: at 1.1rem the date
+   wrapped under itself and took the label with it. */
+.week.schhead { gap:10px; align-items:center; }
+.week.schhead b { font-size:.95rem; white-space:nowrap; }
 .ccbreak { background:var(--raise); border-radius:var(--r); padding:2px 14px; margin:8px 0 12px; }
 .ccbreak > div { display:flex; justify-content:space-between; gap:10px; padding:10px 0; border-top:1px solid var(--hair); font-size:.86rem; }
 .ccbreak > div:first-child { border-top:0; }
@@ -276,7 +291,6 @@ hr.sep { border:0; border-top:1px solid var(--hair); margin:18px 0; }
 .ccbreak .tot { border-top:1px solid var(--ink-2); font-weight:600; }
 .ccbreak .tot span { color:var(--ink); } .ccbreak .tot b { font-size:1.02rem; }
 .ccbreak small { font-size:.66rem; color:var(--accent); }
-.ccedit { display:flex; align-items:center; gap:6px; }
 .ccinput { width:96px; text-align:right; background:var(--surface); border:1px solid var(--hair);
   border-radius:9px; padding:6px 9px; font-weight:600; -moz-appearance:textfield; }
 .plan { margin-top:14px; padding-top:14px; border-top:1px solid var(--hair); }
@@ -288,15 +302,6 @@ hr.sep { border:0; border-top:1px solid var(--hair); margin:18px 0; }
 .sch-row.man .ccinput { border-color:var(--accent); }
 .paidtag { font-size:.62rem; font-weight:600; color:var(--good); background:var(--accent-soft); padding:2px 7px; border-radius:999px; margin-left:5px; }
 .mantag { font-size:.62rem; font-weight:600; color:var(--muted); background:var(--raise); padding:2px 7px; border-radius:999px; margin-left:5px; }
-.stratlist { margin-top:4px; }
-.strat { display:flex; align-items:center; gap:12px; width:100%; text-align:left; background:var(--surface);
-  border:1px solid var(--hair); border-radius:var(--r); padding:13px 14px; margin-bottom:8px; }
-.strat.on { border-color:var(--accent); background:var(--accent-soft); }
-.strat .radio { width:18px; height:18px; border-radius:999px; border:1.5px solid var(--hair); flex:none; position:relative; }
-.strat.on .radio { border-color:var(--accent); }
-.strat.on .radio::after { content:""; position:absolute; inset:3px; border-radius:999px; background:var(--accent); }
-.strat .st-body { display:flex; flex-direction:column; gap:2px; min-width:0; }
-.strat .st-body b { font-size:.94rem; font-weight:600; } .strat .st-body span { font-size:.8rem; color:var(--muted); }
 
 /* planned returns, shown beside the card */
 .retstrip { display:flex; align-items:center; gap:10px; background:var(--accent-soft);
@@ -305,11 +310,6 @@ hr.sep { border:0; border-top:1px solid var(--hair); margin:18px 0; }
 .retstrip .rs-n { flex:1; min-width:0; color:var(--ink-2); }
 .retstrip b { font-weight:600; color:var(--accent); white-space:nowrap; }
 .retstrip .rs-go { font-size:.76rem; font-weight:600; color:var(--accent); white-space:nowrap; }
-.retlist { margin:4px 0 0; }
-.retlist > div { display:flex; justify-content:space-between; gap:10px; padding:7px 0; font-size:.82rem; border-top:1px solid var(--hair); }
-.retlist > div:first-child { border-top:0; }
-.retlist span { color:var(--muted); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.retlist b { font-weight:600; white-space:nowrap; }
 
 /* ---------- finance ---------- */
 .finhero { border:1px solid var(--hair); border-radius:var(--r3); padding:22px 20px; margin-bottom:6px;
@@ -322,6 +322,8 @@ hr.sep { border:0; border-top:1px solid var(--hair); margin:18px 0; }
 .fh-grid > div:first-child { padding-left:0; margin-left:0; border-left:0; }
 .fh-grid span { display:block; font-size:.64rem; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; font-weight:600; }
 .fh-grid b { font-size:1.05rem; font-weight:600; }
+/* An empty stat read as a broken one when it was just a green dash. */
+.fh-grid b.fh-none { font-size:.8rem; font-weight:500; color:var(--muted); }
 
 .loan { background:var(--surface); border:1px solid var(--hair); border-radius:var(--r2); padding:0; margin-bottom:10px; }
 .loan.done { opacity:.62; }
@@ -535,14 +537,6 @@ nav#tabs button.on { background:var(--ink); color:var(--canvas); }
 .weeknav .wk-r { font-weight:600; font-size:.95rem; }
 .weeknav .wk-s { font-size:.76rem; color:var(--muted); margin-top:2px; }
 
-/* Card: does the log agree with the bank? */
-.recstrip { display:flex; align-items:center; gap:10px; border-radius:var(--r); padding:11px 13px;
-  margin:0 0 10px; font-size:.85rem; background:var(--raise); border:1px solid var(--hair); }
-.recstrip.ok { background:var(--accent-soft); border-color:color-mix(in srgb,var(--accent) 24%,transparent); }
-.recstrip .rs-n { flex:1; min-width:0; }
-.recstrip .rs-m { color:var(--muted); font-size:.78rem; margin-top:3px; }
-.recstrip .rs-ok { flex:none; color:var(--accent); font-weight:600; white-space:nowrap; }
-
 /* Plan: your own weekly spending goal */
 .goalrow { display:flex; align-items:center; gap:10px; padding:11px 13px; margin-bottom:12px;
   border-radius:var(--r); background:var(--raise); border:1px solid var(--hair); }
@@ -596,9 +590,6 @@ nav#tabs button.on { background:var(--ink); color:var(--canvas); }
   background:color-mix(in srgb,var(--bad) 12%,transparent); border:1px solid color-mix(in srgb,var(--bad) 34%,transparent); }
 .warn b { font-weight:650; }
 .warn.soft { background:var(--raise); border-color:var(--hair); }
-.shorttag { font-size:.7rem; font-weight:600; color:var(--bad); white-space:nowrap;
-  background:color-mix(in srgb,var(--bad) 14%,transparent); padding:2px 6px; border-radius:999px; margin-left:6px; }
-.shortshow { display:block; width:100%; text-align:center; margin-top:8px; font-size:.8rem; color:var(--muted); }
 
 /* Does the log agree with the bank? */
 .recbox { border-radius:var(--r); padding:11px 13px; margin:0 0 12px; font-size:.86rem;
@@ -621,11 +612,9 @@ nav#tabs button.on { background:var(--ink); color:var(--canvas); }
 .sch-row .sch-n .ccinput { flex:1; min-width:0; width:auto; text-align:right; }
 .sch-row .sch-n .op { flex:none; color:var(--muted); font-size:.9rem; width:10px; text-align:center; }
 .sch-row .sch-n .sch-tot { flex:1; text-align:right; font-variant-numeric:tabular-nums; font-weight:600; }
-.sch-row .sch-n .sch-plan { flex:1; text-align:right; font-variant-numeric:tabular-nums; color:var(--muted); font-size:.9rem; }
 .sch-row .sch-n .ccinput.tot { font-weight:600; }
 .sch-row .ccinput.adj { color:var(--muted); }
 .sch-row .ccinput.adj.on { color:var(--ink); border-color:var(--accent); }
-.sch-row.head { padding:4px 0 6px; border-top:0; }
 .sch-row.head .sch-n span { flex:1; text-align:right; font-size:.68rem; text-transform:uppercase;
   letter-spacing:.08em; color:var(--muted); font-weight:600; }
 .sch-row.head .sch-n .op { flex:none; }
