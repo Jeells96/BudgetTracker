@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=131';
-import { TRANSFERS } from './defaults.js?v=131';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=131';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=132';
+import { TRANSFERS } from './defaults.js?v=132';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=132';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -652,7 +652,7 @@ function planTab() {
        ${subrow('Spending', 'everyday')}
        ${liveChip}
        ${subrow('Card paydown', 'extra', 0)}`
-    : `${erow('Everyday spending', 'everyday', liveChip)}${erow('Extra', 'extra')}`;
+    : `${erow('Everyday spending', 'everyday', liveChip)}${erow('Leftover', 'extra')}`;
 
   // Where the trimmed spending number actually comes from.
   const pw = weekStats(s, store.txs);
@@ -671,7 +671,7 @@ function planTab() {
       ${erow('Groceries', 'groceries')}
       ${spendCardGroup}
       ${erow('Savings', 'savings')}
-      <div class="trow ${p.leftover < 0 ? 'neg' : 'total'}" id="plan-leftover-row"><span>Leftover / extra</span><span class="b">${money(p.hasCard ? st.extra : 0)}</span><span class="n" id="plan-leftover">${money(p.leftover)}</span></div>
+      <div class="trow ${p.leftover < 0 ? 'neg' : 'total'}" id="plan-leftover-row"><span>Left this week</span><span class="b">${money(p.hasCard ? st.extra : 0)}</span><span class="n" id="plan-leftover">${money(p.leftover)}</span></div>
     </div>
     <div class="callout ${p.leftover < 0 ? 'bad' : 'good'}" id="plan-callout">${calloutHTML(p.leftover)}</div>
     <button class="btn block" id="plan-reset-btn" data-act="plan-reset" ${edited ? '' : 'hidden'}>↺ Reset to recommended</button>
@@ -828,13 +828,21 @@ function activityBlock() {
   // Before anything is logged, the search box and nine filter chips were just
   // furniture stacked on top of "Nothing here."
   if (!store.txs.length) return `<div class="acthead"><h2>Activity</h2></div><div id="actlist">${activityList()}</div>`;
-  const chips = [['all', 'All'], ...S().categories.map((c) => [c.id, c.emoji + ' ' + c.name]), ['income', '💰 Income'], ['transfer', '🏦 Bills/Savings/Card']]
-    .map(([id, l]) => `<button class="chip ${ui.filter === id ? 'on' : ''}" data-act="filter" data-id="${esc(id)}">${esc(l)}</button>`).join('');
+  const opts = [['all', 'All'], ...S().categories.map((c) => [c.id, c.emoji + ' ' + c.name]), ['income', '💰 Income'], ['transfer', '🏦 Bills/Savings/Card']];
+  const chips = opts.map(([id, l]) => `<button class="chip ${ui.filter === id ? 'on' : ''}" data-act="filter" data-id="${esc(id)}">${esc(l)}</button>`).join('');
+  // Nine chips over four rows sat on Home whether or not anything was being
+  // filtered. Closed, the row is one line that still names the active filter,
+  // so nothing is hidden — just folded. It remembers whether you left it open.
+  const on = ui.filter !== 'all';
+  const active = (opts.find(([id]) => id === ui.filter) || opts[0])[1];
   return `<div class="acthead"><h2>Activity</h2>${ui.all ? '<span class="muted">Whole history</span>' : ''}</div>
     <div class="searchrow"><input id="q" class="sheet-input" type="search" placeholder="Search purchases…" value="${esc(ui.q)}" autocomplete="off">
     <button class="chip" data-act="trends">📈 Trends</button>
     <button class="chip ${ui.all ? 'on' : ''}" data-act="all">All</button></div>
-    <div class="chips">${chips}</div><div id="actlist">${activityList()}</div>`;
+    <details class="filterbox${on ? ' on' : ''}" ${openAttr('act-filter')}>
+      <summary><span class="fb-t">${on ? `Filter · ${esc(active)}` : 'Filter'}</span><span class="chev">›</span></summary>
+      <div class="chips">${chips}</div></details>
+    <div id="actlist">${activityList()}</div>`;
 }
 
 function settings() {
@@ -970,7 +978,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=131'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=132'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();

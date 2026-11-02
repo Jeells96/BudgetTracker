@@ -180,6 +180,19 @@ h2 { font-size:.7rem; font-weight:600; text-transform:uppercase; letter-spacing:
 .btn.primary:disabled { opacity:1; background:var(--raise); border-color:var(--hair); color:var(--muted); font-weight:500; }
 
 /* chips wrap — never a horizontal scroller (that traps panning when zoomed) */
+/* The category filters, folded away until wanted. Closed it still names the
+   active filter, so a narrowed list never looks like a short one. */
+.filterbox { margin:10px 0 4px; }
+.filterbox > summary { list-style:none; cursor:pointer; display:flex; align-items:center; justify-content:space-between;
+  gap:10px; padding:10px 13px; border-radius:var(--r); background:var(--surface); border:1px solid var(--hair);
+  font-size:.86rem; font-weight:500; }
+.filterbox > summary::-webkit-details-marker { display:none; }
+.filterbox .fb-t { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.filterbox .chev { color:var(--muted); font-size:1.05rem; opacity:.5; flex:none; transition:transform .18s; }
+.filterbox[open] .chev { transform:rotate(90deg); }
+.filterbox.on > summary { background:var(--accent-soft); border-color:var(--accent); color:var(--accent); }
+.filterbox.on .chev { color:var(--accent); opacity:.8; }
+.filterbox .chips { margin-top:8px; }
 .chips { display:flex; flex-wrap:wrap; gap:7px; padding:2px 0 10px; }
 .chip { padding:7px 13px; border-radius:999px; background:var(--surface); border:1px solid var(--hair);
   font-size:.82rem; font-weight:500; white-space:nowrap; }
