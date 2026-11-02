@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=129';
-import { TRANSFERS } from './defaults.js?v=129';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=129';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=130';
+import { TRANSFERS } from './defaults.js?v=130';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=130';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -13,15 +13,7 @@ const today = () => ymd(new Date());
 const monthKey = (d) => ymd(d).slice(0, 7);
 const monthLabel = (k) => parseYmd(k + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 const monthShort = (k) => parseYmd(k + '-01').toLocaleDateString('en-US', { month: 'long' });
-const dayLabel = (s) => {
-  if (s === today()) return 'Today';
-  const y = new Date(); y.setDate(y.getDate() - 1);
-  if (s === ymd(y)) return 'Yesterday';
-  return parseYmd(s).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
-};
 const ordinal = (n) => n + (['th', 'st', 'nd', 'rd'][(n % 100 >> 3) ^ 1 && n % 10 < 4 ? n % 10 : 0]);
-// Dates always show the year.
-const moDay = (s) => parseYmd(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 // Tight lists drop the year when it's this one — "Nov 1" instead of "Nov 1, 2026" —
 // so a long merchant name keeps the room instead. Other years still say so.
 const tightDate = (d) => d.toLocaleDateString('en-US', d.getFullYear() === new Date().getFullYear()
@@ -112,11 +104,8 @@ function header(title, nav = true) {
 // Name the days the week covers. It starts on a Friday, so it often begins in
 // the month before — which is why the week total can be non-zero while the
 // month's own list below is still empty.
-function weekRangeLabel(ws) {
-  const a = parseYmd(ws.start), b = addDays(a, 6);
-  const f = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  return `${f(a)} – ${f(b)}`;
-}
+const weekSpan = (a) => `${tightDate(a)} – ${tightDate(addDays(a, 6))}`;
+function weekRangeLabel(ws) { return weekSpan(parseYmd(ws.start)); }
 
 function home() {
   const s = S(), ms = MS();
@@ -275,7 +264,7 @@ function txRow(t) {
 function billsAcctCard(s, now = new Date()) {
   const bp = billsProjection(s, store.txs, now);
   const asOfLabel = bp.hasBal ? 'as of ' + tightDate(parseYmd(bp.asOf)) + (bp.staleDays >= 1 ? ` · ${bp.staleDays} day${bp.staleDays === 1 ? '' : 's'} ago` : '') : 'enter your bank balance to start';
-  const firstLabel = parseYmd(bp.firstDue).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const firstLabel = tightDate(parseYmd(bp.firstDue));
   const verdict = !bp.hasBal ? ''
     : bp.covered
       ? `<b class="goodtext">Covered · ${money(bp.surplus)} to spare</b>`
@@ -566,11 +555,7 @@ function commitPlan() {
 }
 
 function planWeekLabel() {
-  const a = parseYmd(weekStart(planNow(), S().weekStartDay ?? 5));
-  const b = addDays(a, 6);
-  const sameYear = a.getFullYear() === b.getFullYear();
-  const f = (d, yr) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', ...(yr ? { year: 'numeric' } : {}) });
-  return `${f(a, !sameYear)} – ${f(b, true)}`;
+  return weekSpan(parseYmd(weekStart(planNow(), S().weekStartDay ?? 5)));
 }
 
 function planWeekSub() {
@@ -769,7 +754,7 @@ function financeLoanCard(loan, st) {
     return inp;
   };
   const schRow = (r) => `<div class="loan-row${r.future ? '' : ' past'}${(r.future && loan.extras[r.date] != null) ? ' locked' : ''}">
-      <span class="d">${moDay(r.date)}</span><span class="p">${money(r.payment)}</span>
+      <span class="d">${moYr(r.date)}</span><span class="p">${money(r.payment)}</span>
       <span class="x">${exCell(r)}</span>
       <span class="bb">${money(r.balance)}</span></div>`;
   const pastWrap = pastRows.length ? `<details class="loan-pastwrap"><summary>↕ Show ${pastRows.length} earlier payment${pastRows.length === 1 ? '' : 's'}</summary>${pastRows.map(schRow).join('')}</details>` : '';
@@ -795,7 +780,7 @@ function financeLoanCard(loan, st) {
       </div>
       <div class="loan-schhdr">Schedule</div>
       <div class="loan-sch">
-        <div class="loan-row head"><span class="d">Due</span><span class="p">Payment</span><span class="x">Extra</span><span class="bb">Balance</span></div>
+        <div class="loan-row head"><span class="d">Due${st.rows.length ? ' · ' + ordinal(+st.rows[0].date.slice(8)) : ''}</span><span class="p">Payment</span><span class="x">Extra</span><span class="bb">Balance</span></div>
         ${schRows}
       </div>
       ${moreFut > 0 ? `<p class="note">+ ${moreFut} more payment${moreFut === 1 ? '' : 's'} through ${moYr(st.payoff)}.</p>` : ''}
@@ -985,7 +970,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=129'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=130'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -1964,7 +1949,7 @@ function drawReturnPlan() {
     // Pick a different logged purchase to return instead.
     const list = store.txs.filter((t) => t.type === 'expense').sort(sortTx).slice(0, 40);
     const rows = list.map((t) => { const c = cat(t.category); return `<button class="tx-main" data-ret="pick" data-id="${esc(t.id)}" style="width:100%">
-      <div class="emoji">${c ? c.emoji : '🧾'}</div><div class="body"><div class="t">${esc(t.note || (c ? c.name : 'Purchase'))}</div><div class="s">${c ? esc(c.name) + ' · ' : ''}${moDay(t.date)}</div></div><div class="amt">${money(t.amount)}</div></button>`; }).join('') || '<div class="empty">No purchases to choose from.</div>';
+      <div class="emoji">${c ? c.emoji : '🧾'}</div><div class="body"><div class="t">${esc(t.note || (c ? c.name : 'Purchase'))}</div><div class="s">${c ? esc(c.name) + ' · ' : ''}${tightDate(parseYmd(t.date))}</div></div><div class="amt">${money(t.amount)}</div></button>`; }).join('') || '<div class="empty">No purchases to choose from.</div>';
     el.innerHTML = `<div class="panel"><div class="head"><button data-ret="unpick" aria-label="Back">←</button><span class="step">Pick the purchase</span><button data-ret="close" aria-label="Close">✕</button></div>
       ${rows}
       <button class="btn block" data-ret="unpick" style="margin-top:12px">← Back</button></div>`;
@@ -2016,7 +2001,7 @@ function openReturns() {
     return `<div class="loose-row">
       <div class="loose"><div class="emoji">↩︎</div>
         <div class="body"><div class="t">${money(x.amount)}${partial ? ` <span class="muted" style="font-weight:500">of ${money(x.orig)}</span>` : ''}</div>
-          <div class="s">${label}${c ? ` · ${c.emoji}` : ''}${x.pay === 'cash' ? ' · debit/cash' : ' · card'} · added ${moDay(x.date || today())}</div></div></div>
+          <div class="s">${label}${c ? ` · ${c.emoji}` : ''}${x.pay === 'cash' ? ' · debit/cash' : ' · card'} · added ${tightDate(parseYmd(x.date || today()))}</div></div></div>
       <button class="btn mini good" data-act="return-done" data-id="${esc(x.id)}" aria-label="Mark returned" title="Mark returned">✓</button>
       <button class="x" data-act="return-del" data-id="${esc(x.id)}" aria-label="Remove">✕</button></div>`;
   }).join('') : '<div class="empty" style="padding:14px">Nothing to return.</div>';
@@ -2147,7 +2132,16 @@ function openCatAvg(id) {
     return `<div class="avg-month"><div class="avg-mhead"><b>${label}</b>${tag}</div>${rows}</div>`;
   }).join('');
 
-  const range = used.size ? ` from ${parseYmd([...used].sort()[0] + '-01').toLocaleDateString('en-US', { month: 'short', year: '2-digit' })}–${parseYmd([...used].sort().slice(-1)[0] + '-01').toLocaleDateString('en-US', { month: 'short', year: '2-digit' })}` : '';
+  // "Jul 26–Sep 26" read as two dates in July and September. Spelt out, and with
+  // one year mentioned when both ends share it.
+  const range = (() => {
+    const ms = [...used].sort();
+    if (!ms.length) return '';
+    const a = ms[0], b = ms[ms.length - 1];
+    if (a === b) return ` (${moYr(a + '-01')})`;
+    const mon = (k) => parseYmd(k + '-01').toLocaleDateString('en-US', { month: 'short' });
+    return ` from ${a.slice(0, 4) === b.slice(0, 4) ? mon(a) : moYr(a + '-01')} – ${moYr(b + '-01')}`;
+  })();
   $('#sheet').innerHTML = `<div class="panel sheet-page"><div class="head">
       <button class="backbtn" data-act="sheet-close" aria-label="Back">←</button><span class="step">${esc(c.name)} average</span><span style="width:28px"></span></div>
     <div class="card hero" style="box-shadow:none;padding:4px 0">
