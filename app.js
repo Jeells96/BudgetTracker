@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=139';
-import { TRANSFERS } from './defaults.js?v=139';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=139';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=140';
+import { TRANSFERS } from './defaults.js?v=140';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=140';
 
 const $ = (s) => document.querySelector(s);
 // Condense the title bar once the page has moved. Kept on <body> so a
@@ -1099,7 +1099,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=139'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=140'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -2297,8 +2297,8 @@ function openTrends() {
   $('#sheet').innerHTML = `<div class="panel sheet-page"><div class="head">
     <button class="backbtn" data-act="sheet-close" aria-label="Back">${icon('left')}</button><span class="step">Monthly trends</span><span style="width:28px"></span></div>
     <p class="lead">Averages across ${t.count} month${t.count === 1 ? '' : 's'} of data.</p>
-    <div class="tiles">${tile('Avg spent / mo', t.avg.spent)}${tile('Avg saved / mo', t.avg.savings)}${tile('Avg income / mo', t.avg.income)}</div>
-    <div class="tiles" style="margin-top:8px">${tile('Avg to bills / mo', t.avg.bills)}${tile('Avg card paid / mo', t.avg.card)}</div>
+    <div class="tiles">${tile('Spent / mo', t.avg.spent)}${tile('Saved / mo', t.avg.savings)}${tile('Income / mo', t.avg.income)}</div>
+    <div class="tiles" style="margin-top:8px">${tile('To bills / mo', t.avg.bills)}${tile('Card paid / mo', t.avg.card)}</div>
     <h2>By month</h2><div class="card">${rows || '<div class="empty">No data yet.</div>'}</div></div>`;
   $('#sheet').className = 'sheet page';
   $('#sheet').hidden = false;

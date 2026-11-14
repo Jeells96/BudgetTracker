@@ -319,7 +319,7 @@ body.scrolled .apptop .sub { height:0; opacity:0; overflow:hidden; margin:0; }
 .chip .ic { width:16px; height:16px; stroke-width:1.9; color:var(--muted); }
 .chip.on .ic { color:inherit; }
 .chip .mono { font-size:.74rem; }
-.chip.on { background:var(--ink); border-color:var(--ink); color:var(--canvas); font-weight:550; }
+.chip.on { background:var(--accent); border-color:var(--accent); color:var(--accent-ink); font-weight:600; }
 .chipbtn { display:inline-flex; align-items:center; gap:6px; font-size:.72rem; font-weight:600;
   color:var(--accent); background:var(--accent-soft);
   border:1px solid var(--accent-line); border-radius:999px; padding:5px 11px; text-align:left; }
@@ -586,8 +586,11 @@ hr.sep { border:0; border-top:1px solid var(--hair); margin:18px 0; }
 
 /* ---------- trends / averages / overage ---------- */
 .tiles { display:flex; gap:10px; }
-.tile { flex:1; background:var(--surface); border:1px solid var(--hair); border-radius:var(--r); padding:14px 12px; text-align:center; }
-.tile b { display:block; font-size:1.1rem; font-weight:600; } .tile span { font-size:.68rem; color:var(--muted); }
+.tile { flex:1; min-width:0; background:var(--surface); border:1px solid var(--hair); border-radius:var(--r);
+  padding:13px 8px; text-align:center; box-shadow:var(--lift-sm); }
+.tile b { display:block; font-size:1.05rem; font-weight:700; letter-spacing:-.015em; }
+.tile span { display:block; margin-top:4px; font-size:.63rem; color:var(--muted); text-transform:uppercase;
+  letter-spacing:.06em; font-weight:600; white-space:nowrap; }
 .tr-month { padding:14px 0; border-top:1px solid var(--hair); } .tr-month:first-child { border-top:0; }
 .tr-top { display:flex; justify-content:space-between; margin-bottom:6px; } .tr-top b { font-weight:600; }
 .tr-sub { font-size:.78rem; color:var(--muted); margin-top:6px; }
