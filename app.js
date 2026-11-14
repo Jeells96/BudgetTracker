@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=136';
-import { TRANSFERS } from './defaults.js?v=136';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=136';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=137';
+import { TRANSFERS } from './defaults.js?v=137';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=137';
 
 const $ = (s) => document.querySelector(s);
 // Condense the title bar once the page has moved. Kept on <body> so a
@@ -412,7 +412,7 @@ function weekDoneRow() {
       : `Marked done for ${when} without a payment.`}
       <button class="link" data-act="cc-week-more">I'll put more towards it</button></div>`;
   }
-  return `<button class="btn block" data-act="cc-week-done" style="margin-top:8px">✓ Done paying the card for ${when}</button>
+  return `<button class="btn block" data-act="cc-week-done" style="margin-top:8px">${icon('check')}Done paying the card for ${when}</button>
     ${more ? `<div class="note">You said more was coming this week${w.amount > 0.005 ? ` — ${money(w.amount)} so far` : ''}.</div>` : ''}`;
 }
 
@@ -439,7 +439,7 @@ function payoffScheduleHTML(sch) {
     const shown = p.manual && asked != null ? round(asked) : p.amount;
     const delta = p.manual && asked != null ? round(asked - base) : 0;
     const capped = p.manual && asked != null && asked - p.amount > 0.005;
-    const tag = paid ? ' <span class="paidtag">✓ paid</span>'
+    const tag = paid ? ` <span class="paidtag">${icon('check')}Paid</span>`
       : p.manual ? ' <span class="mantag">edited</span>'
       : trimmed ? ' <span class="mantag">what\'s left</span>' : '';
     const revert = p.manual && !paid ? `<button class="btn block" data-act="cc-pay-clear" data-id="${p.date}" style="margin-top:8px">${icon('reset')}Back to the plan</button>` : '';
@@ -907,7 +907,7 @@ function activityList() {
   const q = ui.q.trim().toLowerCase();
   if (q) list = list.filter((t) => (t.note + ' ' + (cat(t.category)?.name || t.category)).toLowerCase().includes(q) || String(t.amount).includes(q));
   const spent = round(list.filter((t) => t.type === 'expense').reduce((a, t) => a + txNet(t), 0));
-  if (!list.length) return '<div class="card empty">Nothing here.</div>';
+  if (!list.length) return `<div class="card empty">${icon('receipt', 'lg')}<div>${ui.q ? 'No purchases match that search.' : 'Nothing logged in this period yet.'}</div></div>`;
   // Flat list in the order entered (newest first), each row shows its own date.
   return `<p class="note">${list.length} item${list.length > 1 ? 's' : ''} · ${money(spent)}</p>
     <div class="card" style="padding:6px 18px">${list.map(txRow).join('')}</div>`;
@@ -963,7 +963,7 @@ function settings() {
       const avgRow = c.id === 'gas' ? `<label class="muted avgline" style="flex-basis:100%;font-size:.8rem;padding-left:46px"><input type="checkbox" ${c.useAvg ? 'checked' : ''} data-catavg="${i}"> use 12-month average${c.useAvg ? ` (${money(categoryAvg(store.txs, c.id))}) <button class="link" data-act="catavg-view" data-id="${esc(c.id)}">see breakdown ›</button>` : ''}</label>` : '';
       return `<div class="field weekly"><span class="emoji sm">${glyph(c)}</span><label>${esc(c.name)}</label>
         <input type="text" inputmode="decimal" value="${fmtNum(c.useAvg ? categoryAvg(store.txs, c.id) : c.budget)}" ${c.useAvg ? 'disabled title="Using 12-month average"' : ''} data-cat="${i}" data-field="budget">
-        <button class="x" data-act="delcat" data-i="${i}" aria-label="Delete">✕</button>
+        <button class="x" data-act="delcat" data-i="${i}" aria-label="Delete">${icon('close')}</button>
         <label class="muted" style="flex-basis:100%;font-size:.8rem;padding-left:46px"><input type="checkbox" ${c.weekly ? 'checked' : ''} data-cat="${i}" data-field="weekly"> counts toward weekly everyday budget</label>
         ${avgRow}</div>`;
     }).join('')}
@@ -975,7 +975,7 @@ function settings() {
         <input type="text" inputmode="decimal" value="${fmtNum(b.useAvg ? billAmount(b) : b.amount)}" ${b.useAvg ? 'disabled title="Using 12-month average"' : ''} data-bill="${i}" data-field="amount" style="width:78px">
         <input type="number" inputmode="numeric" min="1" max="31" value="${b.day}" data-bill="${i}" data-field="day" style="width:44px;text-align:center">
         <button class="btn mini ${b.useAvg ? 'on' : ''}" data-act="billedit" data-i="${i}" aria-label="Edit history">${icon('pencil')}</button>
-        <button class="x" data-act="delbill" data-i="${i}" aria-label="Delete">✕</button></div>`).join('')}
+        <button class="x" data-act="delbill" data-i="${i}" aria-label="Delete">${icon('close')}</button></div>`).join('')}
       <button class="btn block" data-act="addbill">+ Add bill</button>
       <div class="note">Due on the 1st · ${money(firstTotal(s))} of ${money(billsTotal(s))} total</div></div>
     <h2>Sync &amp; data</h2><div class="card"><div class="field"><label>${syncText}</label></div>
@@ -1072,7 +1072,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=136'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=137'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -1430,7 +1430,7 @@ function bankBlock() {
     <div class="sub">${esc(tightDate(parseYmd(it.date)))}${it.account ? ' · ' + esc(it.account) : ''}${it.pending ? ' <span class="pill wait">Pending</span>' : ''}</div>
     <select data-inbox-cat="${esc(it.id)}">${opts(bankUI.pick[it.id] || '')}</select>
     <div class="acts">
-      <button class="btn" data-act="inbox-accept" data-id="${esc(it.id)}"${off('row-' + it.id)}>✓ Add</button>
+      <button class="btn" data-act="inbox-accept" data-id="${esc(it.id)}"${off('row-' + it.id)}>${icon('check')}Add</button>
       <button class="btn" data-act="inbox-drop" data-id="${esc(it.id)}">Ignore</button>
     </div></div>`).join('');
 
@@ -1632,7 +1632,7 @@ function drawPending() {
     ${x.source === 'plaid' && x.note
       ? `<button class="x" data-act="pending-ignore" data-id="${esc(x.id)}" title="Always ignore ${esc(x.note)}" aria-label="Always ignore">${icon('ban')}</button>`
       : '<span class="x" aria-hidden="true"></span>'}
-    <button class="x" data-act="pending-del" data-id="${esc(x.id)}" aria-label="Discard">✕</button></div>`).join('');
+    <button class="x" data-act="pending-del" data-id="${esc(x.id)}" aria-label="Discard">${icon('close')}</button></div>`).join('');
   $('#sheet').innerHTML = `<div class="panel"><div class="head"><span style="width:40px"></span><span class="step">Loose logs to finish</span><button data-act="sheet-close" aria-label="Later">${icon('close')}</button></div>
     ${progressHTML()}
     <p class="note" style="margin:0 0 10px">${pend.length
@@ -1657,9 +1657,9 @@ function drawBillEdit() {
   const rows = hist.map((h) => `<div class="field">
     <input type="month" data-bh="${esc(h.id)}" data-f="month" value="${esc(h.month)}" max="${today().slice(0, 7)}">
     <input type="text" inputmode="decimal" data-bh="${esc(h.id)}" data-f="amount" value="${fmtNum(h.amount)}" style="width:100px" placeholder="0">
-    <button class="x" data-act="bh-del" data-id="${esc(h.id)}" aria-label="Remove">✕</button></div>`).join('') || '<div class="empty" style="padding:14px">No months logged yet.</div>';
+    <button class="x" data-act="bh-del" data-id="${esc(h.id)}" aria-label="Remove">${icon('close')}</button></div>`).join('') || '<div class="empty" style="padding:14px">No months logged yet.</div>';
   $('#sheet').innerHTML = `<div class="panel"><div class="head">
-      <span style="width:40px"></span><span class="step">Edit ${esc(b.name)}</span><button data-act="bill-done" aria-label="Done">✕</button></div>
+      <span style="width:40px"></span><span class="step">Edit ${esc(b.name)}</span><button data-act="bill-done" aria-label="Done">${icon('close')}</button></div>
     <label class="editlbl">Amount each time it arrives</label>
     <input class="sheet-input" type="text" inputmode="decimal" value="${fmtNum(b.amount)}" data-billfix="amount" ${b.useAvg ? 'disabled' : ''}>
     <label class="editlbl">How often it arrives</label>
@@ -2104,8 +2104,8 @@ function openReturns() {
       <div class="loose"><div class="emoji">${icon('undo')}</div>
         <div class="body"><div class="t">${money(x.amount)}${partial ? ` <span class="muted" style="font-weight:500">of ${money(x.orig)}</span>` : ''}</div>
           <div class="s">${label}${c ? ` · ${esc(c.name)}` : ''}${x.pay === 'cash' ? ' · debit/cash' : ' · card'} · added ${tightDate(parseYmd(x.date || today()))}</div></div></div>
-      <button class="btn mini good" data-act="return-done" data-id="${esc(x.id)}" aria-label="Mark returned" title="Mark returned">✓</button>
-      <button class="x" data-act="return-del" data-id="${esc(x.id)}" aria-label="Remove">✕</button></div>`;
+      <button class="btn mini good" data-act="return-done" data-id="${esc(x.id)}" aria-label="Mark returned" title="Mark returned">${icon('check')}</button>
+      <button class="x" data-act="return-del" data-id="${esc(x.id)}" aria-label="Remove">${icon('close')}</button></div>`;
   }).join('') : '<div class="empty" style="padding:14px">Nothing to return.</div>';
   $('#sheet').innerHTML = `<div class="panel"><div class="head"><span style="width:40px"></span><span class="step">Planned returns</span><button data-act="sheet-close" aria-label="Close">${icon('close')}</button></div>
     ${rets.length ? `<p class="note" style="margin:0 0 10px">${rets.length} to return · ${money(total)}</p>` : ''}

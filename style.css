@@ -108,7 +108,9 @@ body.scrolled .apptop .sub { height:0; opacity:0; overflow:hidden; margin:0; }
 /* ---------- surfaces ---------- */
 .card { background:var(--surface); border:1px solid var(--hair); border-radius:var(--r2); padding:18px; }
 @media (prefers-color-scheme: light) { .card, .psec, .loan { box-shadow:var(--lift-sm); } }
-.empty { text-align:center; padding:28px 14px; color:var(--muted); font-size:.86rem; line-height:1.55; }
+.empty { display:flex; flex-direction:column; align-items:center; gap:10px; text-align:center;
+  padding:28px 14px; color:var(--muted); font-size:.86rem; line-height:1.55; }
+.empty .ic { color:var(--muted); opacity:.45; }
 
 /* ---------- hero: the account tile ---------- */
 /* The week's headline figure sits in a card of its own, the way a bank puts an
@@ -256,8 +258,9 @@ body.scrolled .apptop .sub { height:0; opacity:0; overflow:hidden; margin:0; }
 .btn { padding:13px 16px; border-radius:var(--r); background:var(--surface); border:1px solid var(--hair);
   font-weight:550; font-size:.94rem; transition:transform .08s ease; }
 .btn:active { transform:scale(.985); }
-.btn.block { display:flex; align-items:center; justify-content:center; gap:9px; width:100%; margin-top:12px; }
-.btn.block > br + span { flex-basis:100%; }
+.btn.block { display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:3px 9px;
+  width:100%; margin-top:12px; }
+.btn.block > br { flex-basis:100%; height:0; }
 .btn .ic { margin-top:-1px; }
 .btn.primary { background:var(--accent); border-color:var(--accent); color:var(--accent-ink); font-weight:600; }
 .btn.danger { background:none; border-color:color-mix(in srgb,var(--bad) 30%,transparent); color:var(--bad); }
@@ -319,9 +322,11 @@ body.scrolled .apptop .sub { height:0; opacity:0; overflow:hidden; margin:0; }
 .rowact:empty { display:none; }
 
 .seg { display:flex; background:var(--raise); border:1px solid var(--hair); border-radius:12px; padding:3px; margin-bottom:10px; }
-.seg button { flex:1; padding:8px; border-radius:9px; font-weight:550; font-size:.88rem; color:var(--muted); }
+.seg button { flex:1; display:inline-flex; align-items:center; justify-content:center; gap:7px;
+  padding:9px 8px; border-radius:9px; font-weight:550; font-size:.88rem; color:var(--muted); }
+.seg button .ic { width:16px; height:16px; stroke-width:1.9; vertical-align:0; }
 .seg button.on { background:var(--surface); color:var(--ink); font-weight:600; box-shadow:0 1px 2px rgba(0,0,0,.06); }
-.paytoggle { margin:10px 0 2px; }
+.paytoggle { margin:12px 0; }
 
 .field { display:flex; align-items:center; gap:10px; padding:11px 0; border-top:1px solid var(--hair); }
 .field:first-child { border-top:0; }
@@ -463,7 +468,10 @@ hr.sep { border:0; border-top:1px solid var(--hair); margin:18px 0; }
 .sch-row.paid span:first-child { color:var(--muted); }
 .sch-row b { font-weight:600; }
 .sch-row.man .ccinput { border-color:var(--accent); }
-.paidtag { font-size:.62rem; font-weight:600; color:var(--good); background:var(--good-soft); padding:2px 7px; border-radius:999px; margin-left:5px; }
+.paidtag { display:inline-flex; align-items:center; gap:3px; font-size:.62rem; font-weight:700;
+  letter-spacing:.03em; text-transform:uppercase; color:var(--good); background:var(--good-soft);
+  border:1px solid var(--good-line); padding:1px 7px; border-radius:999px; margin-left:5px; }
+.paidtag .ic { width:12px; height:12px; stroke-width:2.6; vertical-align:0; }
 .mantag { font-size:.62rem; font-weight:600; color:var(--muted); background:var(--raise); padding:2px 7px; border-radius:999px; margin-left:5px; }
 
 /* planned returns, shown beside the card */
