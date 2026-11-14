@@ -759,6 +759,32 @@ nav#tabs button.on { background:var(--accent); color:var(--accent-ink); }
 .btn.danger.solid { background:var(--bad); border-color:var(--bad); color:#fff; font-weight:600; }
 @keyframes pop { from { transform:translateY(10px) scale(.98); opacity:0 } }
 
+/* On a wide window the bottom pill becomes a top bar with the product mark
+   beside the sections, which is what a bank's site looks like on a desktop.
+   Below this width nothing changes: `display: contents` keeps the wrapper out
+   of the way and the pill lays out exactly as before. */
+.navwrap { display:contents; }
+.brand { display:none; }
+@media (min-width: 860px) {
+  nav#tabs {
+    position:fixed; inset:0 0 auto 0; transform:none; bottom:auto;
+    width:100%; max-width:none; border-radius:0; border:0;
+    border-bottom:1px solid var(--hair); box-shadow:0 1px 0 rgba(12,27,42,.03);
+    padding:0; gap:0;
+  }
+  .navwrap { display:flex; align-items:center; gap:4px; width:100%; max-width:560px; margin:0 auto;
+    height:58px; padding:0 18px; }
+  .brand { display:flex; align-items:center; gap:9px; margin-right:18px; flex:none;
+    font-weight:700; font-size:1.02rem; letter-spacing:-.015em; color:var(--ink); }
+  .brand .ic { width:22px; height:22px; color:var(--accent); stroke-width:0; fill:currentColor; }
+  .brand .ic path { stroke:currentColor; stroke-width:1.9; }
+  nav#tabs button { flex-direction:row; gap:7px; padding:8px 11px; border-radius:9px; font-size:.84rem; }
+  nav#tabs button svg { width:18px; height:18px; }
+  #app { padding-top:78px; padding-bottom:48px; }
+  .apptop { top:59px; }
+  .toast, .seltotal { bottom:28px; }
+}
+
 /* ---------- floating bits ---------- */
 .toast { position:fixed; left:50%; bottom:calc(104px + env(safe-area-inset-bottom)); transform:translateX(-50%);
   z-index:70; display:flex; align-items:center; gap:9px;
