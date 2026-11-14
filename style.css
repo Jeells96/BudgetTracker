@@ -88,27 +88,27 @@ h2 { font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing
 
 /* The title bar sticks and condenses, the way an account page keeps its name
    in view while you scroll a long list of transactions. */
-.top { position:sticky; top:0; z-index:20; display:flex; align-items:flex-start; justify-content:space-between;
+.apptop { position:sticky; top:0; z-index:20; display:flex; align-items:flex-start; justify-content:space-between;
   gap:12px; margin:-20px -18px 18px; padding:18px 18px 14px; background:var(--canvas);
   transition:padding .18s ease, box-shadow .18s ease; }
-.top::after { content:''; position:absolute; left:0; right:0; bottom:0; height:1px;
+.apptop::after { content:''; position:absolute; left:0; right:0; bottom:0; height:1px;
   background:var(--hair); opacity:0; transition:opacity .18s ease; }
-body.scrolled .top::after { opacity:1; }
-body.scrolled .top { padding-top:11px; padding-bottom:11px; }
-.top h1 { transition:font-size .18s ease; }
-body.scrolled .top h1 { font-size:1.12rem; letter-spacing:-.012em; }
-body.scrolled .top .sub { height:0; opacity:0; overflow:hidden; margin:0; }
-.top .sub { font-size:.82rem; letter-spacing:.01em; margin-top:3px; color:var(--muted);
+body.scrolled .apptop::after { opacity:1; }
+body.scrolled .apptop { padding-top:11px; padding-bottom:11px; }
+.apptop h1 { transition:font-size .18s ease; }
+body.scrolled .apptop h1 { font-size:1.12rem; letter-spacing:-.012em; }
+body.scrolled .apptop .sub { height:0; opacity:0; overflow:hidden; margin:0; }
+.apptop .sub { font-size:.82rem; letter-spacing:.01em; margin-top:3px; color:var(--muted);
   transition:height .18s ease, opacity .14s ease; }
-.top .ttl { min-width:0; }
+.apptop .ttl { min-width:0; }
 .month { display:flex; align-items:center; gap:2px; background:var(--surface); border:1px solid var(--hair); border-radius:999px; padding:2px; }
 .month button { width:32px; height:32px; border-radius:999px; color:var(--muted); font-size:1rem; display:grid; place-items:center; }
 .month button:active { background:var(--raise); }
 
 /* ---------- surfaces ---------- */
 .card { background:var(--surface); border:1px solid var(--hair); border-radius:var(--r2); padding:18px; }
-@media (prefers-color-scheme: light) { .card { box-shadow:0 1px 2px rgba(20,23,26,.04); } }
-.empty { text-align:center; padding:26px 10px; color:var(--muted); font-size:.88rem; }
+@media (prefers-color-scheme: light) { .card, .psec, .loan { box-shadow:var(--lift-sm); } }
+.empty { text-align:center; padding:28px 14px; color:var(--muted); font-size:.86rem; line-height:1.55; }
 
 /* ---------- hero: the account tile ---------- */
 /* The week's headline figure sits in a card of its own, the way a bank puts an
@@ -145,6 +145,27 @@ body.scrolled .top .sub { height:0; opacity:0; overflow:hidden; margin:0; }
 .log-btn:active { transform:scale(.985); }
 .log-btn .plus { font-size:1.1rem; font-weight:500; }
 
+/* ---------- interaction ---------- */
+/* The app is used in a browser as well as on a phone, so everything you can
+   act on answers to a pointer as well as to a finger. Hover is gated on a
+   device that actually has one, so a tap never leaves a row looking stuck. */
+@media (hover: hover) and (pointer: fine) {
+  .cat:hover, .tx-main:hover, .loose:hover, .loan-head:hover, .avg-tx:hover,
+  .actrow:hover, .retstrip:hover, .qrow .btn:hover { background:var(--raise); }
+  .btn:hover:not(:disabled):not(.primary) { border-color:var(--ink-2); }
+  .btn.primary:hover:not(:disabled) { background:var(--accent-deep); border-color:var(--accent-deep); }
+  .chip:hover:not(.on) { border-color:var(--ink-2); }
+  .psec > summary:hover, .filterbox > summary:hover, .sch-row > summary:hover { background:var(--raise); }
+  .seg button:hover:not(.on) { color:var(--ink); }
+  .cellx:hover, .x:hover { color:var(--ink); }
+  .link:hover { border-bottom-color:var(--accent); }
+  .month button:hover { background:var(--raise); color:var(--ink); }
+}
+.cat, .tx-main, .loose, .loan-head, .actrow, .avg-tx { transition:background .12s ease; }
+.cat:active, .tx-main:active, .loose:active, .loan-head:active, .avg-tx:active, .actrow:active { background:var(--sunken); }
+.chip, .btn, .chipbtn, .log-btn { transition:background .12s ease, border-color .12s ease, transform .08s ease; }
+.chip:active, .chipbtn:active { transform:scale(.97); }
+
 /* ---------- lists ---------- */
 .cat { display:flex; align-items:center; gap:14px; padding:15px 0; border-top:1px solid var(--hair);
   width:100%; text-align:left; background:none; }
@@ -158,7 +179,8 @@ body.scrolled .top .sub { height:0; opacity:0; overflow:hidden; margin:0; }
 .cat .row .a { color:var(--muted); font-size:.76rem; letter-spacing:-.005em; white-space:nowrap; flex:none; }
 .cat .chev, .tx .chev, .loose .chev { color:var(--muted); opacity:.5; align-self:center;
   display:inline-flex; transition:transform .18s; }
-.chev .ic, .psec-caret .ic, .caret .ic { width:16px; height:16px; stroke-width:2.1; vertical-align:0; }
+.chev .ic, .psec-caret .ic, .caret .ic { width:15px; height:15px; stroke-width:2.2; vertical-align:0; }
+.tx .chev .ic, .loose .chev .ic { width:14px; height:14px; }
 .cat.open .chev { transform:rotate(90deg); }
 /* ---------- icons ---------- */
 /* One stroke weight and one optical size, so a row of them reads as a set. */
@@ -348,11 +370,8 @@ input:focus, select:focus, textarea:focus { outline:none; border-color:var(--acc
 .acthead h2 { margin-bottom:12px; }
 hr.sep { border:0; border-top:1px solid var(--hair); margin:18px 0; }
 
-/* ---------- callouts ---------- */
-.callout { border-radius:var(--r); padding:14px 16px; margin-top:12px; font-size:.88rem; line-height:1.5;
-  border:1px solid var(--hair); background:var(--surface); }
-.callout.good { border-color:color-mix(in srgb,var(--good) 26%,transparent); }
-.callout.bad { border-color:color-mix(in srgb,var(--bad) 26%,transparent); color:var(--bad); }
+/* ---------- inline messages ---------- */
+
 /* Inline messages: an icon column, a tinted panel, actions on their own line. */
 .notice { display:flex; align-items:flex-start; gap:11px; border-radius:var(--r);
   padding:12px 14px; margin-top:12px; font-size:.84rem; line-height:1.5;
@@ -622,14 +641,17 @@ hr.sep { border:0; border-top:1px solid var(--hair); margin:18px 0; }
 nav#tabs {
   position:fixed; left:50%; transform:translateX(-50%); bottom:calc(16px + env(safe-area-inset-bottom));
   display:flex; gap:2px; padding:5px; z-index:50;
-  background:var(--nav); border:1px solid var(--hair); border-radius:20px; box-shadow:var(--lift);
+  background:var(--nav); border:1px solid var(--hair); border-radius:18px; box-shadow:var(--lift);
+  -webkit-backdrop-filter:saturate(180%) blur(14px); backdrop-filter:saturate(180%) blur(14px);
   width:max-content; max-width:calc(100% - 28px);
 }
 nav#tabs button { display:flex; flex-direction:column; align-items:center; gap:3px; padding:8px 15px;
-  border-radius:15px; color:var(--muted); font-size:.62rem; font-weight:600; letter-spacing:.02em; }
+  border-radius:13px; color:var(--muted); font-size:.62rem; font-weight:600; letter-spacing:.02em;
+  transition:color .12s ease, background .12s ease; }
 nav#tabs button svg { width:21px; height:21px; display:block; stroke:currentColor; fill:none; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
 nav#tabs button span { font-size:inherit; }
-nav#tabs button.on { background:var(--ink); color:var(--canvas); }
+nav#tabs button.on { background:var(--accent); color:var(--accent-ink); }
+@media (hover: hover) and (pointer: fine) { nav#tabs button:not(.on):hover { color:var(--ink); background:var(--raise); } }
 
 /* ---------- floating bits ---------- */
 .toast { position:fixed; left:50%; bottom:calc(104px + env(safe-area-inset-bottom)); transform:translateX(-50%);

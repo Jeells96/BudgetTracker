@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=135';
-import { TRANSFERS } from './defaults.js?v=135';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=135';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=136';
+import { TRANSFERS } from './defaults.js?v=136';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=136';
 
 const $ = (s) => document.querySelector(s);
 // Condense the title bar once the page has moved. Kept on <body> so a
@@ -185,7 +185,7 @@ function header(title, nav = true) {
   const months = !nav ? '' : `<div class="month">
     <button data-act="prev" aria-label="Previous month">‹</button><button data-act="next" aria-label="Next month">›</button></div>`;
   const sub = nav ? monthLabel(ui.month) : '';
-  return `<div class="top"><div class="ttl"><h1>${title}</h1>${sub ? `<div class="sub">${sub}</div>` : ''}</div>${months}</div>`;
+  return `<div class="apptop"><div class="ttl"><h1>${title}</h1>${sub ? `<div class="sub">${sub}</div>` : ''}</div>${months}</div>`;
 }
 
 // Name the days the week covers. It starts on a Friday, so it often begins in
@@ -673,10 +673,13 @@ function planValues() {
     pay, bills, groceries, everyday, savings, extra, leftover };
 }
 
+// The plan's verdict is an inline message like every other one, so it takes the
+// same shape: icon column, tinted panel.
 function calloutHTML(leftover) {
-  if (leftover < 0) return `You're <b>${money(-leftover)}</b> short this week — trim a line above, or send less of it to the card.`;
-  // Nothing left over is only good news if the card is actually being covered.
-  return `You've got <b>${money(leftover)}</b> left over this week after everything.`;
+  const body = leftover < 0
+    ? `You're <b>${money(-leftover)}</b> short this week — trim a line above, or send less of it to the card.`
+    : `You've got <b>${money(leftover)}</b> left over this week after everything.`;
+  return `${icon(leftover < 0 ? 'alert' : 'check')}<div class="nt-b">${body}</div>`;
 }
 
 // Live update of the derived cells while the user edits — no save, no full re-render.
@@ -685,7 +688,7 @@ function planRecalc() {
   const cb = $('#plan-combined'); if (cb) cb.textContent = money(round(p.everyday + p.extra));
   const lo = $('#plan-leftover'); if (lo) lo.textContent = money(p.leftover);
   const loRow = $('#plan-leftover-row'); if (loRow) { loRow.classList.toggle('neg', p.leftover < 0); loRow.classList.toggle('total', p.leftover >= 0); }
-  const co = $('#plan-callout'); if (co) { co.className = 'callout ' + (p.leftover < 0 ? 'bad' : 'good'); co.innerHTML = calloutHTML(p.leftover); }
+  const co = $('#plan-callout'); if (co) { co.className = 'notice ' + (p.leftover < 0 ? 'bad' : 'good'); co.innerHTML = calloutHTML(p.leftover); }
   const rb = $('#plan-reset-btn'); if (rb) rb.hidden = false;
 }
 
@@ -760,7 +763,7 @@ function planTab() {
       ${erow('Savings', 'savings')}
       <div class="trow ${p.leftover < 0 ? 'neg' : 'total'}" id="plan-leftover-row"><span>Left this week</span><span class="b">${money(p.hasCard ? st.extra : 0)}</span><span class="n" id="plan-leftover">${money(p.leftover)}</span></div>
     </div>
-    <div class="callout ${p.leftover < 0 ? 'bad' : 'good'}" id="plan-callout">${calloutHTML(p.leftover)}</div>
+    <div class="notice ${p.leftover < 0 ? 'bad' : 'good'}" id="plan-callout">${calloutHTML(p.leftover)}</div>
     <button class="btn block" id="plan-reset-btn" data-act="plan-reset" ${edited ? '' : 'hidden'}>${icon('reset')}Reset to recommended</button>
     ${trimNote}
     ${cardNote ? `<p class="note">${cardNote}</p>` : ''}`;
@@ -1069,7 +1072,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=135'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=136'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
