@@ -1,6 +1,6 @@
-import { firebaseConfig } from './firebase-config.js?v=132';
-import { DEFAULT_SETTINGS } from './defaults.js?v=132';
-import { HISTORY } from './history.js?v=132';
+import { firebaseConfig } from './firebase-config.js?v=133';
+import { DEFAULT_SETTINGS } from './defaults.js?v=133';
+import { HISTORY } from './history.js?v=133';
 
 const LS_KEY = 'budget-tracker-v2';
 const CDN = 'https://www.gstatic.com/firebasejs/11.0.2/';
@@ -29,6 +29,8 @@ function normalize(s) {
   // What was planned for each week, keyed by that week's start date.
   out.weekPlans = (s && s.weekPlans && typeof s.weekPlans === 'object') ? s.weekPlans : {};
   out.returns = Array.isArray(s && s.returns) ? s.returns : [];
+  // Drawn symbols or the emoji each row was given; anything else means symbols.
+  out.iconStyle = (s && s.iconStyle === 'emoji') ? 'emoji' : 'symbol';
   const cc = (s && s.cc) || {};
   out.cc = {
     start: cc.start ?? cc.balance ?? 0,

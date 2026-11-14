@@ -40,6 +40,7 @@ export const DEFAULT_SETTINGS = {
   // with the date you entered it. Not tied to logged transfers.
   billsAcct: { bal: null, asOf: null },
   weekStartDay: 5,                  // day the weekly budget resets (0=Sun … 6=Sat); default Friday
+  iconStyle: 'symbol',              // 'symbol' = the drawn icon set, 'emoji' = the emoji each row was given
   weekResetAt: null,                // week-start (YYYY-MM-DD) the user cleared the rollover for
   pending: [],                      // "track later" items: price only, not yet logged {id, amount, date}
   returns: [],                      // purchases flagged to return {id, txId, note, category, pay, orig, amount, at, date}

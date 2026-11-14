@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=132';
-import { TRANSFERS } from './defaults.js?v=132';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=132';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=133';
+import { TRANSFERS } from './defaults.js?v=133';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=133';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -8,6 +8,82 @@ const money = (n) => (n < 0 ? '-' : '') + '$' + Math.abs(n).toLocaleString('en-U
 // Text-box number formatting: show thousands separators, parse back by stripping them.
 const fmtNum = (n) => (n == null || n === '' || isNaN(n)) ? '' : Number(n).toLocaleString('en-US', { minimumFractionDigits: Math.abs(n) % 1 ? 2 : 0, maximumFractionDigits: 2 });
 const parseNum = (v) => { const n = parseFloat(String(v).replace(/[^0-9.\-]/g, '')); return isNaN(n) ? 0 : n; };
+
+// ---------- icons ----------
+// One stroke set, 24×24 on currentColor, so every glyph in the app shares a
+// weight and an optical size. Emoji were the loudest thing on the page and the
+// one that made it read like a toy next to a bank's own app.
+const ICON = {
+  cart: '<circle cx="9.6" cy="19.4" r="1.3"/><circle cx="17.4" cy="19.4" r="1.3"/><path d="M2.6 3.6h2.2l2.4 11.1h11.1l1.9-8.2H6.2"/>',
+  fuel: '<path d="M4.2 20.6V5.4A1.9 1.9 0 0 1 6.1 3.5h5.2a1.9 1.9 0 0 1 1.9 1.9v15.2"/><path d="M2.8 20.6h11.8"/><path d="M6.4 8.2h4.6"/><path d="M13.2 9.6h2.6a1.6 1.6 0 0 1 1.6 1.6v5.2a1.7 1.7 0 0 0 3.4 0V8.3l-2.7-2.7"/>',
+  utensils: '<path d="M6.4 3v7a2.3 2.3 0 0 0 4.6 0V3"/><path d="M8.7 10.4V21"/><path d="M17.4 3c-1.7 1.3-2.6 3.1-2.6 5.4 0 1.8.9 2.9 2.6 3.2V21"/>',
+  receipt: '<path d="M5.6 2.9h12.8v18.2l-2.1-1.5-2.1 1.5-2.2-1.5-2.1 1.5-2.1-1.5-2.2 1.5z"/><path d="M8.8 8.2h6.4M8.8 12.2h6.4"/>',
+  coins: '<ellipse cx="12" cy="6.2" rx="7" ry="2.9"/><path d="M5 6.2v5.1c0 1.6 3.1 2.9 7 2.9s7-1.3 7-2.9V6.2"/><path d="M5 11.3v5.1c0 1.6 3.1 2.9 7 2.9s7-1.3 7-2.9v-5.1"/>',
+  landmark: '<path d="M3.2 9.6 12 4.1l8.8 5.5"/><path d="M5.4 10.2v7.9M9.8 10.2v7.9M14.2 10.2v7.9M18.6 10.2v7.9"/><path d="M2.8 20.6h18.4"/>',
+  card: '<rect x="2.6" y="5.2" width="18.8" height="13.6" rx="2.6"/><path d="M2.6 9.8h18.8"/><path d="M6.4 15h3.3"/>',
+  moneyIn: '<path d="M12 3.6v11.8"/><path d="M7.5 11 12 15.4 16.5 11"/><path d="M4.4 20.4h15.2"/>',
+  swap: '<path d="M4 8.4h13.4"/><path d="M14.2 5.2 17.4 8.4l-3.2 3.2"/><path d="M20 15.6H6.6"/><path d="M9.8 12.4 6.6 15.6l3.2 3.2"/>',
+  person: '<circle cx="12" cy="8.2" r="3.6"/><path d="M4.8 20.4a7.2 7.2 0 0 1 14.4 0"/>',
+  clock: '<circle cx="12" cy="12" r="8.6"/><path d="M12 6.9V12l3.5 2.1"/>',
+  undo: '<path d="M3.6 9.6h10.8a5.4 5.4 0 0 1 0 10.8H8.2"/><path d="M7.3 5.4 3.6 9.6l3.7 4.2"/>',
+  trend: '<path d="M3.6 16.5 9 11.1l3.6 3.6 7.8-7.8"/><path d="M15.3 6.9h5.1V12"/>',
+  search: '<circle cx="10.6" cy="10.6" r="6.6"/><path d="m15.4 15.4 5.2 5.2"/>',
+  sliders: '<path d="M4 7.4h8.2M16.8 7.4H20"/><circle cx="14.5" cy="7.4" r="2.3"/><path d="M4 16.6h3.2M11.8 16.6H20"/><circle cx="9.5" cy="16.6" r="2.3"/>',
+  plus: '<path d="M12 5.2v13.6M5.2 12h13.6"/>',
+  check: '<path d="m4.9 12.5 4.8 4.8 9.4-10.6"/>',
+  close: '<path d="m6 6 12 12M18 6 6 18"/>',
+  right: '<path d="m9.6 5.6 6.4 6.4-6.4 6.4"/>',
+  left: '<path d="M14.4 5.6 8 12l6.4 6.4"/>',
+  down: '<path d="m5.6 9.6 6.4 6.4 6.4-6.4"/>',
+  refresh: '<path d="M20.3 11.2a8.4 8.4 0 0 0-14.4-4.8L3.7 8.5"/><path d="M3.7 4.3v4.2h4.2"/><path d="M3.7 12.8a8.4 8.4 0 0 0 14.4 4.8l2.2-2.1"/><path d="M20.3 19.7v-4.2h-4.2"/>',
+  pencil: '<path d="M4.2 19.8h4.1L19.6 8.5a2.3 2.3 0 0 0-3.3-3.3L5 16.6z"/><path d="m14.9 6.9 3.2 3.2"/>',
+  trash: '<path d="M4.6 6.4h14.8"/><path d="M9.6 6.4V4.8c0-.7.6-1.3 1.3-1.3h2.2c.7 0 1.3.6 1.3 1.3v1.6"/><path d="m6.9 6.4.9 13.4a1.5 1.5 0 0 0 1.5 1.4h5.4a1.5 1.5 0 0 0 1.5-1.4l.9-13.4"/>',
+  ban: '<circle cx="12" cy="12" r="8.6"/><path d="M5.9 18.1 18.1 5.9"/>',
+  inbox: '<path d="M3.2 13.6h4.4l1.3 2.4h6.2l1.3-2.4h4.4"/><path d="M5.7 4.6h12.6l2.5 9v4.4a2 2 0 0 1-2 2H5.2a2 2 0 0 1-2-2v-4.4z"/>',
+  bolt: '<path d="M13.4 2.6 4.6 13.8h6.2l-.8 7.6 8.9-11.2h-6.3z"/>',
+  alert: '<path d="M12 3.8 21.2 19.9H2.8z"/><path d="M12 9.7v4.3M12 17.2h.01"/>',
+  info: '<circle cx="12" cy="12" r="8.6"/><path d="M12 11.1v5.3M12 7.9h.01"/>',
+  lock: '<rect x="4.8" y="10.4" width="14.4" height="10.2" rx="2.4"/><path d="M8.2 10.4V7.7a3.8 3.8 0 0 1 7.6 0v2.7"/>',
+  calendar: '<rect x="3.4" y="5.3" width="17.2" height="15.3" rx="2.4"/><path d="M3.4 10.1h17.2M8.4 3.5v3.5M15.6 3.5v3.5"/>',
+  split: '<rect x="3.4" y="4.5" width="17.2" height="15" rx="2.4"/><path d="M3.4 12h17.2"/>',
+  updown: '<path d="M8 9.2 12 5.2l4 4M8 14.8l4 4 4-4"/>',
+  arrowRight: '<path d="M4 12h14.6"/><path d="m14 7.2 4.8 4.8-4.8 4.8"/>',
+  house: '<path d="m3.4 10.6 8.6-6.8 8.6 6.8"/><path d="M5.6 9.4v11h12.8v-11"/><path d="M9.8 20.4v-5.6h4.4v5.6"/>',
+  car: '<path d="m5.1 11.4 1.6-4.3a2.1 2.1 0 0 1 2-1.4h6.6a2.1 2.1 0 0 1 2 1.4l1.6 4.3"/><rect x="2.8" y="11.4" width="18.4" height="6.1" rx="2"/><circle cx="7.4" cy="17.5" r="1.5"/><circle cx="16.6" cy="17.5" r="1.5"/>',
+  truck: '<rect x="2.6" y="6.4" width="10.6" height="10" rx="1.6"/><path d="M13.2 9.8h3.6l3.6 3.6v3h-7.2z"/><circle cx="7" cy="18.4" r="1.8"/><circle cx="17" cy="18.4" r="1.8"/>',
+  trailer: '<rect x="2.6" y="6.8" width="14.4" height="8.6" rx="1.8"/><path d="M17 11.1h4.4"/><circle cx="8.2" cy="17.6" r="1.8"/>',
+  clipboard: '<rect x="5.2" y="4.6" width="13.6" height="16.2" rx="2.2"/><path d="M9.2 4.6V3.5a1.4 1.4 0 0 1 1.4-1.4h2.8a1.4 1.4 0 0 1 1.4 1.4v1.1z"/><path d="M8.8 10.6h6.4M8.8 14.6h4.2"/>',
+  tag: '<path d="M11.5 2.9h8.4a1.2 1.2 0 0 1 1.2 1.2v8.4l-9.2 9.2a1.6 1.6 0 0 1-2.3 0l-7.3-7.3a1.6 1.6 0 0 1 0-2.3z"/><circle cx="16.7" cy="7.3" r="1.3"/>',
+  cash: '<rect x="2.4" y="6.2" width="19.2" height="11.6" rx="2.2"/><circle cx="12" cy="12" r="2.6"/><path d="M6.1 12h.01M17.9 12h.01"/>',
+  link: '<path d="M10.2 13.8a4 4 0 0 0 5.7 0l2.6-2.6a4 4 0 1 0-5.7-5.7l-1.4 1.4"/><path d="M13.8 10.2a4 4 0 0 0-5.7 0l-2.6 2.6a4 4 0 1 0 5.7 5.7l1.4-1.4"/>',
+};
+const icon = (name, cls = '') => ICON[name] ? `<svg class="ic${cls ? ' ' + cls : ''}" viewBox="0 0 24 24" aria-hidden="true">${ICON[name]}</svg>` : '';
+
+// One shape for every inline message: an icon column and a tinted panel. A
+// stack of boxes with differently coloured left edges read as notification
+// spam; a bank states the same things in one consistent block.
+const NOTICE_ICON = { info: 'info', warn: 'alert', bad: 'alert', good: 'check' };
+const notice = (kind, html, attrs = '') =>
+  `<div class="notice ${kind}"${attrs}>${icon(NOTICE_ICON[kind] || 'info')}<div class="nt-b">${html}</div></div>`;
+
+// Which symbol stands for a category, a transfer or a loan. A default one has a
+// drawn icon; anything you added yourself gets its initial, the way a bank
+// labels a payee it has never seen. The emoji stays in the data either way, and
+// Settings · Row icons switches back to showing it.
+const GLYPH = {
+  groceries: 'cart', gas: 'fuel', 'eating-out': 'utensils', personal: 'tag', other: 'receipt',
+  income: 'moneyIn', savings: 'coins', bills: 'landmark', card: 'card', transfer: 'swap',
+  car: 'car', truck: 'truck', trailer: 'trailer', house: 'house', loan: 'cash',
+};
+const monogram = (name) => `<span class="mono">${esc(String(name || '?').trim().slice(0, 1).toUpperCase())}</span>`;
+function glyph(o, fallback) {
+  if (!o) return icon(fallback || 'receipt');
+  if (S().iconStyle === 'emoji' && o.emoji) return o.emoji;
+  const k = GLYPH[o.id] || GLYPH[o.icon];
+  if (k) return icon(k);
+  if (fallback && !o.name) return icon(fallback);
+  return monogram(o.name);
+}
 
 const today = () => ymd(new Date());
 const monthKey = (d) => ymd(d).slice(0, 7);
@@ -137,10 +213,10 @@ function home() {
       <div class="note" style="margin:8px 0 0">${n} purchase${n === 1 ? '' : 's'}${ms.income ? ` · ${money(ms.income)} income` : ''}</div></div>`;
   }
   const cardTrim = weekly && ws.trimmedByCard > 0
-    ? `<div class="rollover">Weekly ${money(ws.planBudget)} − ${money(ws.trimmedByCard)} freed for the card = <b>${money(ws.baseBudget)}</b> to spend this week.</div>`
+    ? notice('info', `Weekly ${money(ws.planBudget)} − ${money(ws.trimmedByCard)} freed for the card = <b>${money(ws.baseBudget)}</b> to spend this week.`)
     : '';
   const rollover = weekly && ws.overage > 0 && !ws.reset
-    ? `<div class="rollover">You went ${money(ws.overage)} over last week, so it's come off this week — <b>${money(ws.budget)} to spend</b> instead of ${money(ws.baseBudget)}. <button class="link" data-act="overage-view">Review</button> · <button class="link" data-act="week-reset">Forgive it</button></div>`
+    ? notice('warn', `You went ${money(ws.overage)} over last week, so it's come off this week — <b>${money(ws.budget)} to spend</b> instead of ${money(ws.baseBudget)}.<div class="nt-a"><button class="link" data-act="overage-view">Review</button><button class="link" data-act="week-reset">Forgive it</button></div>`)
     : '';
   // Forgiving purchases one by one can take the over-spend to zero, at which
   // point every note about it disappears and the week looks like it was always
@@ -150,11 +226,11 @@ function home() {
     && ws.ids.includes(t.category) && t.date >= prevStart && t.date < ws.start);
   const ignoredSum = round(ignored.reduce((a, t) => a + t.amount, 0));
   const ignoredNote = weekly && ignored.length && ws.overage <= 0.005 && !ws.reset
-    ? `<div class="rollover info">${ignored.length} purchase${ignored.length === 1 ? '' : 's'} from last week ${ignored.length === 1 ? 'is' : 'are'} forgiven (${money(ignoredSum)}), so last week didn't go over. <button class="link" data-act="overage-view">Review</button></div>`
+    ? notice('info', `${ignored.length} purchase${ignored.length === 1 ? '' : 's'} from last week ${ignored.length === 1 ? 'is' : 'are'} forgiven (${money(ignoredSum)}), so last week didn't go over.<div class="nt-a"><button class="link" data-act="overage-view">Review</button></div>`)
     : '';
 
   const forgivenNote = weekly && ws.forgiven > 0
-    ? `<div class="rollover info">Last week's ${money(ws.forgiven)} over-spend is forgiven — it isn't trimming this week. <button class="link" data-act="week-unreset">Bring the penalty back</button></div>`
+    ? notice('info', `Last week's ${money(ws.forgiven)} over-spend is forgiven — it isn't trimming this week.<div class="nt-a"><button class="link" data-act="week-unreset">Bring the penalty back</button></div>`)
     : '';
 
   const estIncome = monthlyIncome(s, ui.month);
@@ -212,21 +288,21 @@ function home() {
     const left = round(otherBudget - otherUsed);
     const head = `<div class="du-note ${left < 0 ? 'bad' : 'good'}">${money(otherSpent)} of ${money(otherBudget)} · ${left < 0 ? money(-left) + ' over' : money(left) + ' left'}</div>`;
     const groups = rolled.map((c) => ({ c, txs: monthList.filter((t) => t.type === 'expense' && t.category === c.id).sort(sortTx), total: round(ms.byCat[c.id] || 0) })).filter((g) => g.txs.length);
-    const subs = groups.map((g) => `<div class="subtier"><span>${g.c.emoji} ${esc(g.c.name)}</span><b>${money(g.total)}</b></div>${g.txs.map(txRow).join('')}`).join('');
+    const subs = groups.map((g) => `<div class="subtier"><span class="st-g">${glyph(g.c)}</span><span>${esc(g.c.name)}</span><b>${money(g.total)}</b></div>${g.txs.map(txRow).join('')}`).join('');
     const empty = !subs ? '<div class="empty">Nothing in other weekly spending yet.</div>' : '';
     return `<div class="catdrop">${head}${subs}${empty}</div>`;
   };
   const otherRow = weeklyCats.length
-    ? moneyRow('🧾', 'Other', otherUsed, otherBudget, 'cat-toggle', '__other', true, ui.openCat === '__other') + (ui.openCat === '__other' ? otherDrop() : '')
+    ? moneyRow(icon('receipt'), 'Other', otherUsed, otherBudget, 'cat-toggle', '__other', true, ui.openCat === '__other') + (ui.openCat === '__other' ? otherDrop() : '')
     : '';
 
   const savingsTarget = round(s.weeklySavings * paychecks);
   const list = [
-    exRow('💰', 'Income', ms.income, estIncome, 'income', true, true),
-    ...s.categories.filter((c) => !rolledIds.has(c.id)).map((c) => { const bud = cb(c); return exRow(c.emoji, c.name, ms.byCat[c.id], bud, c.id, bud > 0); }),
+    exRow(icon('moneyIn'), 'Income', ms.income, estIncome, 'income', true, true),
+    ...s.categories.filter((c) => !rolledIds.has(c.id)).map((c) => { const bud = cb(c); return exRow(glyph(c), c.name, ms.byCat[c.id], bud, c.id, bud > 0); }),
     otherRow,
-    exRow('🐷', 'Savings', ms.savingsIn, savingsTarget, 'savings', savingsTarget > 0, true),
-    moneyRow('🏦', 'Bills account', ms.billsIn, ms.billsTotal, 'goto', 'plan', true)
+    exRow(icon('coins'), 'Savings', ms.savingsIn, savingsTarget, 'savings', savingsTarget > 0, true),
+    moneyRow(icon('landmark'), 'Bills account', ms.billsIn, ms.billsTotal, 'goto', 'plan', true)
   ].join('');
 
   return `${header('Budget')}
@@ -239,25 +315,25 @@ function home() {
     <button class="log-btn" data-act="log"><span class="plus">+</span> Log a purchase</button>
     <h2>${monthShort(ui.month)} · ${paychecks} paychecks</h2><div class="card">${list}</div>
     <div class="twobtn" style="margin-top:16px">
-      <button class="btn block ${pend.length ? 'primary' : ''}" data-act="finish-loose">🕗 Loose logs${pend.length ? ` · ${pend.length}` : ''}</button>
-      <button class="btn block" data-act="returns-view">↩︎ Returns${(s.returns || []).length ? ` · ${(s.returns || []).length}` : ''}</button>
+      <button class="btn block ${pend.length ? 'flag' : ''}" data-act="finish-loose">${icon('clock')}Loose logs${pend.length ? `<span class="badge">${pend.length}</span>` : ''}</button>
+      <button class="btn block ${(s.returns || []).length ? 'flag' : ''}" data-act="returns-view">${icon('undo')}Returns${(s.returns || []).length ? `<span class="badge">${(s.returns || []).length}</span>` : ''}</button>
     </div>
     ${activityBlock()}`;
 }
 
 function txRow(t) {
-  let icon, label, sub, amt;
-  if (t.type === 'income') { icon = '💰'; label = t.note || 'Income'; sub = 'Income'; amt = `<div class="amt in">+${money(t.amount)}</div>`; }
-  else if (t.type === 'transfer') { const x = tfer(t.category); const nm = x?.name || t.category; icon = x?.emoji || '🔁'; label = t.note || nm; sub = t.note ? nm : ''; amt = `<div class="amt xfer">${money(t.amount)}</div>`; }
-  else { const c = cat(t.category); icon = c ? c.emoji : '🧾'; label = t.note || (c ? c.name : 'Purchase'); sub = c ? c.name : t.category; amt = `<div class="amt">${money(t.amount)}</div>`; }
-  const ccDot = (t.type === 'expense' && t.pay === 'credit' ? ' <span class="cc-dot" title="Credit card">💳</span>' : '')
+  let ico, label, sub, amt;
+  if (t.type === 'income') { ico = icon('moneyIn'); label = t.note || 'Income'; sub = 'Income'; amt = `<div class="amt in">+${money(t.amount)}</div>`; }
+  else if (t.type === 'transfer') { const x = tfer(t.category); const nm = x?.name || t.category; ico = glyph(x, 'swap'); label = t.note || nm; sub = t.note ? nm : ''; amt = `<div class="amt xfer">${money(t.amount)}</div>`; }
+  else { const c = cat(t.category); ico = glyph(c, 'receipt'); label = t.note || (c ? c.name : 'Purchase'); sub = c ? c.name : t.category; amt = `<div class="amt">${money(t.amount)}</div>`; }
+  const ccDot = (t.type === 'expense' && t.pay === 'credit' ? ` <span class="cc-dot" title="Credit card">${icon('card')}</span>` : '')
     + (t.returned > 0 ? ' <span class="ex-tag ret">returning</span>' : '')
     + (t.exAvg ? ' <span class="ex-tag" title="Excluded from average">excl. avg</span>' : '');
   const dateStr = tightDate(parseYmd(t.date));
   const picked = sel.ids.has(t.id);
   return `<div class="tx${picked ? ' selected' : ''}">
     <button class="selbox${picked ? ' on' : ''}" data-act="tx-toggle" data-id="${esc(t.id)}" aria-label="Select for total"></button>
-    <button class="tx-main" data-act="tx" data-id="${esc(t.id)}"><div class="emoji">${icon}</div>
+    <button class="tx-main" data-act="tx" data-id="${esc(t.id)}"><div class="emoji">${ico}</div>
     <div class="body"><div class="t">${esc(label)}${ccDot}</div><div class="s">${sub ? esc(sub) + ' · ' : ''}${dateStr}</div></div>${amt}<span class="chev">›</span></button></div>`;
 }
 
@@ -271,7 +347,7 @@ function billsAcctCard(s, now = new Date()) {
       : `<b class="negtext">Short ${money(bp.shortfall)}</b>`;
 
   const upRows = bp.upList.length
-    ? bp.upList.map((b) => `<div><span>${b.when === 'first' ? '🔴 ' : ''}${esc(b.name)}${b.when === 'first' ? ` · ${firstLabel}` : ' · ' + ordinal(b.day)}</span><b>${money(b.amount)}</b></div>`).join('')
+    ? bp.upList.map((b) => `<div><span>${b.when === 'first' ? `<span class="duedot" aria-label="due first"></span>` : ''}${esc(b.name)}${b.when === 'first' ? ` · ${firstLabel}` : ' · ' + ordinal(b.day)}</span><b>${money(b.amount)}</b></div>`).join('')
     : `<div><span class="muted">Nothing due before ${firstLabel}</span><b>${money(0)}</b></div>`;
 
   const lessLump = bp.overfund > 0.005 ? ` · ${money(bp.overfund)} total` : '';
@@ -284,7 +360,7 @@ function billsAcctCard(s, now = new Date()) {
     </div>`;
 
   const staleNote = bp.hasBal && bp.staleDays >= 3
-    ? `<div class="rollover" style="margin-top:8px">Balance is ${bp.staleDays} days old — re-enter it.</div>`
+    ? notice('warn', `Balance is ${bp.staleDays} days old — re-enter it.`, ' style="margin-top:8px"')
     : '';
 
   return `<div class="card">
@@ -642,7 +718,7 @@ function planTab() {
 
   // Live toggle: Spending shows what you've actually spent this week (live) or your
   // planned budget. Tapping flips between the two; the Recommended/reset follows it.
-  const liveChip = `<div class="rowact"><button class="chipbtn ${p.live ? 'on' : ''}" data-act="plan-live">${p.live ? `⚡ Live · ${money(p.liveSpend)} spent — tap for budget` : `📋 Budget · ${money(p.budgetSpend)} — tap for live`}</button></div>`;
+  const liveChip = `<div class="rowact"><button class="chipbtn ${p.live ? 'on' : ''}" data-act="plan-live">${p.live ? `${icon('bolt')}Live · ${money(p.liveSpend)} spent — tap for budget` : `📋 Budget · ${money(p.budgetSpend)} — tap for live`}</button></div>`;
 
   // Spending + credit card: one pool, with the spend and card-paydown pieces inside it.
   // A perfect standard week stays within the spending budget and carries no card
@@ -665,8 +741,8 @@ function planTab() {
     <div class="card plan-table">
       <div class="trow head"><span></span><span class="b">Standard</span><span class="n">Recommended</span></div>
       ${erow('Paycheck', 'pay', p.liveBal == null ? '' : `<div class="rowact"><button class="chipbtn ${p.payLive ? 'on' : ''}" data-act="pay-live">${
-        p.payLive ? `🏦 ${esc(p.spendName || 'Spending')} · ${money(p.liveBal)} — tap for your paycheck`
-                  : `📋 Paycheck · ${money(st.pay)} — tap for the account balance`}</button></div>`)}
+        p.payLive ? `${icon('landmark')}${esc(p.spendName || 'Spending')} · ${money(p.liveBal)} — tap for your paycheck`
+                  : `${icon('clipboard')}Paycheck · ${money(st.pay)} — tap for the account balance`}</button></div>`)}
       ${erow('To bills account', 'bills', bt.hasBal ? `<div class="rowact"><button class="chipbtn" data-act="plan-bills-needed" data-id="${bt.weeklyNeeded}">Use needed · ${money(bt.weeklyNeeded)}</button></div>` : '')}
       ${erow('Groceries', 'groceries')}
       ${spendCardGroup}
@@ -725,7 +801,7 @@ function finance() {
 function financeLoanCard(loan, st) {
   const open = ui.openLoan === loan.id, paid = st.paidOff;
   const head = `<button class="loan-head" data-act="loan-toggle" data-id="${loan.id}">
-    <div class="emoji">${loan.emoji || '💵'}</div>
+    <div class="emoji">${glyph(loan, 'cash')}</div>
     <div class="body">
       <div class="row"><span class="n">${esc(loan.name)}</span><span class="a">${paid ? '<b class="goodtext">Paid off</b>' : money(st.balance)}</span></div>
       <div class="bar"><i style="width:${st.paidPct}%"></i></div>
@@ -757,7 +833,7 @@ function financeLoanCard(loan, st) {
       <span class="d">${moYr(r.date)}</span><span class="p">${money(r.payment)}</span>
       <span class="x">${exCell(r)}</span>
       <span class="bb">${money(r.balance)}</span></div>`;
-  const pastWrap = pastRows.length ? `<details class="loan-pastwrap"><summary>↕ Show ${pastRows.length} earlier payment${pastRows.length === 1 ? '' : 's'}</summary>${pastRows.map(schRow).join('')}</details>` : '';
+  const pastWrap = pastRows.length ? `<details class="loan-pastwrap"><summary>${icon('updown')}Show ${pastRows.length} earlier payment${pastRows.length === 1 ? '' : 's'}</summary>${pastRows.map(schRow).join('')}</details>` : '';
   const schRows = pastWrap + futRows.map(schRow).join('');
   const savedBox = extra > 0 && st.monthsSaved > 0
     ? `<div class="savebox"><div><span>Interest saved</span><b class="goodtext">${money(st.interestSaved)}</b></div><div><span>Sooner</span><b>${st.monthsSaved} pmt${st.monthsSaved === 1 ? '' : 's'}</b></div><div><span>vs. minimum</span><b>${moYr(st.basePayoff)}</b></div></div>`
@@ -786,7 +862,7 @@ function financeLoanCard(loan, st) {
       ${moreFut > 0 ? `<p class="note">+ ${moreFut} more payment${moreFut === 1 ? '' : 's'} through ${moYr(st.payoff)}.</p>` : ''}
       <div class="finfield" style="margin-top:12px"><label>Balance correction</label>
         <input class="fin-num" type="text" inputmode="decimal" value="${fmtNum(round(st.balance))}" data-loanbal="${loan.id}"></div>
-      <button class="btn block danger" data-act="loan-delete" data-id="${loan.id}" style="margin-top:6px">🗑 Delete this loan</button>
+      <button class="btn block danger" data-act="loan-delete" data-id="${loan.id}" style="margin-top:6px">${icon('trash')}Delete this loan</button>
     </div></div>`;
 }
 
@@ -828,19 +904,19 @@ function activityBlock() {
   // Before anything is logged, the search box and nine filter chips were just
   // furniture stacked on top of "Nothing here."
   if (!store.txs.length) return `<div class="acthead"><h2>Activity</h2></div><div id="actlist">${activityList()}</div>`;
-  const opts = [['all', 'All'], ...S().categories.map((c) => [c.id, c.emoji + ' ' + c.name]), ['income', '💰 Income'], ['transfer', '🏦 Bills/Savings/Card']];
-  const chips = opts.map(([id, l]) => `<button class="chip ${ui.filter === id ? 'on' : ''}" data-act="filter" data-id="${esc(id)}">${esc(l)}</button>`).join('');
+  const opts = [['all', '', 'All'], ...S().categories.map((c) => [c.id, glyph(c), c.name]), ['income', icon('moneyIn'), 'Income'], ['transfer', icon('landmark'), 'Bills / Savings / Card']];
+  const chips = opts.map(([id, g, l]) => `<button class="chip ${ui.filter === id ? 'on' : ''}" data-act="filter" data-id="${esc(id)}">${g}${esc(l)}</button>`).join('');
   // Nine chips over four rows sat on Home whether or not anything was being
   // filtered. Closed, the row is one line that still names the active filter,
   // so nothing is hidden — just folded. It remembers whether you left it open.
   const on = ui.filter !== 'all';
-  const active = (opts.find(([id]) => id === ui.filter) || opts[0])[1];
+  const act = opts.find(([id]) => id === ui.filter) || opts[0];
   return `<div class="acthead"><h2>Activity</h2>${ui.all ? '<span class="muted">Whole history</span>' : ''}</div>
     <div class="searchrow"><input id="q" class="sheet-input" type="search" placeholder="Search purchases…" value="${esc(ui.q)}" autocomplete="off">
-    <button class="chip" data-act="trends">📈 Trends</button>
+    <button class="chip" data-act="trends">${icon('trend')}Trends</button>
     <button class="chip ${ui.all ? 'on' : ''}" data-act="all">All</button></div>
     <details class="filterbox${on ? ' on' : ''}" ${openAttr('act-filter')}>
-      <summary><span class="fb-t">${on ? `Filter · ${esc(active)}` : 'Filter'}</span><span class="chev">›</span></summary>
+      <summary><span class="fb-t">${icon('sliders')}${on ? `Filter · ${esc(act[2])}` : 'Filter'}</span><span class="chev">›</span></summary>
       <div class="chips">${chips}</div></details>
     <div id="actlist">${activityList()}</div>`;
 }
@@ -856,18 +932,22 @@ function settings() {
       <div class="prow"><span>− Groceries <span class="muted">(budget ÷ 4)</span></span><b>${money(sw.groceries)}</b></div>
       <div class="field"><label>− Everyday spending</label><input type="text" inputmode="decimal" value="${fmtNum(s.weeklyBudget)}" data-set="weeklyBudget"></div>
       <div class="prow total"><span>Leftover to divide</span><b id="pool" class="${poolBase < 0 ? 'negtext' : ''}">${money(poolBase)}</b></div>
-      <div class="splitrow"><div class="splitlabel"><span>🐷 Savings</span><b id="sav-amt">${money(sw.savings)}</b></div>
+      <div class="splitrow"><div class="splitlabel"><span>${icon('coins')}Savings</span><b id="sav-amt">${money(sw.savings)}</b></div>
         <input type="range" id="sav-slider" min="0" max="${Math.max(5, Math.ceil(poolBase))}" step="5" value="${sw.savings}"></div>
-      <div class="prow"><span>💳 Extra spending <span class="muted">(auto)</span></span><b id="extra-amt" class="${sw.extra < 0 ? 'negtext' : ''}">${money(sw.extra)}</b></div>
+      <div class="prow"><span>${icon('card')}Extra spending <span class="muted">(auto)</span></span><b id="extra-amt" class="${sw.extra < 0 ? 'negtext' : ''}">${money(sw.extra)}</b></div>
       ${poolBase < 0 ? `<div class="err">Your pay doesn't cover bills + groceries + everyday spending — nothing left to save.</div>` : ''}
       <div class="note">Sets your standard week.</div></div>
     <h2>Week</h2><div class="card">
       <div class="field"><label>Week starts on<br><span class="muted" style="font-size:.8rem">When the weekly budget resets</span></label>
         <select data-set="weekStartDay">${['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map((d, i) => `<option value="${i}" ${(+s.weekStartDay) === i ? 'selected' : ''}>${d}</option>`).join('')}</select></div>
+      <div class="field"><label>Row icons<br><span class="muted" style="font-size:.8rem">Drawn symbols, or the emoji each category was given</span></label>
+        <select data-set="iconStyle">
+          <option value="symbol" ${s.iconStyle !== 'emoji' ? 'selected' : ''}>Symbols</option>
+          <option value="emoji" ${s.iconStyle === 'emoji' ? 'selected' : ''}>Emoji</option></select></div>
       </div>
     <h2>Category budgets (monthly)</h2><div class="card">${s.categories.map((c, i) => {
       const avgRow = c.id === 'gas' ? `<label class="muted avgline" style="flex-basis:100%;font-size:.8rem;padding-left:46px"><input type="checkbox" ${c.useAvg ? 'checked' : ''} data-catavg="${i}"> use 12-month average${c.useAvg ? ` (${money(categoryAvg(store.txs, c.id))}) <button class="link" data-act="catavg-view" data-id="${esc(c.id)}">see breakdown ›</button>` : ''}</label>` : '';
-      return `<div class="field weekly"><span class="emoji" style="width:36px;height:36px">${c.emoji}</span><label>${esc(c.name)}</label>
+      return `<div class="field weekly"><span class="emoji sm">${glyph(c)}</span><label>${esc(c.name)}</label>
         <input type="text" inputmode="decimal" value="${fmtNum(c.useAvg ? categoryAvg(store.txs, c.id) : c.budget)}" ${c.useAvg ? 'disabled title="Using 12-month average"' : ''} data-cat="${i}" data-field="budget">
         <button class="x" data-act="delcat" data-i="${i}" aria-label="Delete">✕</button>
         <label class="muted" style="flex-basis:100%;font-size:.8rem;padding-left:46px"><input type="checkbox" ${c.weekly ? 'checked' : ''} data-cat="${i}" data-field="weekly"> counts toward weekly everyday budget</label>
@@ -880,7 +960,7 @@ function settings() {
       <div class="field billrow"><input class="name" type="text" value="${esc(b.name)}" data-bill="${i}" data-field="name">
         <input type="text" inputmode="decimal" value="${fmtNum(b.useAvg ? billAmount(b) : b.amount)}" ${b.useAvg ? 'disabled title="Using 12-month average"' : ''} data-bill="${i}" data-field="amount" style="width:78px">
         <input type="number" inputmode="numeric" min="1" max="31" value="${b.day}" data-bill="${i}" data-field="day" style="width:44px;text-align:center">
-        <button class="btn mini ${b.useAvg ? 'on' : ''}" data-act="billedit" data-i="${i}" aria-label="Edit history">📝</button>
+        <button class="btn mini ${b.useAvg ? 'on' : ''}" data-act="billedit" data-i="${i}" aria-label="Edit history">${icon('pencil')}</button>
         <button class="x" data-act="delbill" data-i="${i}" aria-label="Delete">✕</button></div>`).join('')}
       <button class="btn block" data-act="addbill">+ Add bill</button>
       <div class="note">Due on the 1st · ${money(firstTotal(s))} of ${money(billsTotal(s))} total</div></div>
@@ -945,10 +1025,10 @@ async function syncAll(b) {
 // The strip that shows it working, used on the loose-logs sheet and in Settings.
 function progressHTML() {
   if (!bankUI.progress.length) return '';
-  const icon = { waiting: '<span class="pdot"></span>', working: '<span class="spin"></span>',
-                 done: '<span class="pok">✓</span>', failed: '<span class="pbad">!</span>' };
+  const mark = { waiting: '<span class="pdot"></span>', working: '<span class="spin"></span>',
+                 done: `<span class="pok">${icon('check')}</span>`, failed: '<span class="pbad">!</span>' };
   return `<div class="syncbox">${bankUI.progress.map((p) => `<div class="syncrow">
-    ${icon[p.state]}<span class="sr-n">${esc(p.name)}</span>
+    ${mark[p.state]}<span class="sr-n">${esc(p.name)}</span>
     <span class="sr-s">${p.state === 'working' ? 'checking…'
       : p.state === 'waiting' ? 'queued'
       : p.state === 'failed' ? (p.err ? 'failed' : 'failed')
@@ -978,7 +1058,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=132'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=133'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -1236,10 +1316,10 @@ function cardReconcile() {
 }
 
 const ROLE_OPTS = [
-  ['card', '🕗 Charges → loose logs'],
-  ['review', '📥 Review queue'],
-  ['bills', '🏦 Bills → 12-month averages'],
-  ['off', '🚫 Ignore']
+  ['card', 'Charges → loose logs'],
+  ['review', 'Review queue'],
+  ['bills', 'Bills → 12-month averages'],
+  ['off', 'Ignore']
 ];
 
 // Merchant names wobble between months ("PG&E 10/01" vs "PGE"), so match on the
@@ -1296,7 +1376,7 @@ function bankBlock() {
 
   if (!b.on) return `<h2>Banking</h2><div class="card">
     <div class="note">Pull card and bank activity in automatically instead of typing every purchase. Imports wait in a review queue — nothing counts until you approve it.</div>
-    <button class="btn block" data-act="bank-open">🏦 Set up automatic import</button></div>`;
+    <button class="btn block" data-act="bank-open">${icon('landmark')}Set up automatic import</button></div>`;
 
   const synced = +S().bankSyncAt || 0;
 
@@ -1327,9 +1407,9 @@ function bankBlock() {
     : '<div class="note">No banks linked yet.</div>';
 
   const opts = (picked) => '<option value="">Category…</option>'
-    + S().categories.map((c) => `<option value="e:${esc(c.id)}" ${picked === 'e:' + c.id ? 'selected' : ''}>${c.emoji} ${esc(c.name)}</option>`).join('')
-    + `<option value="i" ${picked === 'i' ? 'selected' : ''}>💰 Income</option>`
-    + TRANSFERS.map((t) => `<option value="t:${esc(t.id)}" ${picked === 't:' + t.id ? 'selected' : ''}>${t.emoji} ${esc(t.name)}</option>`).join('');
+    + S().categories.map((c) => `<option value="e:${esc(c.id)}" ${picked === 'e:' + c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')
+    + `<option value="i" ${picked === 'i' ? 'selected' : ''}>Income</option>`
+    + TRANSFERS.map((t) => `<option value="t:${esc(t.id)}" ${picked === 't:' + t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('');
 
   const rows = b.inbox.map((it) => `<div class="qrow">
     <div class="top"><span class="nm">${esc(it.note || 'Purchase')}</span><span class="amt${it.type === 'income' ? ' in' : ''}">${it.type === 'income' ? '+' : ''}${money(it.amount)}</span></div>
@@ -1366,9 +1446,9 @@ function bankBlock() {
     <button class="btn block" data-act="payer-add">+ Add who pays you</button>`;
 
   const rules = Object.entries(S().txMatch || {});
-  const ruleLabel = (r) => r === 'i' ? '💰 Income'
-    : r === '__skip' ? '🚫 Ignored'
-    : r.startsWith('t:') ? ((TRANSFERS.find((x) => x.id === r.slice(2)) || {}).emoji || '🏦') + ' ' + ((TRANSFERS.find((x) => x.id === r.slice(2)) || {}).name || r.slice(2))
+  const ruleLabel = (r) => r === 'i' ? 'Income'
+    : r === '__skip' ? 'Ignored'
+    : r.startsWith('t:') ? ((TRANSFERS.find((x) => x.id === r.slice(2)) || {}).name || r.slice(2))
     : ((S().categories.find((c) => c.id === r.slice(2)) || {}).name || r.slice(2));
   const ruleRows = !rules.length ? '' : `<div class="subhead">Automatic rules · ${rules.length}</div>
     <div class="note">Learned when you filed one of these. Paycheques and transfers file themselves; purchases always wait for you.</div>
@@ -1385,7 +1465,7 @@ function bankBlock() {
     ${accts}
     ${b.items.length && !b.items.some((it) => Object.values(it.roles || {}).includes('bills'))
       ? '<div class="note">No account is set to <b>Bills → 12-month averages</b> yet, so nothing is filling in your bills account balance or their averages.</div>' : ''}
-    ${b.items.length ? '<div class="note">Set your card to <b>Charges → loose logs</b>: each one lands in the 🕗 list on Home with its price and merchant, and only counts once you finish it. Set your bills account to <b>Bills → 12-month averages</b> — those payments never count as purchases, they just fill in each bill\'s history and keep the account balance current.</div>' : ''}
+    ${b.items.length ? '<div class="note">Set your card to <b>Charges → loose logs</b>: each one lands in the loose-logs list on Home with its price and merchant, and only counts once you finish it. Set your bills account to <b>Bills → 12-month averages</b> — those payments never count as purchases, they just fill in each bill\'s history and keep the account balance current.</div>' : ''}
     <button class="btn block" data-act="bank-connect"${off('connect')}>${b.busy === 'connect' ? 'Opening…' : '+ Connect a bank'}</button>
     ${payerBox}
     ${ruleRows}
@@ -1395,7 +1475,7 @@ function bankBlock() {
     ${progressHTML()}
     ${synced ? `<div class="note" style="margin:0 0 10px">Imports on its own when you open the app. Last checked ${new Date(synced).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}.</div>` : ''}
     <button class="btn block" data-act="bank-sync"${off('sync')}>${b.busy === 'sync' ? 'Checking…' : '⟳ Check for new activity'}</button>
-    <button class="btn block" data-act="bank-activity">🔎 Browse all bank activity</button>
+    <button class="btn block" data-act="bank-activity">${icon('search')}Browse all bank activity</button>
     ${setup}
     </div>
     ${b.inbox.length ? `<h2>To review · ${b.inbox.length}</h2><div class="card">
@@ -1456,7 +1536,7 @@ function drawActivity() {
     <div class="chips">${pick}</div>
     ${accts}
     <p class="note" style="margin:0 0 8px">${a.rows ? `${rows.length} transaction${rows.length === 1 ? '' : 's'} · ` : ''}Tap one to log it. Looking here never changes what gets imported.</p>
-    <button class="btn block" data-act="activity-fresh" style="margin:0 0 10px">↻ Ask the bank for the latest</button>
+    <button class="btn block" data-act="activity-fresh" style="margin:0 0 10px">${icon('refresh')}Ask the bank for the latest</button>
     ${body}</div>`;
   $('#sheet').className = 'sheet';
 }
@@ -1531,12 +1611,12 @@ function openPending() {
 function drawPending() {
   const pend = (S().pending || []).slice().sort((a, b) => b.date.localeCompare(a.date));
   const rows = !pend.length ? '' : pend.map((x) => `<div class="loose-row">
-    <button class="loose" data-act="finish-item" data-id="${esc(x.id)}"><div class="emoji">🕗</div>
+    <button class="loose" data-act="finish-item" data-id="${esc(x.id)}"><div class="emoji">${icon('clock')}</div>
       <div class="body"><div class="t">${money(x.amount)}${x.note ? ` · ${esc(x.note)}` : ''}</div><div class="s">${
         x.source === 'plaid' ? esc(x.account || 'from your bank') : 'added'
       } · ${tightDate(parseYmd(x.date))}${x.pend ? ' · pending' : ''}</div></div><span class="chev">›</span></button>
     ${x.source === 'plaid' && x.note
-      ? `<button class="x" data-act="pending-ignore" data-id="${esc(x.id)}" title="Always ignore ${esc(x.note)}" aria-label="Always ignore">🚫</button>`
+      ? `<button class="x" data-act="pending-ignore" data-id="${esc(x.id)}" title="Always ignore ${esc(x.note)}" aria-label="Always ignore">${icon('ban')}</button>`
       : '<span class="x" aria-hidden="true"></span>'}
     <button class="x" data-act="pending-del" data-id="${esc(x.id)}" aria-label="Discard">✕</button></div>`).join('');
   $('#sheet').innerHTML = `<div class="panel"><div class="head"><span style="width:40px"></span><span class="step">Loose logs to finish</span><button data-act="sheet-close" aria-label="Later">✕</button></div>
@@ -1606,7 +1686,7 @@ function drawFlow() {
   if (f.step === 1) {
     title = 'Pick a category';
     body = `<div class="q">What's it for?</div>
-      <div class="cats">${logCats().map((x) => `<button data-flow="cat" data-v="${esc(x.id)}"><span class="e">${x.emoji}</span>${esc(x.name)}</button>`).join('')}</div>`;
+      <div class="cats">${logCats().map((x) => `<button data-flow="cat" data-v="${esc(x.id)}"><span class="e">${glyph(x)}</span>${esc(x.name)}</button>`).join('')}</div>`;
   } else if (f.step === 2 && f.splitting) {
     // Several charges that share one description/category. Optionally they add up to a set total.
     const total = round(parseFloat(f.total) || 0);
@@ -1621,7 +1701,7 @@ function drawFlow() {
       ? `<div class="splitstat"><div><span>Order total</span><b>${money(total)}</b></div><div><span>Remaining</span><b class="${remaining < 0 ? 'negtext' : remaining === 0 ? 'goodtext' : ''}">${money(remaining)}</b></div></div>`
       : `<div class="splitstat"><div><span>Charges</span><b>${f.splits.length}</b></div><div><span>So far</span><b>${money(allocated)}</b></div></div>`;
     body = `<div class="q">Split into charges</div>
-      <div class="catpill"><span class="e">${c.emoji}</span>${esc(c.name)}</div>
+      <div class="catpill"><span class="e">${glyph(c)}</span>${esc(c.name)}</div>
       ${stat}
       ${chips ? `<div class="splitchips">${chips}</div>` : `<p class="note" style="margin:2px 2px 8px">${f.hasTotal ? 'Enter each charge — they must add up to the total.' : 'Enter each charge; they all share one description & category.'}</p>`}
       <div class="amount ${subNum ? '' : 'zero'}">$${esc(f.amt || '0')}</div>
@@ -1635,11 +1715,11 @@ function drawFlow() {
     const actions = isExpense
       ? `<button class="btn primary block" data-flow="next" ${dis}>Continue</button>
          <label class="exrow" style="justify-content:center"><input type="checkbox" id="f-splittotal" checked> First amount is the order total</label>
-         <button class="btn block" data-flow="startsplit" ${dis}>⊟ Split into charges (e.g. Amazon)</button>`
+         <button class="btn block" data-flow="startsplit" ${dis}>${icon('split')}Split into charges (e.g. Amazon)</button>`
       : `<div class="twobtn"><button class="btn block" data-flow="again" ${dis}>+ Add another</button><button class="btn primary block" data-flow="save" ${dis}>Save</button></div>
          ${f.count ? `<p class="note" style="text-align:center;margin-bottom:0">${f.count} added under ${esc(c.name)} so far</p>` : ''}`;
     body = `<div class="q">How much?</div>
-      <div class="catpill"><span class="e">${c.emoji}</span>${esc(c.name)}${f.count ? ` · item ${f.count + 1}` : ''}</div>
+      <div class="catpill"><span class="e">${glyph(c)}</span>${esc(c.name)}${f.count ? ` · item ${f.count + 1}` : ''}</div>
       <div class="amount ${amtNum ? '' : 'zero'}">$${esc(f.amt || '0')}</div>
       <div class="pad">${['1','2','3','4','5','6','7','8','9','.','0','⌫'].map((k) => `<button data-flow="key" data-v="${k}">${k}</button>`).join('')}</div>
       ${actions}`;
@@ -1648,8 +1728,8 @@ function drawFlow() {
     const isGas = c.id === 'gas';
     const ph = c.type === 'income' ? 'Paycheck, refund…' : c.type === 'transfer' ? 'Note (optional)' : 'What was it? (e.g. Wingstop)';
     const payToggle = c.type === 'expense' ? `<div class="seg paytoggle">
-      <button data-flow="pay" data-v="credit" class="${f.pay !== 'cash' ? 'on' : ''}">💳 Credit card</button>
-      <button data-flow="pay" data-v="cash" class="${f.pay === 'cash' ? 'on' : ''}">💵 Debit / cash</button></div>` : '';
+      <button data-flow="pay" data-v="credit" class="${f.pay !== 'cash' ? 'on' : ''}">${icon('card')}Credit card</button>
+      <button data-flow="pay" data-v="cash" class="${f.pay === 'cash' ? 'on' : ''}">${icon('cash')}Debit / cash</button></div>` : '';
     const exToggle = c.type === 'expense' && c.useAvg ? `<label class="exrow"><input type="checkbox" id="f-ex" ${f.exAvg ? 'checked' : ''}> Exclude from the ${esc(c.name)} average <span class="muted">(unusual trip)</span></label>` : '';
     const shownAmt = f.splitting ? (f.hasTotal ? round(parseFloat(f.total) || 0) : round(f.splits.reduce((a, x) => a + x, 0))) : amtNum;
     const splitNote = f.splitting ? `<div class="muted">${esc(c.name)} · ${f.splits.length} charges</div>` : `<div class="muted">${esc(c.name)}</div>`;
@@ -1657,16 +1737,16 @@ function drawFlow() {
     // Gas: must pick which vehicle. Truck/Car are one-tap; Other needs a typed note.
     const vehPick = isGas ? `<div class="q" style="margin-top:4px">Which vehicle?</div>
       <div class="seg paytoggle">
-        <button data-flow="veh" data-v="Truck" class="${f.vehicle === 'Truck' ? 'on' : ''}">🛻 Truck</button>
-        <button data-flow="veh" data-v="Car" class="${f.vehicle === 'Car' ? 'on' : ''}">🚗 Car</button>
-        <button data-flow="veh" data-v="Other" class="${f.vehicle === 'Other' ? 'on' : ''}">➕ Other</button></div>` : '';
+        <button data-flow="veh" data-v="Truck" class="${f.vehicle === 'Truck' ? 'on' : ''}">${icon('truck')}Truck</button>
+        <button data-flow="veh" data-v="Car" class="${f.vehicle === 'Car' ? 'on' : ''}">${icon('car')}Car</button>
+        <button data-flow="veh" data-v="Other" class="${f.vehicle === 'Other' ? 'on' : ''}">${icon('plus')}Other</button></div>` : '';
     const noteField = isGas
       ? (f.vehicle === 'Other' ? `<input class="sheet-input" id="f-note" type="text" placeholder="Which vehicle / what for?" value="${esc(f.note)}" autocomplete="off">` : '')
       : `<input class="sheet-input" id="f-note" type="text" placeholder="${ph}" value="${esc(f.note)}" autocomplete="off">`;
     const gasReady = !isGas || !!f.vehicle;
     const saveDis = gasReady ? '' : 'disabled';
     body = `<div class="q">${isGas ? 'Gas details' : 'Add a description'}</div>
-      <div class="summary"><div class="emoji" style="background:var(--card)">${c.emoji}</div><div><b>${money(shownAmt)}</b>${splitNote}</div></div>
+      <div class="summary"><div class="emoji">${glyph(c)}</div><div><b>${money(shownAmt)}</b>${splitNote}</div></div>
       ${vehPick}
       ${noteField}
       <input class="sheet-input" id="f-date" type="date" value="${f.date}" max="${today()}">
@@ -1676,8 +1756,8 @@ function drawFlow() {
         `<button class="splitchip" data-flow="delpart" data-i="${j}">${money(x.amount)} ${esc((cat(x.category) || {}).name || '')} <span class="x-mini">✕</span></button>`).join('')}
         <div class="muted" style="font-size:.78rem;margin-top:4px">${esc(c.name)} keeps ${money(round(amtNum - f.parts.reduce((a, x) => a + x.amount, 0)))}</div></div>` : ''}
       ${c.type === 'expense' && !f.splitting ? (f.sep ? sepPanel(f.sep, 'flow', round(amtNum - f.parts.reduce((a, x) => a + x.amount, 0)))
-        : `<button class="btn block" data-flow="sep">⊟ Separate costs<br><span class="muted" style="font-size:.78rem">part of this was a different category</span></button>`) : ''}
-      ${c.type === 'expense' && !f.splitting ? `<label class="exrow"><input type="checkbox" id="f-ret" ${f.returning ? 'checked' : ''}> ↩︎ A return is coming <span class="muted">(set it up after saving)</span></label>` : ''}
+        : `<button class="btn block" data-flow="sep">${icon('split')}Separate costs<br><span class="muted" style="font-size:.78rem">part of this was a different category</span></button>`) : ''}
+      ${c.type === 'expense' && !f.splitting ? `<label class="exrow"><input type="checkbox" id="f-ret" ${f.returning ? 'checked' : ''}> A return is coming <span class="muted">(set it up after saving)</span></label>` : ''}
       ${single
         ? `<button class="btn primary block" data-flow="save" ${saveDis}>${f.splitting ? `Save ${f.splits.length} charges` : 'Save &amp; log it'}</button>`
         : `<div class="twobtn"><button class="btn block" data-flow="again" ${saveDis}>+ Add another</button><button class="btn primary block" data-flow="save" ${saveDis}>Save</button></div>
@@ -1874,7 +1954,7 @@ function sepPanel(sep, ns, max) {
     <input class="sheet-input" id="sep-amt" type="text" inputmode="decimal" value="${esc(sep.amt)}" placeholder="0" autocomplete="off">
     <label class="editlbl">What was it?</label>
     <div class="cats edit">${S().categories.filter((c) => c.id !== sep.not).map((c) =>
-      `<button data-${ns}="sep-cat" data-v="${esc(c.id)}" class="${sep.cat === c.id ? 'on' : ''}"><span class="e">${c.emoji}</span>${esc(c.name)}</button>`).join('')}</div>
+      `<button data-${ns}="sep-cat" data-v="${esc(c.id)}" class="${sep.cat === c.id ? 'on' : ''}"><span class="e">${glyph(c)}</span>${esc(c.name)}</button>`).join('')}</div>
     <button class="btn primary block" data-${ns}="sep-go" ${ok ? '' : 'disabled'}>${
       ok ? `Move ${money(amt)} to ${esc(picked.name)} · ${money(round(max - amt))} stays` : 'Pick an amount and a category'}</button>
     <button class="btn block" data-${ns}="sep-cancel">Cancel</button>
@@ -1885,7 +1965,7 @@ function drawEdit() {
   const e = edit, el = $('#sheet');
   const items = e.type === 'transfer' ? TRANSFERS : S().categories;
   const picker = e.type === 'income' ? '' : `<label class="editlbl">${e.type === 'transfer' ? 'Destination' : 'Category'}</label>
-    <div class="cats edit">${items.map((c) => `<button data-edit="cat" data-v="${esc(c.id)}" class="${e.category === c.id ? 'on' : ''}"><span class="e">${c.emoji}</span>${esc(c.name)}</button>`).join('')}</div>`;
+    <div class="cats edit">${items.map((c) => `<button data-edit="cat" data-v="${esc(c.id)}" class="${e.category === c.id ? 'on' : ''}"><span class="e">${glyph(c)}</span>${esc(c.name)}</button>`).join('')}</div>`;
   el.innerHTML = `<div class="panel"><div class="head"><span style="width:40px"></span><span class="step">Edit item</span><button data-edit="close" aria-label="Close">✕</button></div>
     <div class="seg">${[['expense', 'Purchase'], ['income', 'Income'], ['transfer', 'Transfer']].map(([v, l]) => `<button data-edit="type" data-v="${v}" class="${e.type === v ? 'on' : ''}">${l}</button>`).join('')}</div>
     <label class="editlbl">Amount</label>
@@ -1896,13 +1976,13 @@ function drawEdit() {
     <label class="editlbl">Date</label>
     <input class="sheet-input" id="e-date" type="date" value="${e.date}" max="${today()}">
     ${e.type === 'expense' ? `<label class="editlbl">Paid with</label><div class="seg paytoggle">
-      <button data-edit="pay" data-v="credit" class="${(e.pay || 'credit') !== 'cash' ? 'on' : ''}">💳 Credit card</button>
-      <button data-edit="pay" data-v="cash" class="${e.pay === 'cash' ? 'on' : ''}">💵 Debit / cash</button></div>` : ''}
+      <button data-edit="pay" data-v="credit" class="${(e.pay || 'credit') !== 'cash' ? 'on' : ''}">${icon('card')}Credit card</button>
+      <button data-edit="pay" data-v="cash" class="${e.pay === 'cash' ? 'on' : ''}">${icon('cash')}Debit / cash</button></div>` : ''}
     ${e.type === 'expense' && cat(e.category)?.useAvg ? `<label class="exrow"><input type="checkbox" id="e-ex" ${e.exAvg ? 'checked' : ''}> Exclude from the ${esc(cat(e.category).name)} average <span class="muted">(unusual trip)</span></label>` : ''}
     ${e.sep ? sepPanel(e.sep, 'edit', round(e.amount))
-      : (e.type === 'expense' ? `<button class="btn block" data-edit="sep">⊟ Separate costs<br><span class="muted" style="font-size:.78rem">part of this was a different category</span></button>` : '')}
+      : (e.type === 'expense' ? `<button class="btn block" data-edit="sep">${icon('split')}Separate costs<br><span class="muted" style="font-size:.78rem">part of this was a different category</span></button>` : '')}
     <button class="btn primary block" data-edit="save">Save changes</button>
-    ${e.type === 'expense' ? `<button class="btn block" data-edit="return">↩︎ Plan a return</button>` : ''}
+    ${e.type === 'expense' ? `<button class="btn block" data-edit="return">${icon('undo')}Plan a return</button>` : ''}
     <button class="btn danger block" data-edit="delete">Delete</button></div>`;
 }
 function editClick(btn) {
@@ -1957,7 +2037,7 @@ function drawReturnPlan() {
     // Pick a different logged purchase to return instead.
     const list = store.txs.filter((t) => t.type === 'expense').sort(sortTx).slice(0, 40);
     const rows = list.map((t) => { const c = cat(t.category); return `<button class="tx-main" data-ret="pick" data-id="${esc(t.id)}" style="width:100%">
-      <div class="emoji">${c ? c.emoji : '🧾'}</div><div class="body"><div class="t">${esc(t.note || (c ? c.name : 'Purchase'))}</div><div class="s">${c ? esc(c.name) + ' · ' : ''}${tightDate(parseYmd(t.date))}</div></div><div class="amt">${money(t.amount)}</div></button>`; }).join('') || '<div class="empty">No purchases to choose from.</div>';
+      <div class="emoji">${glyph(c, 'receipt')}</div><div class="body"><div class="t">${esc(t.note || (c ? c.name : 'Purchase'))}</div><div class="s">${c ? esc(c.name) + ' · ' : ''}${tightDate(parseYmd(t.date))}</div></div><div class="amt">${money(t.amount)}</div></button>`; }).join('') || '<div class="empty">No purchases to choose from.</div>';
     el.innerHTML = `<div class="panel"><div class="head"><button data-ret="unpick" aria-label="Back">←</button><span class="step">Pick the purchase</span><button data-ret="close" aria-label="Close">✕</button></div>
       ${rows}
       <button class="btn block" data-ret="unpick" style="margin-top:12px">← Back</button></div>`;
@@ -1970,7 +2050,7 @@ function drawReturnPlan() {
     <label class="editlbl">Amount to return <span class="muted">(can be more than the purchase)</span></label>
     <input class="sheet-input" id="ret-amt" type="text" inputmode="decimal" value="${fmtNum(r.amount)}">
     <div class="seg"><button data-ret="full" class="${full ? 'on' : ''}">Full · ${money(r.orig)}</button><button data-ret="partial" class="${full ? '' : 'on'}">Other amount</button></div>
-    <button class="btn block" data-ret="pickstart" style="margin-top:10px">↩︎ Returning something else? Pick a purchase</button>
+    <button class="btn block" data-ret="pickstart" style="margin-top:10px">${icon('undo')}Returning something else? Pick a purchase</button>
     <button class="btn primary block" data-ret="save" style="margin-top:10px">Add to returns</button></div>`;
 }
 function returnClick(btn) {
@@ -2007,9 +2087,9 @@ function openReturns() {
     const c = cat(x.category), partial = x.amount < x.orig - 0.005;
     const label = x.note ? esc(x.note) : (c ? esc(c.name) : 'Purchase');
     return `<div class="loose-row">
-      <div class="loose"><div class="emoji">↩︎</div>
+      <div class="loose"><div class="emoji">${icon('undo')}</div>
         <div class="body"><div class="t">${money(x.amount)}${partial ? ` <span class="muted" style="font-weight:500">of ${money(x.orig)}</span>` : ''}</div>
-          <div class="s">${label}${c ? ` · ${c.emoji}` : ''}${x.pay === 'cash' ? ' · debit/cash' : ' · card'} · added ${tightDate(parseYmd(x.date || today()))}</div></div></div>
+          <div class="s">${label}${c ? ` · ${esc(c.name)}` : ''}${x.pay === 'cash' ? ' · debit/cash' : ' · card'} · added ${tightDate(parseYmd(x.date || today()))}</div></div></div>
       <button class="btn mini good" data-act="return-done" data-id="${esc(x.id)}" aria-label="Mark returned" title="Mark returned">✓</button>
       <button class="x" data-act="return-del" data-id="${esc(x.id)}" aria-label="Remove">✕</button></div>`;
   }).join('') : '<div class="empty" style="padding:14px">Nothing to return.</div>';
@@ -2095,7 +2175,7 @@ function openWeek() {
 
   const catRows = s.categories.map((c) => {
     const wk = round(store.txs.filter((t) => t.type === 'expense' && t.category === c.id && t.date >= ws.start && t.date < ws.end).reduce((a, t) => a + t.amount, 0));
-    return `<div class="wk-cat"><div class="emoji">${c.emoji}</div>
+    return `<div class="wk-cat"><div class="emoji">${glyph(c)}</div>
       <div class="body"><span class="n">${esc(c.name)}</span>${c.weekly ? '<span class="tag">weekly</span>' : ''}</div>
       <div class="wk-nums"><div><b>${money(wk)}</b><span>week</span></div><div><b class="muted">${money(ms.byCat[c.id])}${cb(c) ? ` / ${money(cb(c))}` : ''}</b><span>month</span></div></div></div>`;
   }).join('');
@@ -2332,7 +2412,7 @@ document.addEventListener('click', (e) => {
     case 'filter': ui.filter = id; return render();
     case 'all': ui.all = !ui.all; return render();
     case 'tx': { const t = store.txs.find((x) => x.id === id); if (t) openEdit(t); return; }
-    case 'addcat': { const name = prompt('Category name?'); if (name?.trim()) { S().categories.push({ id: uid(), name: name.trim(), emoji: '🏷️', budget: 0, weekly: false }); saveSettings(); } return; }
+    case 'addcat': { const name = prompt('Category name?'); if (name?.trim()) { S().categories.push({ id: uid(), name: name.trim(), emoji: '', budget: 0, weekly: false }); saveSettings(); } return; }
     case 'delcat': if (confirm(`Delete "${S().categories[i].name}"? Existing transactions are kept.`)) { S().categories.splice(i, 1); saveSettings(); } return;
     case 'addbill': { const name = prompt('Bill name?'); if (name?.trim()) { S().bills.push({ id: uid(), name: name.trim(), amount: 0, day: 1, history: [], useAvg: false }); saveSettings(); } return; }
     case 'delbill': if (confirm(`Delete "${S().bills[i].name}"?`)) { S().bills.splice(i, 1); saveSettings(); } return;
@@ -2459,6 +2539,7 @@ document.addEventListener('change', (e) => {
     return;
   }
   if (t.id === 'sav-slider') { slideSavings(+t.value); saveSettings(); return; }
+  if (t.dataset.set === 'iconStyle') { S().iconStyle = t.value === 'emoji' ? 'emoji' : 'symbol'; saveSettings(); return; }
   if (t.dataset.set) { S()[t.dataset.set] = num(); saveSettings(); }
   else if (t.hasAttribute('data-billsbal')) { S().billsAcct = { bal: num(), asOf: today() }; saveSettings(); render(); return; }
   else if (t.dataset.cc === 'start') { S().cc = { ...S().cc, start: num(), asOf: today(), asOfAt: Date.now(), chargesAdj: 0 }; saveSettings(); }
