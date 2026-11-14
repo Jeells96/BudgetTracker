@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=143';
-import { TRANSFERS } from './defaults.js?v=143';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=143';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=144';
+import { TRANSFERS } from './defaults.js?v=144';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=144';
 
 const $ = (s) => document.querySelector(s);
 // Condense the title bar once the page has moved. Kept on <body> so a
@@ -105,9 +105,11 @@ const ordinal = (n) => n + (['th', 'st', 'nd', 'rd'][(n % 100 >> 3) ^ 1 && n % 1
 // so a long merchant name keeps the room instead. Other years still say so.
 const tightDate = (d) => d.toLocaleDateString('en-US', d.getFullYear() === new Date().getFullYear()
   ? { month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric', year: 'numeric' });
-const moYr = (s) => parseYmd(s).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+const NEVER = 'never at this rate';
+const moYr = (s) => (s ? parseYmd(s).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : NEVER);
 
-const ui = { tab: 'home', month: monthKey(new Date()), filter: 'all', all: false, q: '', planDraft: {}, planLive: true, openCat: null, openLoan: null, weekOff: 0 };
+const ACT_PAGE = 120;   // statement rows drawn per page
+const ui = { tab: 'home', month: monthKey(new Date()), filter: 'all', all: false, q: '', actLimit: ACT_PAGE, planDraft: {}, planLive: true, openCat: null, openLoan: null, weekOff: 0 };
 try { ui.planDraft = JSON.parse(localStorage.getItem('plan-draft') || '{}') || {}; } catch { ui.planDraft = {}; }
 // Plans used to be one shared scratchpad; they are now kept per week. Anything
 // in the old flat shape belongs to whatever week it was typed in, i.e. this one.
@@ -826,7 +828,7 @@ function financeLoanCard(loan, st) {
     <div class="body">
       <div class="row"><span class="n">${esc(loan.name)}</span><span class="a">${paid ? '<b class="goodtext">Paid off</b>' : money(st.balance)}</span></div>
       <div class="bar${paid ? ' done' : ''}"><i style="width:${st.paidPct}%"></i></div>
-      <div class="du-note">${paid ? `Paid off${loan.lender ? ` · ${esc(loan.lender)}` : ''}` : `${Math.round(st.paidPct)}% paid · ${moYr(st.payoff)}${loan.lender ? ` · ${esc(loan.lender)}` : ''}`}</div>
+      <div class="du-note">${paid ? `Paid off${loan.lender ? ` · ${esc(loan.lender)}` : ''}` : `${Math.round(st.paidPct)}% paid · ${st.payoff ? moYr(st.payoff) : NEVER}${loan.lender ? ` · ${esc(loan.lender)}` : ''}`}</div>
     </div><span class="chev ${open ? 'down' : ''}">${icon('right')}</span></button>`;
   if (!open) return `<div class="card loan ${paid ? 'done' : ''}">${head}</div>`;
 
@@ -858,7 +860,9 @@ function financeLoanCard(loan, st) {
   const schRows = pastWrap + futRows.map(schRow).join('');
   const savedBox = extra > 0 && st.monthsSaved > 0
     ? `<div class="savebox"><div><span>Interest saved</span><b class="goodtext">${money(st.interestSaved)}</b></div><div><span>Sooner</span><b>${st.monthsSaved} pmt${st.monthsSaved === 1 ? '' : 's'}</b></div><div><span>vs. minimum</span><b>${moYr(st.basePayoff)}</b></div></div>`
-    : `<div class="du-note">Minimum pace · debt-free ${moYr(st.basePayoff)} · ${money(st.baseInterest)} interest</div>`;
+    : st.basePayoff
+      ? `<div class="du-note">Minimum pace · debt-free ${moYr(st.basePayoff)} · ${money(st.baseInterest)} interest</div>`
+      : `<div class="du-note bad">This payment doesn't cover the interest, so the balance never clears. Raise it to get a payoff date.</div>`;
 
   return `<div class="card loan open">${head}
     <div class="loan-body">
@@ -871,7 +875,7 @@ function financeLoanCard(loan, st) {
         <span class="finwrap"><input class="fin-num" type="text" inputmode="decimal" placeholder="0" value="${fmtNum(extra || '')}" data-loanextra="${loan.id}">${extra > 0 ? `<button class="cellx" data-act="loan-extra-reset" data-id="${loan.id}" title="Clear">✕</button>` : ''}</span></div>
       ${savedBox}
       <div class="loan-summary">
-        <div><span>Debt-free</span><b>${moYr(st.payoff)}</b></div>
+        <div><span>Debt-free</span><b class="${st.payoff ? '' : 'negtext nowrap-no'}">${moYr(st.payoff)}</b></div>
         <div><span>Payments left</span><b>${st.months}</b></div>
         <div><span>Interest left</span><b>${money(st.interestRemaining)}</b></div>
       </div>
@@ -880,7 +884,7 @@ function financeLoanCard(loan, st) {
         <div class="loan-row head"><span class="d">Due${st.rows.length ? ' · ' + ordinal(+st.rows[0].date.slice(8)) : ''}</span><span class="p">Payment</span><span class="x">Extra</span><span class="bb">Balance</span></div>
         ${schRows}
       </div>
-      ${moreFut > 0 ? `<p class="note">+ ${moreFut} more payment${moreFut === 1 ? '' : 's'} through ${moYr(st.payoff)}.</p>` : ''}
+      ${moreFut > 0 && st.payoff ? `<p class="note">+ ${moreFut} more payment${moreFut === 1 ? '' : 's'} through ${moYr(st.payoff)}.</p>` : ''}
       <div class="finfield" style="margin-top:12px"><label>Balance correction</label>
         <input class="fin-num" type="text" inputmode="decimal" value="${fmtNum(round(st.balance))}" data-loanbal="${loan.id}"></div>
       <button class="btn block danger" data-act="loan-delete" data-id="${loan.id}" style="margin-top:6px">${icon('trash')}Delete this loan</button>
@@ -915,18 +919,28 @@ function activityList() {
   if (q) list = list.filter((t) => (t.note + ' ' + (cat(t.category)?.name || t.category)).toLowerCase().includes(q) || String(t.amount).includes(q));
   const spent = round(list.filter((t) => t.type === 'expense').reduce((a, t) => a + txNet(t), 0));
   if (!list.length) return `<div class="card empty">${icon('receipt', 'lg')}<div>${ui.q ? 'No purchases match that search.' : 'Nothing logged in this period yet.'}</div></div>`;
+  // A statement is paged. Rendering three years of rows at once cost most of a
+  // second on a tap, and it only gets worse — so the list stops at a limit and
+  // offers the rest, cutting on a day boundary so a day is never half shown.
+  const shown = list.slice(0, ui.actLimit);
   const groups = [];
-  for (const t of list) {
+  for (const t of shown) {
     const g = groups[groups.length - 1];
     if (g && g.date === t.date) g.txs.push(t); else groups.push({ date: t.date, txs: [t] });
   }
+  if (groups.length > 1 && list.length > shown.length && list[shown.length].date === groups[groups.length - 1].date) {
+    groups.pop();   // the last day is incomplete; show it whole on the next page
+  }
+  const drawn = groups.reduce((a, g) => a + g.txs.length, 0);
+  const left = list.length - drawn;
   const body = groups.map((g) => {
     const tot = round(g.txs.filter((t) => t.type === 'expense').reduce((a, t) => a + txNet(t), 0));
     return `<div class="daygrp"><div class="dayhead"><span>${esc(dayHead(g.date))}</span>${
       tot > 0 ? `<b>${money(tot)}</b>` : ''}</div>${g.txs.map((t) => txRow(t, true)).join('')}</div>`;
   }).join('');
   return `<p class="note">${list.length} item${list.length > 1 ? 's' : ''} · ${money(spent)}</p>
-    <div class="card" style="padding:2px 18px 6px">${body}</div>`;
+    <div class="card" style="padding:2px 18px 6px">${body}</div>
+    ${left > 0 ? `<button class="btn block" data-act="act-more">${icon('down')}Show more · ${left} left</button>` : ''}`;
 }
 
 // "Today" and "Yesterday" are what you actually look for; everything older is
@@ -1100,7 +1114,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=143'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=144'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -2473,7 +2487,7 @@ document.addEventListener('click', (e) => {
   const fr = e.target.closest('[data-ret]'); if (fr && returnPlan) return returnClick(fr);
   if (e.target === $('#sheet')) return closeSheet();
   const tab = e.target.closest('#tabs button');
-  if (tab) { if (sel.ids.size) resetSel(); ui.tab = tab.dataset.tab; scrollTo(0, 0); return render(); }
+  if (tab) { if (sel.ids.size) resetSel(); ui.tab = tab.dataset.tab; ui.actLimit = ACT_PAGE; scrollTo(0, 0); return render(); }
   const b = e.target.closest('[data-act]'); if (!b) return;
   const id = b.dataset.id, i = +b.dataset.i;
   switch (b.dataset.act) {
@@ -2577,9 +2591,10 @@ document.addEventListener('click', (e) => {
     case 'goto': ui.tab = id; scrollTo(0, 0); return render();
     case 'cat-filter': { ui.filter = id; ui.all = false; ui.tab = 'home'; render(); const el = $('#actlist'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
     case 'cat-toggle': ui.openCat = ui.openCat === id ? null : id; return render();
-    case 'prev': case 'next': { const d = parseYmd(ui.month + '-01'); d.setMonth(d.getMonth() + (b.dataset.act === 'next' ? 1 : -1)); ui.month = monthKey(d); return render(); }
-    case 'filter': ui.filter = id; return render();
-    case 'all': ui.all = !ui.all; return render();
+    case 'prev': case 'next': { const d = parseYmd(ui.month + '-01'); d.setMonth(d.getMonth() + (b.dataset.act === 'next' ? 1 : -1)); ui.month = monthKey(d); ui.actLimit = ACT_PAGE; return render(); }
+    case 'filter': ui.filter = id; ui.actLimit = ACT_PAGE; return render();
+    case 'all': ui.all = !ui.all; ui.actLimit = ACT_PAGE; return render();
+    case 'act-more': { ui.actLimit += ACT_PAGE; $('#actlist').innerHTML = activityList(); return; }
     case 'tx': { const t = store.txs.find((x) => x.id === id); if (t) openEdit(t); return; }
     case 'addcat': return addCategory();
     case 'delcat': return deleteCategory(i);
@@ -2662,7 +2677,7 @@ document.addEventListener('focusin', (e) => {
 });
 
 document.addEventListener('input', (e) => {
-  if (e.target.id === 'q') { ui.q = e.target.value; $('#actlist').innerHTML = activityList(); }
+  if (e.target.id === 'q') { ui.q = e.target.value; ui.actLimit = ACT_PAGE; $('#actlist').innerHTML = activityList(); }
   else if (e.target.id === 'sav-slider') slideSavings(+e.target.value);
   else if (e.target.dataset.plan) { planEdits()[e.target.dataset.plan] = parseNum(e.target.value); savePlanDraft(); planRecalc(); }
 });

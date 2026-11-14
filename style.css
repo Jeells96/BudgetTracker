@@ -172,7 +172,7 @@ body.scrolled .apptop .sub { height:0; opacity:0; overflow:hidden; margin:0; }
 .chip:active, .chipbtn:active { transform:scale(.97); }
 
 /* ---------- lists ---------- */
-.cat { display:flex; align-items:center; gap:14px; padding:15px 0; border-top:1px solid var(--hair);
+.cat { display:flex; align-items:center; gap:12px; padding:15px 0; border-top:1px solid var(--hair);
   width:100%; text-align:left; background:none; }
 .cat:first-child { border-top:0; padding-top:2px; }
 .cat .body { flex:1; min-width:0; }
@@ -258,7 +258,8 @@ body.scrolled .apptop .sub { height:0; opacity:0; overflow:hidden; margin:0; }
 .catdrop { border-top:1px solid var(--hair); background:var(--raise); border-radius:12px; padding:4px 12px 8px; margin:0 0 4px; }
 .catdrop .empty { padding:14px 8px; }
 .du-note { font-size:.76rem; font-weight:600; padding:10px 2px; color:var(--muted); letter-spacing:.01em; }
-.du-note.good { color:var(--good); } .du-note.bad { color:var(--bad); }
+.du-note.good { color:var(--good); } .du-note.bad { color:var(--bad); line-height:1.5; }
+.loan-summary b.negtext { font-size:.86rem; }
 .subtier { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:11px 2px 5px;
   margin-top:4px; font-size:.68rem; font-weight:600; color:var(--muted); text-transform:uppercase;
   letter-spacing:.08em; border-top:1px solid var(--hair); }
