@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=141';
-import { TRANSFERS } from './defaults.js?v=141';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=141';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=142';
+import { TRANSFERS } from './defaults.js?v=142';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=142';
 
 const $ = (s) => document.querySelector(s);
 // Condense the title bar once the page has moved. Kept on <body> so a
@@ -341,7 +341,7 @@ function home() {
 function txRow(t, grouped) {
   let ico, label, sub, amt;
   if (t.type === 'income') { ico = icon('moneyIn'); label = t.note || 'Income'; sub = 'Income'; amt = `<div class="amt in">+${money(t.amount)}</div>`; }
-  else if (t.type === 'transfer') { const x = tfer(t.category); const nm = x?.name || t.category; ico = glyph(x, 'swap'); label = t.note || nm; sub = t.note ? nm : ''; amt = `<div class="amt xfer">${money(t.amount)}</div>`; }
+  else if (t.type === 'transfer') { const x = tfer(t.category); const nm = x?.name || t.category; ico = glyph(x, 'swap'); label = t.note || nm; sub = t.note ? nm : 'Transfer'; amt = `<div class="amt xfer">${money(t.amount)}</div>`; }
   else { const c = cat(t.category); ico = glyph(c, 'receipt'); label = t.note || (c ? c.name : 'Purchase'); sub = c ? c.name : t.category; amt = `<div class="amt">${money(t.amount)}</div>`; }
   const ccDot = (t.type === 'expense' && t.pay === 'credit' ? ` <span class="cc-dot" title="Credit card">${icon('card')}</span>` : '')
     + (t.returned > 0 ? ' <span class="ex-tag ret">returning</span>' : '')
@@ -953,7 +953,7 @@ function activityBlock() {
   const on = ui.filter !== 'all';
   const act = opts.find(([id]) => id === ui.filter) || opts[0];
   return `<div class="acthead"><h2>Activity</h2>${ui.all ? '<span class="muted">Whole history</span>' : ''}</div>
-    <div class="searchrow"><input id="q" class="sheet-input" type="search" placeholder="Search purchases…" value="${esc(ui.q)}" autocomplete="off">
+    <div class="searchrow"><span class="srch">${icon('search')}<input id="q" class="sheet-input" type="search" placeholder="Search" value="${esc(ui.q)}" aria-label="Search purchases" autocomplete="off"></span>
     <button class="chip" data-act="trends">${icon('trend')}Trends</button>
     <button class="chip ${ui.all ? 'on' : ''}" data-act="all">All</button></div>
     <details class="filterbox${on ? ' on' : ''}" ${openAttr('act-filter')}>
@@ -1099,7 +1099,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=141'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=142'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -2276,8 +2276,11 @@ async function addPayer() {
   S().incomePayers = [...(S().incomePayers || []), n]; saveSettings();
 }
 
-function toast(msg) {
-  const t = $('#toast'); t.textContent = msg; t.hidden = false;
+function toast(msg, kind = 'ok') {
+  const t = $('#toast');
+  t.className = 'toast ' + kind;
+  t.innerHTML = `${icon(kind === 'bad' ? 'alert' : 'check')}<span>${esc(msg)}</span>`;
+  t.hidden = false;
   clearTimeout(toast.h); toast.h = setTimeout(() => (t.hidden = true), 3500);
 }
 

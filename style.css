@@ -384,7 +384,11 @@ input:focus, select:focus, textarea:focus { outline:none; border-color:var(--acc
   width:17px; height:17px; flex:none; accent-color:var(--accent); }
 .exrow { display:flex; align-items:center; gap:10px; margin:14px 2px 2px; font-size:.88rem; }
 .searchrow { display:flex; gap:8px; align-items:center; margin-bottom:10px; }
-.searchrow .sheet-input { margin:0; flex:1; } .searchrow .chip { flex:none; }
+.searchrow .srch { position:relative; flex:1; min-width:0; display:block; }
+.searchrow .srch > .ic { position:absolute; left:11px; top:50%; translate:0 -50%; width:17px; height:17px;
+  color:var(--muted); pointer-events:none; }
+.searchrow .sheet-input { margin:0; width:100%; padding-left:34px; }
+.searchrow .chip { flex:none; }
 .acthead { display:flex; align-items:baseline; gap:10px; }
 .acthead h2 { margin-bottom:12px; }
 hr.sep { border:0; border-top:1px solid var(--hair); margin:18px 0; }
@@ -711,8 +715,11 @@ nav#tabs button.on { background:var(--accent); color:var(--accent-ink); }
 
 /* ---------- floating bits ---------- */
 .toast { position:fixed; left:50%; bottom:calc(104px + env(safe-area-inset-bottom)); transform:translateX(-50%);
-  z-index:70; background:var(--ink); color:var(--canvas); padding:12px 18px; border-radius:999px;
-  font-weight:550; font-size:.88rem; box-shadow:var(--lift); animation:up .25s; width:max-content; max-width:88vw; text-align:center; }
+  z-index:70; display:flex; align-items:center; gap:9px;
+  background:var(--ink); color:var(--canvas); padding:11px 18px; border-radius:999px;
+  font-weight:550; font-size:.88rem; box-shadow:var(--lift); animation:up .25s; width:max-content; max-width:88vw; }
+.toast .ic { width:17px; height:17px; stroke-width:2.2; color:var(--good); vertical-align:0; }
+.toast.bad .ic { color:var(--bad); }
 .seltotal { position:fixed; left:50%; bottom:calc(104px + env(safe-area-inset-bottom)); transform:translateX(-50%);
   z-index:70; width:max-content; max-width:92vw; animation:up .2s; }
 .selbar { display:flex; align-items:center; gap:14px; background:var(--ink); color:var(--canvas);
