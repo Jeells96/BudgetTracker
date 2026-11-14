@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=138';
-import { TRANSFERS } from './defaults.js?v=138';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=138';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=139';
+import { TRANSFERS } from './defaults.js?v=139';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=139';
 
 const $ = (s) => document.querySelector(s);
 // Condense the title bar once the page has moved. Kept on <body> so a
@@ -289,7 +289,7 @@ function home() {
   const exRow = (emoji, name, spent, total, key, hasBudget, goodOver = false) => {
     const open = ui.openCat === key;
     let drop = '';
-    if (open) { const l = txsFor(key); drop = `<div class="catdrop">${dropHead(spent, total, goodOver)}${l.length ? l.map(txRow).join('') : '<div class="empty">Nothing this month.</div>'}</div>`; }
+    if (open) { const l = txsFor(key); drop = `<div class="catdrop">${dropHead(spent, total, goodOver)}${l.length ? l.map((t) => txRow(t)).join('') : '<div class="empty">Nothing this month.</div>'}</div>`; }
     return moneyRow(emoji, name, spent, total, 'cat-toggle', key, hasBudget, open) + drop;
   };
 
@@ -303,7 +303,7 @@ function home() {
     const left = round(otherBudget - otherUsed);
     const head = `<div class="du-note ${left < 0 ? 'bad' : 'good'}">${money(otherSpent)} of ${money(otherBudget)} · ${left < 0 ? money(-left) + ' over' : money(left) + ' left'}</div>`;
     const groups = rolled.map((c) => ({ c, txs: monthList.filter((t) => t.type === 'expense' && t.category === c.id).sort(sortTx), total: round(ms.byCat[c.id] || 0) })).filter((g) => g.txs.length);
-    const subs = groups.map((g) => `<div class="subtier"><span class="st-g">${glyph(g.c)}</span><span>${esc(g.c.name)}</span><b>${money(g.total)}</b></div>${g.txs.map(txRow).join('')}`).join('');
+    const subs = groups.map((g) => `<div class="subtier"><span class="st-g">${glyph(g.c)}</span><span>${esc(g.c.name)}</span><b>${money(g.total)}</b></div>${g.txs.map((t) => txRow(t)).join('')}`).join('');
     const empty = !subs ? '<div class="empty">Nothing in other weekly spending yet.</div>' : '';
     return `<div class="catdrop">${head}${subs}${empty}</div>`;
   };
@@ -336,7 +336,9 @@ function home() {
     ${activityBlock()}`;
 }
 
-function txRow(t) {
+// `grouped` means a day heading above the row already carries the date, so the
+// sub-line is free to say only what the purchase was.
+function txRow(t, grouped) {
   let ico, label, sub, amt;
   if (t.type === 'income') { ico = icon('moneyIn'); label = t.note || 'Income'; sub = 'Income'; amt = `<div class="amt in">+${money(t.amount)}</div>`; }
   else if (t.type === 'transfer') { const x = tfer(t.category); const nm = x?.name || t.category; ico = glyph(x, 'swap'); label = t.note || nm; sub = t.note ? nm : ''; amt = `<div class="amt xfer">${money(t.amount)}</div>`; }
@@ -349,7 +351,7 @@ function txRow(t) {
   return `<div class="tx${picked ? ' selected' : ''}">
     <button class="selbox${picked ? ' on' : ''}" data-act="tx-toggle" data-id="${esc(t.id)}" aria-pressed="${picked}" aria-label="Select for total"></button>
     <button class="tx-main" data-act="tx" data-id="${esc(t.id)}"><div class="emoji">${ico}</div>
-    <div class="body"><div class="t">${esc(label)}${ccDot}</div><div class="s">${sub ? esc(sub) + ' · ' : ''}${dateStr}</div></div>${amt}<span class="chev">${icon('right')}</span></button></div>`;
+    <div class="body"><div class="t">${esc(label)}${ccDot}</div><div class="s">${grouped === true ? (sub ? esc(sub) : dateStr) : (sub ? esc(sub) + ' · ' : '') + dateStr}</div></div>${amt}<span class="chev">${icon('right')}</span></button></div>`;
 }
 
 function billsAcctCard(s, now = new Date()) {
@@ -912,9 +914,30 @@ function activityList() {
   if (q) list = list.filter((t) => (t.note + ' ' + (cat(t.category)?.name || t.category)).toLowerCase().includes(q) || String(t.amount).includes(q));
   const spent = round(list.filter((t) => t.type === 'expense').reduce((a, t) => a + txNet(t), 0));
   if (!list.length) return `<div class="card empty">${icon('receipt', 'lg')}<div>${ui.q ? 'No purchases match that search.' : 'Nothing logged in this period yet.'}</div></div>`;
-  // Flat list in the order entered (newest first), each row shows its own date.
+  const groups = [];
+  for (const t of list) {
+    const g = groups[groups.length - 1];
+    if (g && g.date === t.date) g.txs.push(t); else groups.push({ date: t.date, txs: [t] });
+  }
+  const body = groups.map((g) => {
+    const tot = round(g.txs.filter((t) => t.type === 'expense').reduce((a, t) => a + txNet(t), 0));
+    return `<div class="daygrp"><div class="dayhead"><span>${esc(dayHead(g.date))}</span>${
+      tot > 0 ? `<b>${money(tot)}</b>` : ''}</div>${g.txs.map((t) => txRow(t, true)).join('')}</div>`;
+  }).join('');
   return `<p class="note">${list.length} item${list.length > 1 ? 's' : ''} · ${money(spent)}</p>
-    <div class="card" style="padding:6px 18px">${list.map(txRow).join('')}</div>`;
+    <div class="card" style="padding:2px 18px 6px">${body}</div>`;
+}
+
+// "Today" and "Yesterday" are what you actually look for; everything older is
+// dated, with a weekday because a statement without one is hard to place.
+function dayHead(ymdStr) {
+  if (ymdStr === today()) return 'Today';
+  const y = new Date(); y.setDate(y.getDate() - 1);
+  if (ymdStr === ymd(y)) return 'Yesterday';
+  const d = parseYmd(ymdStr);
+  return d.toLocaleDateString('en-US', d.getFullYear() === new Date().getFullYear()
+    ? { weekday: 'short', month: 'short', day: 'numeric' }
+    : { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 // The activity log, folded into the Home tab (search + filters + full list).
@@ -1076,7 +1099,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=138'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=139'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -2184,7 +2207,7 @@ function openWeek() {
 
   const weekRows = weeks.map((w) => {
     const rng = `${tightDate(parseYmd(w.from))} – ${tightDate(addDays(parseYmd(w.to), -1))}`;
-    const body = w.txsIn.length ? w.txsIn.map(txRow).join('') : '<div class="empty">Nothing this week.</div>';
+    const body = w.txsIn.length ? w.txsIn.map((t) => txRow(t)).join('') : '<div class="empty">Nothing this week.</div>';
     return `<details class="wk-week"${w.isNow ? ' open' : ''}><summary>
       <span class="wk-left"><span class="wk-n">Week ${w.n}${w.isNow ? ' · now' : ''}</span><span class="wk-range">${rng}</span></span>
       <span class="wk-amt"><b>${money(w.spent)}</b><span>${money(w.everyday)} everyday</span></span><span class="caret">${icon('right')}</span></summary>

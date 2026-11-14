@@ -210,6 +210,14 @@ body.scrolled .apptop .sub { height:0; opacity:0; overflow:hidden; margin:0; }
 .duedot { display:inline-block; width:6px; height:6px; border-radius:999px; background:var(--bad);
   margin-right:7px; vertical-align:middle; position:relative; top:-1px; }
 
+/* A statement's day heading: said once, with that day's spending beside it. */
+.daygrp + .daygrp { border-top:1px solid var(--hair); }
+.dayhead { display:flex; align-items:baseline; justify-content:space-between; gap:10px;
+  padding:13px 0 6px; font-size:.68rem; font-weight:700; text-transform:uppercase;
+  letter-spacing:.08em; color:var(--muted); }
+.dayhead b { font-weight:700; color:var(--ink-2); letter-spacing:0; text-transform:none;
+  font-size:.78rem; font-variant-numeric:tabular-nums; }
+.daygrp .tx:first-of-type { border-top:0; }
 .tx { display:flex; align-items:center; gap:10px; padding:0; border-top:1px solid var(--hair); position:relative; }
 .tx:first-child { border-top:0; }
 .tx-main { flex:1; min-width:0; display:flex; align-items:center; gap:10px; padding:13px 0; width:100%; text-align:left; background:none; }
