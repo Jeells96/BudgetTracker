@@ -84,7 +84,9 @@ h2 { font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing
 .lead { font-size:.88rem; line-height:1.55; color:var(--muted); margin:2px 2px 14px; }
 .lead b { color:var(--ink); font-weight:600; }
 .err { color:var(--bad); font-size:.82rem; margin:8px 2px; }
-.link { color:var(--accent); font-weight:600; text-decoration:none; border-bottom:1px solid var(--accent-soft); }
+.link { color:var(--accent); font-weight:600; text-decoration:underline; text-underline-offset:3px;
+  text-decoration-thickness:1px; text-decoration-color:color-mix(in srgb,currentColor 38%,transparent); }
+@media (hover: hover) and (pointer: fine) { .link:hover { text-decoration-color:currentColor; } }
 
 /* The title bar sticks and condenses, the way an account page keeps its name
    in view while you scroll a long list of transactions. */
@@ -162,7 +164,6 @@ body.scrolled .apptop .sub { height:0; opacity:0; overflow:hidden; margin:0; }
   .psec > summary:hover, .filterbox > summary:hover, .sch-row > summary:hover { background:var(--raise); }
   .seg button:hover:not(.on) { color:var(--ink); }
   .cellx:hover, .x:hover { color:var(--ink); }
-  .link:hover { border-bottom-color:var(--accent); }
   .month button:hover { background:var(--raise); color:var(--ink); }
 }
 .cat, .tx-main, .loose, .loan-head, .actrow, .avg-tx { transition:background .12s ease; }
@@ -354,7 +355,10 @@ body.scrolled .apptop .sub { height:0; opacity:0; overflow:hidden; margin:0; }
 .field.billrow input[type=number]::-webkit-inner-spin-button,
 .field.billrow input[type=number]::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
 .field input[type=month] { flex:1; text-align:left; }
-.field .x { color:var(--bad); width:30px; height:30px; font-size:1rem; flex:none; }
+.field .x { color:var(--muted); width:30px; height:30px; font-size:1rem; flex:none; }
+.field .x:hover, .field .x:focus-visible { color:var(--bad); }
+.loose-row > .x { color:var(--muted); }
+.loose-row > .x:hover, .loose-row > .x:focus-visible { color:var(--bad); }
 .field.weekly { flex-wrap:wrap; }
 .field input:disabled { opacity:.55; }
 .field input[type=number] { -moz-appearance:textfield; }
@@ -686,6 +690,24 @@ nav#tabs button.on { background:var(--accent); color:var(--accent-ink); }
   background:linear-gradient(90deg, transparent, color-mix(in srgb,var(--surface) 70%,transparent), transparent);
   animation:sheen 1.4s infinite; }
 @keyframes sheen { 100% { transform:translateX(100%); } }
+
+/* ---------- dialogs ---------- */
+.dialog { position:fixed; inset:0; z-index:90; display:grid; place-items:center; padding:20px; }
+.dlg-scrim { position:absolute; inset:0; background:rgba(8,16,26,.5); animation:fade .18s; }
+@media (prefers-color-scheme: dark) { .dlg-scrim { background:rgba(0,0,0,.62); } }
+.dlg-card { position:relative; width:100%; max-width:380px; background:var(--surface);
+  border:1px solid var(--hair); border-radius:var(--r2); padding:20px; box-shadow:var(--lift);
+  animation:pop .18s cubic-bezier(.2,.9,.3,1); }
+.dlg-t { font-size:1.05rem; font-weight:700; letter-spacing:-.012em; }
+.dlg-b { font-size:.86rem; line-height:1.55; color:var(--ink-2); margin:8px 0 0; }
+.dlg-f { display:block; margin-top:14px; }
+.dlg-f > span { display:block; font-size:.66rem; font-weight:700; text-transform:uppercase;
+  letter-spacing:.08em; color:var(--muted); margin-bottom:6px; }
+.dlg-f .sheet-input { margin:0; }
+.dlg-a { display:flex; gap:10px; margin-top:18px; }
+.dlg-a .btn { flex:1; }
+.btn.danger.solid { background:var(--bad); border-color:var(--bad); color:#fff; font-weight:600; }
+@keyframes pop { from { transform:translateY(10px) scale(.98); opacity:0 } }
 
 /* ---------- floating bits ---------- */
 .toast { position:fixed; left:50%; bottom:calc(104px + env(safe-area-inset-bottom)); transform:translateX(-50%);

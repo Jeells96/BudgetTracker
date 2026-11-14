@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=140';
-import { TRANSFERS } from './defaults.js?v=140';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=140';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=141';
+import { TRANSFERS } from './defaults.js?v=141';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=141';
 
 const $ = (s) => document.querySelector(s);
 // Condense the title bar once the page has moved. Kept on <body> so a
@@ -1099,7 +1099,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=140'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=141'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -2060,10 +2060,7 @@ function editClick(btn) {
       closeSheet(); render(); toast('Changes saved');
       return;
     }
-    case 'delete': {
-      if (confirm(`Delete "${e.note || cat(e.category)?.name || tfer(e.category)?.name || 'this item'}" (${money(e.amount)})?`)) { deleteTx(e.id); closeSheet(); render(); toast('Deleted'); }
-      return;
-    }
+    case 'delete': return deleteEntry(e);
   }
 }
 
@@ -2140,6 +2137,143 @@ function openReturns() {
     <button class="btn block" data-act="sheet-close" style="margin-top:12px">Close</button></div>`;
   $('#sheet').className = 'sheet';
   $('#sheet').hidden = false;
+}
+
+// ---------- dialogs ----------
+// Adding a category, deleting a bill and the four questions it takes to add a
+// loan all went through the browser's own prompt() and confirm(). Those boxes
+// are the one part of a page that cannot be styled or laid out, and they
+// announce that nobody designed them. Same job, in the app's own shape: one
+// modal, focus moved into it, Esc cancels, Enter submits.
+let dlgDone = null, dlgFields = [];
+function closeDialog(value) {
+  const d = $('#dialog');
+  d.hidden = true; d.innerHTML = ''; dlgFields = [];
+  const done = dlgDone; dlgDone = null;
+  if (done) done(value);
+}
+function dialogSubmit() {
+  const inputs = [...$('#dialog').querySelectorAll('input')];
+  const out = {};
+  dlgFields.forEach((f, i) => { out[f.name] = inputs[i] ? inputs[i].value : ''; });
+  closeDialog(out);
+}
+/** fields: [{ name, label, value, placeholder, numeric }]. null on cancel. */
+function dialog({ title, body = '', fields = [], cta = 'Save', cancel = 'Cancel', danger = false }) {
+  return new Promise((resolve) => {
+    if (dlgDone) closeDialog(null);
+    dlgDone = resolve; dlgFields = fields;
+    const d = $('#dialog');
+    d.innerHTML = `<div class="dlg-scrim" data-dlg="cancel"></div>
+      <div class="dlg-card" role="dialog" aria-modal="true" aria-label="${esc(title)}">
+        <div class="dlg-t">${esc(title)}</div>
+        ${body ? `<p class="dlg-b">${body}</p>` : ''}
+        ${fields.map((f) => `<label class="dlg-f"><span>${esc(f.label)}</span>
+          <input class="sheet-input" type="text" ${f.numeric ? 'inputmode="decimal"' : ''}
+            value="${esc(f.value ?? '')}" placeholder="${esc(f.placeholder ?? '')}" autocomplete="off"></label>`).join('')}
+        <div class="dlg-a">
+          <button class="btn" data-dlg="cancel">${esc(cancel)}</button>
+          <button class="btn ${danger ? 'danger solid' : 'primary'}" data-dlg="ok">${esc(cta)}</button>
+        </div></div>`;
+    d.hidden = false;
+    setTimeout(() => { const f = d.querySelector('input') || d.querySelector('[data-dlg="ok"]'); if (f) f.focus(); }, 30);
+  });
+}
+/** One text answer, trimmed, or null. */
+async function ask(title, label, { value = '', placeholder = '', cta = 'Add', body = '' } = {}) {
+  const r = await dialog({ title, body, cta, fields: [{ name: 'v', label, value, placeholder }] });
+  return r ? String(r.v || '').trim() || null : null;
+}
+/** True or false. */
+const confirmDlg = (title, body, { cta = 'Delete', danger = true } = {}) =>
+  dialog({ title, body, cta, danger, fields: [] }).then(Boolean);
+
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-dlg]');
+  if (!b) return;
+  if (b.dataset.dlg === 'ok') return dialogSubmit();
+  return closeDialog(null);
+});
+document.addEventListener('keydown', (e) => {
+  if ($('#dialog').hidden) return;
+  if (e.key === 'Escape') { e.preventDefault(); closeDialog(null); }
+  else if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); dialogSubmit(); }
+});
+
+// Everything that used to be a chain of prompt() boxes.
+async function addLoan() {
+  const r = await dialog({ title: 'Add a loan', cta: 'Add loan', fields: [
+    { name: 'name', label: 'Name', placeholder: 'e.g. Boat' },
+    { name: 'bal', label: 'Current balance', numeric: true, placeholder: '0' },
+    { name: 'rate', label: 'Annual interest rate %', numeric: true, placeholder: 'e.g. 5.5' },
+    { name: 'payment', label: 'Monthly payment', numeric: true, placeholder: '0' },
+  ] });
+  if (!r || !r.name.trim()) return;
+  S().finance.loans.push({ id: uid(), name: r.name.trim(), lender: '', emoji: '',
+    principal: round(Math.max(0, parseNum(r.bal))), rate: Math.max(0, parseNum(r.rate)) / 100,
+    payment: round(Math.max(0, parseNum(r.payment))), start: today(), adjust: 0, extra: 0, extras: {} });
+  ui.openLoan = S().finance.loans[S().finance.loans.length - 1].id;
+  saveSettings(); render();
+}
+async function deleteLoan(id) {
+  const l = loanById(id); if (!l) return;
+  if (!await confirmDlg(`Delete ${l.name}?`, 'It stops showing in Finance. Nothing you have logged changes.')) return;
+  l.deleted = true; ui.openLoan = null; saveSettings(); render();
+}
+async function addCategory() {
+  const name = await ask('New category', 'Name', { placeholder: 'e.g. Pets', cta: 'Add category' });
+  if (!name) return;
+  S().categories.push({ id: uid(), name, emoji: '', budget: 0, weekly: false });
+  saveSettings();
+}
+async function deleteCategory(i) {
+  const c = S().categories[i]; if (!c) return;
+  if (!await confirmDlg(`Delete "${c.name}"?`, 'Purchases already filed under it are kept.')) return;
+  S().categories.splice(i, 1); saveSettings();
+}
+async function addBill() {
+  const name = await ask('New bill', 'Name', { placeholder: 'e.g. Internet', cta: 'Add bill' });
+  if (!name) return;
+  S().bills.push({ id: uid(), name, amount: 0, day: 1, history: [], useAvg: false });
+  saveSettings();
+}
+async function deleteBill(i) {
+  const b = S().bills[i]; if (!b) return;
+  if (!await confirmDlg(`Delete "${b.name}"?`, 'Its recorded months go with it.')) return;
+  S().bills.splice(i, 1); saveSettings();
+}
+
+async function deleteEntry(e) {
+  const name = e.note || cat(e.category)?.name || tfer(e.category)?.name || 'this item';
+  if (!await confirmDlg(`Delete "${name}"?`, `${money(e.amount)} · it comes straight back out of the totals.`)) return;
+  deleteTx(e.id); closeSheet(); render(); toast('Deleted');
+}
+async function ignoreMerchant(it) {
+  if (!await confirmDlg(`Ignore "${it.note}"?`, "Charges from it stop arriving here. You can undo it in Settings · Accounts & rules.",
+    { cta: 'Ignore it' })) return;
+  const k = billKey(it.note);
+  if (k) S().txMatch = { ...(S().txMatch || {}), [k]: '__skip' };
+  S().pending = (S().pending || []).filter((x) => x.id !== it.id);
+  saveSettings(); render();
+  if ((S().pending || []).length) openPending(); else closeSheet();
+  toast(`Ignoring ${it.note} from now on`);
+}
+async function discardLoose(id) {
+  if (!await confirmDlg('Discard this one?', "It is dropped without being logged, and it won't come back.", { cta: 'Discard' })) return;
+  S().pending = (S().pending || []).filter((x) => x.id !== id);
+  saveSettings(); render();
+  if ((S().pending || []).length) openPending(); else closeSheet();
+}
+async function unlinkBank(id) {
+  if (!await confirmDlg('Unlink this bank?', 'Nothing you have already accepted leaves your log — only the connection goes.',
+    { cta: 'Unlink' })) return;
+  bankRun('unlink', async () => { const b = await bankMod(); await b.unlink(id); await bankLoad(false); toast('Unlinked'); });
+}
+async function addPayer() {
+  const n = await ask('Who pays you?', 'Name on the deposit', {
+    placeholder: 'e.g. Arctic Sheet Metal', body: 'Part of the name is enough — batch numbers and dates on the end are ignored.' });
+  if (!n) return;
+  S().incomePayers = [...(S().incomePayers || []), n]; saveSettings();
 }
 
 function toast(msg) {
@@ -2355,14 +2489,9 @@ document.addEventListener('click', (e) => {
     case 'loan-lock': { const [lid, date] = id.split('|'); const l = loanById(lid); if (l) { l.extras = { ...(l.extras || {}), [date]: Math.max(0, round(l.extra || 0)) }; saveSettings(); } return render(); }
     case 'loan-skip': { const [lid, date] = id.split('|'); const l = loanById(lid); if (l) { l.extras = { ...(l.extras || {}), [date]: 0 }; saveSettings(); } return render(); }
     case 'loan-unlock': { const [lid, date] = id.split('|'); const l = loanById(lid); if (l) { const ex = { ...(l.extras || {}) }; delete ex[date]; l.extras = ex; saveSettings(); } return render(); }
-    case 'loan-delete': { const l = loanById(id); if (l && confirm(`Delete ${l.name}? This hides it from Finance.`)) { l.deleted = true; ui.openLoan = null; saveSettings(); render(); } return; }
+    case 'loan-delete': return deleteLoan(id);
     case 'loan-add': {
-      const name = prompt('Loan name?'); if (!name || !name.trim()) return;
-      const bal = Math.max(0, parseNum(prompt('Current balance?', '0')));
-      const rate = Math.max(0, parseNum(prompt('Annual interest rate % (e.g. 5.5)?', '0'))) / 100;
-      const payment = Math.max(0, parseNum(prompt('Monthly payment?', '0')));
-      S().finance.loans.push({ id: uid(), name: name.trim(), lender: '', emoji: '💵', principal: round(bal), rate, payment: round(payment), start: today(), adjust: 0, extra: 0, extras: {} });
-      ui.openLoan = S().finance.loans[S().finance.loans.length - 1].id; saveSettings(); return render();
+      addLoan(); return;
     }
     case 'inv-preset': { S().finance.invest.rate = parseFloat(id) || 0; saveSettings(); return render(); }
     case 'week-reset': { S().weekResetAt = weekStats(S(), store.txs).start; saveSettings(); closeSheet(); return render(); }
@@ -2425,15 +2554,9 @@ document.addEventListener('click', (e) => {
     case 'pending-ignore': {
       const it = (S().pending || []).find((x) => x.id === id);
       if (!it) return;
-      if (!confirm(`Ignore "${it.note}" from now on? It won't appear again.`)) return;
-      const k = billKey(it.note);
-      if (k) S().txMatch = { ...(S().txMatch || {}), [k]: '__skip' };
-      S().pending = (S().pending || []).filter((x) => x.id !== id);
-      saveSettings(); render();
-      if ((S().pending || []).length) openPending(); else closeSheet();
-      return toast(`Ignoring ${it.note} from now on`);
+      return ignoreMerchant(it);
     }
-    case 'pending-del': { if (confirm('Discard this loose item without logging it?')) { S().pending = (S().pending || []).filter((x) => x.id !== id); saveSettings(); render(); if ((S().pending || []).length) openPending(); else closeSheet(); } return; }
+    case 'pending-del': return discardLoose(id);
     case 'plan-week': {
       const d = +id;
       ui.weekOff = d === 0 ? 0 : (ui.weekOff || 0) + d;
@@ -2454,10 +2577,10 @@ document.addEventListener('click', (e) => {
     case 'filter': ui.filter = id; return render();
     case 'all': ui.all = !ui.all; return render();
     case 'tx': { const t = store.txs.find((x) => x.id === id); if (t) openEdit(t); return; }
-    case 'addcat': { const name = prompt('Category name?'); if (name?.trim()) { S().categories.push({ id: uid(), name: name.trim(), emoji: '', budget: 0, weekly: false }); saveSettings(); } return; }
-    case 'delcat': if (confirm(`Delete "${S().categories[i].name}"? Existing transactions are kept.`)) { S().categories.splice(i, 1); saveSettings(); } return;
-    case 'addbill': { const name = prompt('Bill name?'); if (name?.trim()) { S().bills.push({ id: uid(), name: name.trim(), amount: 0, day: 1, history: [], useAvg: false }); saveSettings(); } return; }
-    case 'delbill': if (confirm(`Delete "${S().bills[i].name}"?`)) { S().bills.splice(i, 1); saveSettings(); } return;
+    case 'addcat': return addCategory();
+    case 'delcat': return deleteCategory(i);
+    case 'addbill': return addBill();
+    case 'delbill': return deleteBill(i);
     case 'billedit': return openBillEdit(i);
     case 'bill-done': closeSheet(); return render();
     case 'bh-add': {
@@ -2492,16 +2615,9 @@ document.addEventListener('click', (e) => {
       if (bad.length) bankUI.err = `${bad.map((p) => p.name).join(', ')} couldn't be read.`;
       toast(added ? `${added} new to review` : 'Nothing new');
     });
-    case 'bank-unlink': {
-      if (!confirm('Unlink this bank? Anything you already accepted stays in your log.')) return;
-      return bankRun('unlink', async () => { const b = await bankMod(); await b.unlink(id); await bankLoad(false); toast('Unlinked'); });
-    }
+    case 'bank-unlink': { unlinkBank(id); return; }
     case 'billq-drop': return billqRule(id, '__skip');
-    case 'payer-add': {
-      const n = prompt('Who pays you? (part of the name is enough)');
-      if (n && n.trim()) { S().incomePayers = [...(S().incomePayers || []), n.trim()]; saveSettings(); }
-      return;
-    }
+    case 'payer-add': return addPayer();
     case 'payer-del': {
       const list = [...(S().incomePayers || [])];
       list.splice(i, 1);
