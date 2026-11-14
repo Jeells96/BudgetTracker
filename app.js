@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=144';
-import { TRANSFERS } from './defaults.js?v=144';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=144';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=145';
+import { TRANSFERS } from './defaults.js?v=145';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=145';
 
 const $ = (s) => document.querySelector(s);
 // Condense the title bar once the page has moved. Kept on <body> so a
@@ -14,6 +14,10 @@ addEventListener('scroll', () => {
 }, { passive: true });
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const money = (n) => (n < 0 ? '-' : '') + '$' + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: Math.abs(n) % 1 ? 2 : 0, maximumFractionDigits: 2 });
+// A headline figure is set as large as it can be and still fit. CSS cannot
+// measure text, so the size steps down by how long the string turned out --
+// "-$4,543,271.41" ran straight off the edge of its card at the full size.
+const fit = (str) => (String(str).length > 12 ? ' xs' : String(str).length > 9 ? ' sm' : '');
 // Text-box number formatting: show thousands separators, parse back by stripping them.
 const fmtNum = (n) => (n == null || n === '' || isNaN(n)) ? '' : Number(n).toLocaleString('en-US', { minimumFractionDigits: Math.abs(n) % 1 ? 2 : 0, maximumFractionDigits: 2 });
 const parseNum = (v) => { const n = parseFloat(String(v).replace(/[^0-9.\-]/g, '')); return isNaN(n) ? 0 : n; };
@@ -212,22 +216,23 @@ function home() {
   if (weekly) {
     const cardRet = round((s.returns || []).filter((r) => (r.pay || 'credit') !== 'cash').reduce((a, r) => a + Math.abs(r.amount || 0), 0));
     const stat3 = bal > 0
-      ? `<div><b>${money(bal)}</b><span>${cardRet > 0 ? `Card · ${money(cardRet)} to return` : 'Card balance'}</span></div>`
-      : `<div><b>${money(s.weeklySavings)}</b><span>Weekly savings</span></div>`;
+      ? `<div><b class="${fit(money(bal)).trim()}">${money(bal)}</b><span>${cardRet > 0 ? `Card · ${money(cardRet)} to return` : 'Card balance'}</span></div>`
+      : `<div><b class="${fit(money(s.weeklySavings)).trim()}">${money(s.weeklySavings)}</b><span>Weekly savings</span></div>`;
     hero = `<button class="card hero tappable" data-act="week" aria-label="Left to spend this week — open the weekly breakdown">
       <div class="label">Left to spend <span class="hint">${weekRangeLabel(ws)}${icon('right')}</span></div>
-      <div class="big ${ws.left < 0 ? 'neg' : ''}">${money(ws.left)}</div>
+      <div class="big${fit(money(ws.left))} ${ws.left < 0 ? 'neg' : ''}">${money(ws.left)}</div>
       <div class="bar ${barClass(ws.spent, ws.budget)}"><i style="width:${pct(ws.spent, ws.budget)}%"></i></div>
-      <div class="note" style="margin:8px 0 0">${money(ws.spent)} of ${money(ws.budget)} · ${ws.ids.map((i) => esc(cat(i)?.name)).join(', ')}</div>
+      <div class="note" style="margin:8px 0 0">${money(ws.spent)} of ${money(ws.budget)}${
+        ws.ids.length ? ' · ' + ws.ids.map((i) => esc(cat(i)?.name)).filter(Boolean).join(', ') : ''}</div>
       <div class="stats">
-        <div><b>${money(ws.spent)}</b><span>Spent this week</span></div>
+        <div><b class="${fit(money(ws.spent)).trim()}">${money(ws.spent)}</b><span>Spent this week</span></div>
         ${stat3}
       </div></button>`;
   } else {
     const n = ms.list.filter((t) => t.type === 'expense').length;
     hero = `<div class="card hero">
       <div class="label">Spent in ${monthShort(ui.month)}</div>
-      <div class="big">${money(ms.spent)}</div>
+      <div class="big${fit(money(ms.spent))}">${money(ms.spent)}</div>
       <div class="note" style="margin:8px 0 0">${n} purchase${n === 1 ? '' : 's'}${ms.income ? ` · ${money(ms.income)} income` : ''}</div></div>`;
   }
   const cardTrim = weekly && ws.trimmedByCard > 0
@@ -806,7 +811,7 @@ function finance() {
   return `${header('Finance', false)}
     <div class="finhero">
       <div class="fh-label">Total debt</div>
-      <div class="fh-big">${money(totalDebt)}</div>
+      <div class="fh-big${fit(money(totalDebt))}">${money(totalDebt)}</div>
       <div class="fh-sub">${active.length} active loan${active.length === 1 ? '' : 's'}${paidCount ? ` · ${paidCount} paid off` : ''}</div>
       <div class="fh-grid">
         <div><span>Interest left</span><b>${money(totalInterest)}</b></div>
@@ -904,7 +909,7 @@ function financeInvest(now) {
         <div class="finfield"><label>Return %</label><input class="fin-num" type="text" inputmode="decimal" value="${fmtNum(round(iv.rate * 100))}" data-inv="rate"></div>
       </div>
       <div class="invout">
-        <div class="big">${money(res.fv)}</div>
+        <div class="big${fit(money(res.fv))}">${money(res.fv)}</div>
         <div class="note">after ${iv.years} year${iv.years === 1 ? '' : 's'} · ${money(res.contributed)} in · <span class="goodtext">${money(res.growth)} growth</span></div>
       </div>
     </div>`;
@@ -1114,7 +1119,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=144'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=145'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -1633,7 +1638,7 @@ function drawTrack() {
   $('#sheet').innerHTML = `<div class="panel"><div class="head"><span style="width:40px"></span><span class="step">Track later</span><button data-track="close" aria-label="Close">${icon('close')}</button></div>
     <div class="q">Just the price</div>
     
-    <div class="amount ${amtNum ? '' : 'zero'}">$${esc(f.amt || '0')}</div>
+    <div class="amount${fit(f.amt || '0')} ${amtNum ? '' : 'zero'}">$${esc(f.amt || '0')}</div>
     ${keypad()}
     <div class="twobtn"><button class="btn block" data-track="more" ${dis}>+ Add more</button><button class="btn primary block" data-track="done" ${dis}>Done</button></div>
     ${f.count ? `<p class="note" style="text-align:center;margin-bottom:0">${f.count} saved to finish later</p>` : ''}</div>`;
@@ -1760,7 +1765,7 @@ function drawFlow() {
       <div class="catpill"><span class="e">${glyph(c)}</span>${esc(c.name)}</div>
       ${stat}
       ${chips ? `<div class="splitchips">${chips}</div>` : `<p class="note" style="margin:2px 2px 8px">${f.hasTotal ? 'Enter each charge — they must add up to the total.' : 'Enter each charge; they all share one description & category.'}</p>`}
-      <div class="amount ${subNum ? '' : 'zero'}">$${esc(f.amt || '0')}</div>
+      <div class="amount${fit(f.amt || '0')} ${subNum ? '' : 'zero'}">$${esc(f.amt || '0')}</div>
       <div class="pad">${['1','2','3','4','5','6','7','8','9','.','0','⌫'].map((k) => `<button data-flow="key" data-v="${k}" ${k === '⌫' ? 'aria-label="Delete"' : ''}>${k === '⌫' ? icon('backspace') : k}</button>`).join('')}</div>
       <div class="twobtn"><button class="btn block" data-flow="addsplit" ${addDis}>+ Add charge</button><button class="btn primary block" data-flow="splitnext" ${nextDis}>Continue</button></div>
       <button class="btn block" data-flow="cancelsplit" style="margin-top:8px">Cancel</button>`;
@@ -1776,7 +1781,7 @@ function drawFlow() {
          ${f.count ? `<p class="note" style="text-align:center;margin-bottom:0">${f.count} added under ${esc(c.name)} so far</p>` : ''}`;
     body = `<div class="q">How much?</div>
       <div class="catpill"><span class="e">${glyph(c)}</span>${esc(c.name)}${f.count ? ` · item ${f.count + 1}` : ''}</div>
-      <div class="amount ${amtNum ? '' : 'zero'}">$${esc(f.amt || '0')}</div>
+      <div class="amount${fit(f.amt || '0')} ${amtNum ? '' : 'zero'}">$${esc(f.amt || '0')}</div>
       <div class="pad">${['1','2','3','4','5','6','7','8','9','.','0','⌫'].map((k) => `<button data-flow="key" data-v="${k}" ${k === '⌫' ? 'aria-label="Delete"' : ''}>${k === '⌫' ? icon('backspace') : k}</button>`).join('')}</div>
       ${actions}`;
   } else {
@@ -2323,7 +2328,7 @@ function openOverage() {
       <button class="backbtn" data-act="sheet-close" aria-label="Back">${icon('left')}</button><span class="step">Last week's overage</span><span style="width:28px"></span></div>
     <div class="card hero" style="box-shadow:none;padding:4px 0">
       <div class="label">You went over last week by</div>
-      <div class="big ${over > 0 ? 'neg' : ''}">${money(over)}</div>
+      <div class="big${fit(money(over))} ${over > 0 ? 'neg' : ''}">${money(over)}</div>
       <div class="note" style="margin:8px 0 0">${over > 0
         ? 'That comes off this week. Uncheck a purchase to forgive it — it stops counting toward last week, so it stops trimming this week.'
         : 'Nothing went over last week.'}</div></div>
@@ -2377,7 +2382,7 @@ function openWeek() {
       <button class="backbtn" data-act="sheet-close" aria-label="Back">${icon('left')}</button><span class="step">${monthShort(ui.month)} · weekly</span><span style="width:28px"></span></div>
     <div class="card hero" style="box-shadow:none;padding:4px 0">
       <div class="label">Left to spend this week</div>
-      <div class="big ${ws.left < 0 ? 'neg' : ''}">${money(ws.left)}</div>
+      <div class="big${fit(money(ws.left))} ${ws.left < 0 ? 'neg' : ''}">${money(ws.left)}</div>
       <div class="bar ${barClass(ws.spent, ws.budget)}"><i style="width:${pct(ws.spent, ws.budget)}%"></i></div>
       <div class="note" style="margin:8px 0 0">${[`${money(ws.spent)} of ${money(ws.budget)} everyday budget`]
         .concat(ws.trimmedByCard > 0 ? [`<span class="muted">${money(ws.trimmedByCard)} of it goes to the card</span>`] : [])
@@ -2427,7 +2432,7 @@ function openCatAvg(id) {
       <button class="backbtn" data-act="sheet-close" aria-label="Back">${icon('left')}</button><span class="step">${esc(c.name)} average</span><span style="width:28px"></span></div>
     <div class="card hero" style="box-shadow:none;padding:4px 0">
       <div class="label">12-month average</div>
-      <div class="big">${money(avg)}</div>
+      <div class="big${fit(money(avg))}">${money(avg)}</div>
       <div class="note" style="margin:8px 0 0">Average of ${used.size} month${used.size === 1 ? '' : 's'}${range}. The current month and excluded trips aren't counted. <b>Tap any purchase to exclude it</b> (or add it back) — the log and your gas spending don't change, only the average.</div></div>
     ${sections || '<div class="card empty">No gas purchases logged yet.</div>'}</div>`;
   $('#sheet').className = 'sheet page';

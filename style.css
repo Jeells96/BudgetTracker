@@ -126,6 +126,10 @@ body.scrolled .apptop .sub { height:0; opacity:0; overflow:hidden; margin:0; }
   letter-spacing:.01em; font-size:.74rem; font-weight:600; color:var(--accent); }
 .hero .label .hint .ic { width:14px; height:14px; stroke-width:2.2; vertical-align:0; }
 .hero .big { font-size:2.9rem; font-weight:700; line-height:1.04; letter-spacing:-.032em; margin:10px 0 16px; }
+/* Stepped down by how long the figure turned out, so a seven-figure balance
+   stays inside its card. */
+.big.sm, .fh-big.sm, .amount.sm { font-size:2.2rem; }
+.big.xs, .fh-big.xs, .amount.xs { font-size:1.7rem; letter-spacing:-.022em; }
 .hero .big.neg { color:var(--bad); }
 .hero .note { margin:9px 0 0; }
 .hero.tappable:active { opacity:.72; }
@@ -135,6 +139,7 @@ body.scrolled .apptop .sub { height:0; opacity:0; overflow:hidden; margin:0; }
 .stats div { flex:1; padding:13px 0 13px 16px; margin-left:16px; border-left:1px solid var(--hair); min-width:0; }
 .stats div:first-child { padding-left:0; margin-left:0; border-left:0; }
 .stats b { display:block; font-size:1.2rem; font-weight:600; letter-spacing:-.01em; }
+.stats b.sm { font-size:1.02rem; } .stats b.xs { font-size:.9rem; letter-spacing:-.005em; }
 .stats span { display:block; font-size:.65rem; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; font-weight:600; margin-top:3px; line-height:1.35; }
 
 /* ---------- meters ---------- */
