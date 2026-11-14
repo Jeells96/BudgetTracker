@@ -785,6 +785,16 @@ nav#tabs button.on { background:var(--accent); color:var(--accent-ink); }
   .toast, .seltotal { bottom:28px; }
 }
 
+/* On a wide window a sheet is a dialog, not a drawer: centred, rounded all
+   round, and clear of the top bar. On a phone it stays a drawer. */
+@media (min-width: 860px) {
+  .sheet { align-items:center; padding:78px 20px 28px; }
+  .panel { border-radius:var(--r2); max-height:100%; box-shadow:var(--lift);
+    animation:pop .2s cubic-bezier(.2,.9,.3,1); }
+  .sheet.page { align-items:center; }
+  .sheet.page .panel { height:auto; max-height:100%; border-radius:var(--r2); }
+}
+
 /* ---------- floating bits ---------- */
 .toast { position:fixed; left:50%; bottom:calc(104px + env(safe-area-inset-bottom)); transform:translateX(-50%);
   z-index:70; display:flex; align-items:center; gap:9px;
