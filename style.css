@@ -357,6 +357,8 @@ body.scrolled .apptop .sub { height:0; opacity:0; overflow:hidden; margin:0; }
 .field.billrow .btn.mini { width:28px; height:28px; }
 .field.billrow .x { width:24px; }
 .field.billrow input { padding-left:8px; padding-right:8px; }
+.field.billrow .bill-amt, .field.billrow .bill-amt-h { width:78px; text-align:right; }
+.field.billrow .bill-day, .field.billrow .bill-day-h { width:44px; text-align:center; }
 .field.billrow input[type=number] { padding-left:5px; padding-right:5px; }
 .field.billrow input[type=number]::-webkit-inner-spin-button,
 .field.billrow input[type=number]::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
@@ -479,7 +481,8 @@ hr.sep { border:0; border-top:1px solid var(--hair); margin:18px 0; }
 .ccbreak > div { display:flex; justify-content:space-between; gap:10px; padding:10px 0; border-top:1px solid var(--hair); font-size:.86rem; }
 .ccbreak > div:first-child { border-top:0; }
 .ccbreak span { color:var(--muted); }
-.ccbreak b { font-weight:600; white-space:nowrap; }
+.ccbreak b { font-weight:600; }
+.nw { white-space:nowrap; }
 .ccbreak .tot { border-top:1px solid var(--ink-2); font-weight:600; }
 .ccbreak .tot span { color:var(--ink); } .ccbreak .tot b { font-size:1.02rem; }
 .ccbreak small { font-size:.66rem; color:var(--accent); }
@@ -671,6 +674,43 @@ hr.sep { border:0; border-top:1px solid var(--hair); margin:18px 0; }
 .splitchip { display:inline-flex; align-items:center; gap:6px; background:var(--raise); border:1px solid var(--hair);
   border-radius:999px; padding:7px 13px; font-weight:600; font-size:.86rem; }
 .splitchip .x-mini { color:var(--bad); }
+
+/* ---------- narrow phones (320px) ---------- */
+/* Same layout, less air. Without it the month list clipped its own names and
+   the bills table clipped "Allstate". */
+@media (max-width: 360px) {
+  #app { padding-left:13px; padding-right:13px; }
+  .apptop { margin-left:-13px; margin-right:-13px; padding-left:13px; padding-right:13px; }
+  .card { padding:14px; }
+  .hero { padding:14px; }
+  .stats { margin:16px -14px -14px; padding:0 14px; }
+  .stats div { padding-left:11px; margin-left:11px; }
+  .hero .big { font-size:2.5rem; }
+  .emoji { width:32px; height:32px; }
+  .emoji .ic { width:18px; height:18px; }
+  .cat { gap:10px; padding:13px 0; }
+  /* "$1,372.86 / $5,462.97" cannot share a 320px line with "Bills account",
+     so the figure takes a line of its own rather than eating the name. */
+  .cat .row { flex-direction:column; align-items:flex-start; gap:1px; margin-bottom:6px; }
+  .cat .row .a { font-size:.73rem; }
+  .plan-table .trow .plancell { padding-left:6px; padding-right:6px; }
+  .plan-table .trow .cellx { padding-left:1px; padding-right:1px; }
+  .tx, .tx-main, .loose { gap:8px; }
+  .tx .emoji, .loose .emoji { width:28px; height:28px; }
+  .tx .emoji .ic, .loose .emoji .ic { width:16px; height:16px; }
+  .tx .amt { font-size:.94rem; }
+  .plan-table .trow { grid-template-columns:minmax(0,1fr) 50px 124px; gap:5px; }
+  .plan-table .trow { font-size:.86rem; }
+  .field.billrow { gap:4px; }
+  .field.billrow input { padding-left:6px; padding-right:6px; }
+  .field.billrow .bill-amt, .field.billrow .bill-amt-h { width:68px; }
+  .field.billrow .bill-day, .field.billrow .bill-day-h { width:32px; padding-left:2px; padding-right:2px; }
+  .field.billrow .btn.mini { width:24px; height:24px; }
+  .field.billrow .x { width:20px; }
+  .ccbreak { padding:2px 11px; }
+  nav#tabs button { padding:8px 11px; }
+  .dlg-card { padding:16px; }
+}
 
 /* ---------- floating nav ---------- */
 nav#tabs {

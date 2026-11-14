@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=145';
-import { TRANSFERS } from './defaults.js?v=145';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=145';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=146';
+import { TRANSFERS } from './defaults.js?v=146';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=146';
 
 const $ = (s) => document.querySelector(s);
 // Condense the title bar once the page has moved. Kept on <body> so a
@@ -375,13 +375,13 @@ function billsAcctCard(s, now = new Date()) {
     ? bp.upList.map((b) => `<div><span>${b.when === 'first' ? `<span class="duedot" aria-label="due first"></span>` : ''}${esc(b.name)}${b.when === 'first' ? ` · ${firstLabel}` : ' · ' + ordinal(b.day)}</span><b>${money(b.amount)}</b></div>`).join('')
     : `<div><span class="muted">Nothing due before ${firstLabel}</span><b>${money(0)}</b></div>`;
 
-  const lessLump = bp.overfund > 0.005 ? ` · ${money(bp.overfund)} total` : '';
+  const lessLump = bp.overfund > 0.005 ? ` <span class="nw">· ${money(bp.overfund)} total</span>` : '';
   const compare = !bp.hasBal ? '' : `
     <div class="ccbreak" style="margin-top:10px">
       <div><span>Weekly transfer needed</span><b>${money(bp.weeklyNeeded)}</b></div>
       <div><span>On the table (your plan)</span><b>${money(bp.onTable)}</b></div>
       <div class="tot"><span>${bp.diff > 0.005 ? 'Transfer more' : bp.diff < -0.005 ? 'You can move less' : 'Right on plan'}</span>
-        <b class="${bp.diff > 0.005 ? 'negtext' : 'goodtext'}">${Math.abs(bp.diff) < 0.005 ? '—' : money(Math.abs(bp.diff)) + '/wk' + lessLump}</b></div>
+        <b class="${bp.diff > 0.005 ? 'negtext' : 'goodtext'}">${Math.abs(bp.diff) < 0.005 ? '—' : `<span class="nw">${money(Math.abs(bp.diff))}/wk</span>` + lessLump}</b></div>
     </div>`;
 
   const staleNote = bp.hasBal && bp.staleDays >= 3
@@ -1016,11 +1016,11 @@ function settings() {
     }).join('')}
       <button class="btn block" data-act="addcat">+ Add category</button></div>
     <h2>Bills &amp; due days</h2><div class="card">
-      <div class="field bill-head billrow"><span style="flex:1">Bill</span><span style="width:78px;text-align:right">Amount</span><span style="width:44px;text-align:center">Day</span><span style="width:64px"></span></div>
+      <div class="field bill-head billrow"><span style="flex:1">Bill</span><span class="bill-amt-h">Amount</span><span class="bill-day-h">Day</span><span style="width:64px"></span></div>
       ${s.bills.map((b, i) => `
       <div class="field billrow"><input class="name" type="text" value="${esc(b.name)}" data-bill="${i}" data-field="name">
-        <input type="text" inputmode="decimal" value="${fmtNum(b.useAvg ? billAmount(b) : b.amount)}" ${b.useAvg ? 'disabled title="Using 12-month average"' : ''} data-bill="${i}" data-field="amount" style="width:78px">
-        <input type="number" inputmode="numeric" min="1" max="31" value="${b.day}" data-bill="${i}" data-field="day" style="width:44px;text-align:center">
+        <input type="text" inputmode="decimal" value="${fmtNum(b.useAvg ? billAmount(b) : b.amount)}" ${b.useAvg ? 'disabled title="Using 12-month average"' : ''} data-bill="${i}" data-field="amount" class="bill-amt">
+        <input type="number" inputmode="numeric" min="1" max="31" value="${b.day}" data-bill="${i}" data-field="day" class="bill-day">
         <button class="btn mini ${b.useAvg ? 'on' : ''}" data-act="billedit" data-i="${i}" aria-label="Edit history">${icon('pencil')}</button>
         <button class="x" data-act="delbill" data-i="${i}" aria-label="Delete">${icon('close')}</button></div>`).join('')}
       <button class="btn block" data-act="addbill">+ Add bill</button>
@@ -1119,7 +1119,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=145'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=146'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
