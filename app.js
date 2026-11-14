@@ -1,8 +1,17 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=133';
-import { TRANSFERS } from './defaults.js?v=133';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=133';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=134';
+import { TRANSFERS } from './defaults.js?v=134';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=134';
 
 const $ = (s) => document.querySelector(s);
+// Condense the title bar once the page has moved. Kept on <body> so a
+// re-render of the header never loses it, and read inside rAF so a scroll
+// never does layout work on the event itself.
+let scrollTick = false;
+addEventListener('scroll', () => {
+  if (scrollTick) return;
+  scrollTick = true;
+  requestAnimationFrame(() => { scrollTick = false; document.body.classList.toggle('scrolled', scrollY > 26); });
+}, { passive: true });
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const money = (n) => (n < 0 ? '-' : '') + '$' + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: Math.abs(n) % 1 ? 2 : 0, maximumFractionDigits: 2 });
 // Text-box number formatting: show thousands separators, parse back by stripping them.
@@ -174,7 +183,7 @@ function header(title, nav = true) {
   const months = !nav ? '' : `<div class="month">
     <button data-act="prev" aria-label="Previous month">‹</button><button data-act="next" aria-label="Next month">›</button></div>`;
   const sub = nav ? monthLabel(ui.month) : '';
-  return `<div class="top"><div><h1>${title}</h1><div class="muted">${sub}</div></div>${months}</div>`;
+  return `<div class="top"><div class="ttl"><h1>${title}</h1>${sub ? `<div class="sub">${sub}</div>` : ''}</div>${months}</div>`;
 }
 
 // Name the days the week covers. It starts on a Friday, so it often begins in
@@ -804,7 +813,7 @@ function financeLoanCard(loan, st) {
     <div class="emoji">${glyph(loan, 'cash')}</div>
     <div class="body">
       <div class="row"><span class="n">${esc(loan.name)}</span><span class="a">${paid ? '<b class="goodtext">Paid off</b>' : money(st.balance)}</span></div>
-      <div class="bar"><i style="width:${st.paidPct}%"></i></div>
+      <div class="bar${paid ? ' done' : ''}"><i style="width:${st.paidPct}%"></i></div>
       <div class="du-note">${paid ? `Paid off${loan.lender ? ` · ${esc(loan.lender)}` : ''}` : `${Math.round(st.paidPct)}% paid · ${moYr(st.payoff)}${loan.lender ? ` · ${esc(loan.lender)}` : ''}`}</div>
     </div><span class="chev ${open ? 'down' : ''}">›</span></button>`;
   if (!open) return `<div class="card loan ${paid ? 'done' : ''}">${head}</div>`;
@@ -1058,7 +1067,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=133'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=134'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
