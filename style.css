@@ -10,7 +10,7 @@
   --canvas:#F4F7FA; --surface:#FFFFFF; --raise:#EDF2F7; --sunken:#E4EBF2;
   --nav:rgba(255,255,255,.94);
   /* Text */
-  --ink:#0C1B2A; --ink-2:#3D4F63; --muted:#68788C; --hair:#DCE4EC;
+  --ink:#0C1B2A; --ink-2:#3D4F63; --muted:#5E6E82; --hair:#DCE4EC;
   /* Brand: interactive chrome only — buttons, links, focus, selection */
   --accent:#0B4C97; --accent-ink:#FFFFFF; --accent-soft:rgba(11,76,151,.08);
   --accent-line:rgba(11,76,151,.26); --accent-deep:#083A75;
@@ -120,7 +120,9 @@ body.scrolled .apptop .sub { height:0; opacity:0; overflow:hidden; margin:0; }
 .sheet .hero { background:none; border:0; box-shadow:none; padding:0; }
 .hero .label { display:flex; align-items:baseline; justify-content:space-between; gap:12px;
   font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.09em; color:var(--muted); }
-.hero .label .hint { flex:none; text-transform:none; letter-spacing:.01em; font-size:.72rem; font-weight:500; color:var(--accent); }
+.hero .label .hint { display:inline-flex; align-items:center; gap:2px; flex:none; text-transform:none;
+  letter-spacing:.01em; font-size:.74rem; font-weight:600; color:var(--accent); }
+.hero .label .hint .ic { width:14px; height:14px; stroke-width:2.2; vertical-align:0; }
 .hero .big { font-size:2.9rem; font-weight:700; line-height:1.04; letter-spacing:-.032em; margin:10px 0 16px; }
 .hero .big.neg { color:var(--bad); }
 .hero .note { margin:9px 0 0; }
@@ -660,6 +662,19 @@ nav#tabs button svg { width:21px; height:21px; display:block; stroke:currentColo
 nav#tabs button span { font-size:inherit; }
 nav#tabs button.on { background:var(--accent); color:var(--accent-ink); }
 @media (hover: hover) and (pointer: fine) { nav#tabs button:not(.on):hover { color:var(--ink); background:var(--raise); } }
+
+/* First paint, before the stored data has been read: the shape of the page
+   rather than an empty white rectangle. Replaced by the first render. */
+.boot { padding:4px 0; }
+.sk { border-radius:var(--r); background:var(--raise); position:relative; overflow:hidden; }
+.sk + .sk { margin-top:14px; }
+.sk-t { height:30px; width:42%; }
+.sk-h { height:150px; }
+.sk-c { height:210px; }
+.sk::after { content:''; position:absolute; inset:0; transform:translateX(-100%);
+  background:linear-gradient(90deg, transparent, color-mix(in srgb,var(--surface) 70%,transparent), transparent);
+  animation:sheen 1.4s infinite; }
+@keyframes sheen { 100% { transform:translateX(100%); } }
 
 /* ---------- floating bits ---------- */
 .toast { position:fixed; left:50%; bottom:calc(104px + env(safe-area-inset-bottom)); transform:translateX(-50%);

@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=137';
-import { TRANSFERS } from './defaults.js?v=137';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=137';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=138';
+import { TRANSFERS } from './defaults.js?v=138';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=138';
 
 const $ = (s) => document.querySelector(s);
 // Condense the title bar once the page has moved. Kept on <body> so a
@@ -176,7 +176,11 @@ function maybePendingPrompt() {
 }
 function render() {
   if (!bankUI.booted && S().bankOn) { bankUI.booted = true; bankUI.on = true; setTimeout(bankAuto, 0); }
-  document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === ui.tab));
+  document.querySelectorAll('#tabs button').forEach((b) => {
+    const on = b.dataset.tab === ui.tab;
+    b.classList.toggle('on', on);
+    if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+  });
   $('#app').innerHTML = ({ home, plan: planTab, finance, settings }[ui.tab] || home)();
 }
 store.onChange = () => { if (!document.activeElement || !document.activeElement.closest('#app input')) render(); };
@@ -207,8 +211,8 @@ function home() {
     const stat3 = bal > 0
       ? `<div><b>${money(bal)}</b><span>${cardRet > 0 ? `Card · ${money(cardRet)} to return` : 'Card balance'}</span></div>`
       : `<div><b>${money(s.weeklySavings)}</b><span>Weekly savings</span></div>`;
-    hero = `<button class="card hero tappable" data-act="week">
-      <div class="label">Left to spend ${weekRangeLabel(ws)} <span class="hint">tap for breakdown ›</span></div>
+    hero = `<button class="card hero tappable" data-act="week" aria-label="Left to spend this week — open the weekly breakdown">
+      <div class="label">Left to spend <span class="hint">${weekRangeLabel(ws)}${icon('right')}</span></div>
       <div class="big ${ws.left < 0 ? 'neg' : ''}">${money(ws.left)}</div>
       <div class="bar ${barClass(ws.spent, ws.budget)}"><i style="width:${pct(ws.spent, ws.budget)}%"></i></div>
       <div class="note" style="margin:8px 0 0">${money(ws.spent)} of ${money(ws.budget)} · ${ws.ids.map((i) => esc(cat(i)?.name)).join(', ')}</div>
@@ -343,7 +347,7 @@ function txRow(t) {
   const dateStr = tightDate(parseYmd(t.date));
   const picked = sel.ids.has(t.id);
   return `<div class="tx${picked ? ' selected' : ''}">
-    <button class="selbox${picked ? ' on' : ''}" data-act="tx-toggle" data-id="${esc(t.id)}" aria-label="Select for total"></button>
+    <button class="selbox${picked ? ' on' : ''}" data-act="tx-toggle" data-id="${esc(t.id)}" aria-pressed="${picked}" aria-label="Select for total"></button>
     <button class="tx-main" data-act="tx" data-id="${esc(t.id)}"><div class="emoji">${ico}</div>
     <div class="body"><div class="t">${esc(label)}${ccDot}</div><div class="s">${sub ? esc(sub) + ' · ' : ''}${dateStr}</div></div>${amt}<span class="chev">${icon('right')}</span></button></div>`;
 }
@@ -1072,7 +1076,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=137'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=138'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -2319,6 +2323,7 @@ document.addEventListener('click', (e) => {
     case 'tx-toggle': {
       const now = sel.ids.has(id) ? (sel.ids.delete(id), false) : (sel.ids.add(id), true);
       b.classList.toggle('on', now);
+      b.setAttribute('aria-pressed', String(now));
       const row = b.closest('.tx'); if (row) row.classList.toggle('selected', now);
       return renderSelBar();
     }
