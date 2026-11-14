@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=142';
-import { TRANSFERS } from './defaults.js?v=142';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=142';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=143';
+import { TRANSFERS } from './defaults.js?v=143';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=143';
 
 const $ = (s) => document.querySelector(s);
 // Condense the title bar once the page has moved. Kept on <body> so a
@@ -161,6 +161,7 @@ const tfer = (id) => TRANSFERS.find((t) => t.id === id);
 // Order by when it was entered (newest first), not by the purchase date.
 const entryTime = (t) => (t.at != null ? t.at : parseYmd(t.date).getTime());
 const sortTx = (a, b) => entryTime(b) - entryTime(a) || (b.id > a.id ? 1 : -1);
+const sortByDate = (a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : sortTx(a, b));
 const monthTxs = () => store.txs.filter((t) => t.date.startsWith(ui.month)).sort(sortTx);
 const MS = () => monthStats(S(), store.txs, ui.month);
 const barClass = (spent, budget) => (spent > budget ? 'over' : spent > budget * 0.85 ? 'warn' : '');
@@ -273,7 +274,7 @@ function home() {
   const monthList = monthTxs();
   const txsFor = (key) => (key === 'income' ? monthList.filter((t) => t.type === 'income')
     : key === 'savings' ? monthList.filter((t) => t.type === 'transfer' && t.category === 'savings')
-    : monthList.filter((t) => t.type === 'expense' && t.category === key)).sort(sortTx);
+    : monthList.filter((t) => t.type === 'expense' && t.category === key)).sort(sortByDate);
   // Header shown atop a dropdown: how far under/over budget this month.
   // goodOver = over the number is a good thing (income, savings).
   const dropHead = (spent, total, goodOver) => {
@@ -302,7 +303,7 @@ function home() {
   const otherDrop = () => {
     const left = round(otherBudget - otherUsed);
     const head = `<div class="du-note ${left < 0 ? 'bad' : 'good'}">${money(otherSpent)} of ${money(otherBudget)} · ${left < 0 ? money(-left) + ' over' : money(left) + ' left'}</div>`;
-    const groups = rolled.map((c) => ({ c, txs: monthList.filter((t) => t.type === 'expense' && t.category === c.id).sort(sortTx), total: round(ms.byCat[c.id] || 0) })).filter((g) => g.txs.length);
+    const groups = rolled.map((c) => ({ c, txs: monthList.filter((t) => t.type === 'expense' && t.category === c.id).sort(sortByDate), total: round(ms.byCat[c.id] || 0) })).filter((g) => g.txs.length);
     const subs = groups.map((g) => `<div class="subtier"><span class="st-g">${glyph(g.c)}</span><span>${esc(g.c.name)}</span><b>${money(g.total)}</b></div>${g.txs.map((t) => txRow(t)).join('')}`).join('');
     const empty = !subs ? '<div class="empty">Nothing in other weekly spending yet.</div>' : '';
     return `<div class="catdrop">${head}${subs}${empty}</div>`;
@@ -906,7 +907,7 @@ function financeInvest(now) {
 }
 
 function activityList() {
-  let list = (ui.all ? [...store.txs] : monthTxs()).sort(sortTx);
+  let list = (ui.all ? [...store.txs] : monthTxs()).sort(sortByDate);
   if (ui.filter === 'income') list = list.filter((t) => t.type === 'income');
   else if (ui.filter === 'transfer') list = list.filter((t) => t.type === 'transfer');
   else if (ui.filter !== 'all') list = list.filter((t) => t.type === 'expense' && t.category === ui.filter);
@@ -1099,7 +1100,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=142'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=143'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -2335,7 +2336,7 @@ function openWeek() {
     const to = ymd(wkEnd > nextMonth ? nextMonth : wkEnd);
     // Breakdown is about spending only — leave out income, bills transfers,
     // savings transfers and card payments.
-    const txsIn = store.txs.filter((t) => t.type === 'expense' && t.date >= from && t.date < to).sort(sortTx);
+    const txsIn = store.txs.filter((t) => t.type === 'expense' && t.date >= from && t.date < to).sort(sortByDate);
     const spent = round(txsIn.filter((t) => t.type === 'expense').reduce((a, t) => a + t.amount, 0));
     const everyday = round(txsIn.filter((t) => t.type === 'expense' && ws.ids.includes(t.category)).reduce((a, t) => a + t.amount, 0));
     weeks.push({ n, startYmd: ymd(wkStart), from, to, spent, everyday, txsIn, isNow: ymd(wkStart) === ws.start });
