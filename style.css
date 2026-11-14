@@ -156,7 +156,9 @@ body.scrolled .top .sub { height:0; opacity:0; overflow:hidden; margin:0; }
    instead of doubling the row's height. */
 .cat .row .n { font-weight:550; letter-spacing:-.005em; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .cat .row .a { color:var(--muted); font-size:.76rem; letter-spacing:-.005em; white-space:nowrap; flex:none; }
-.cat .chev, .tx .chev, .loose .chev { color:var(--muted); opacity:.45; font-size:1.1rem; align-self:center; transition:transform .18s; }
+.cat .chev, .tx .chev, .loose .chev { color:var(--muted); opacity:.5; align-self:center;
+  display:inline-flex; transition:transform .18s; }
+.chev .ic, .psec-caret .ic, .caret .ic { width:16px; height:16px; stroke-width:2.1; vertical-align:0; }
 .cat.open .chev { transform:rotate(90deg); }
 /* ---------- icons ---------- */
 /* One stroke weight and one optical size, so a row of them reads as a set. */
@@ -174,8 +176,9 @@ body.scrolled .top .sub { height:0; opacity:0; overflow:hidden; margin:0; }
 .emoji.sm .ic { width:18px; height:18px; }
 /* A category you added yourself has no drawn icon, so it gets its initial —
    the way a bank labels a payee it has never seen before. */
-.mono { font-size:.82rem; font-weight:700; letter-spacing:.02em; color:var(--accent);
-  font-variant-numeric:normal; }
+.mono { width:20px; height:20px; display:inline-flex; align-items:center; justify-content:center;
+  flex:none; font-size:.82rem; font-weight:700; letter-spacing:.01em; color:var(--accent);
+  font-variant-numeric:normal; vertical-align:-.22em; }
 .emoji .mono { font-size:.88rem; }
 /* A bill due on the 1st, flagged without shouting. */
 .duedot { display:inline-block; width:6px; height:6px; border-radius:999px; background:var(--bad);
@@ -241,6 +244,12 @@ body.scrolled .top .sub { height:0; opacity:0; overflow:hidden; margin:0; }
 .btn.mini.on { background:var(--accent-soft); border-color:var(--accent); color:var(--accent); }
 .btn.mini.good { color:var(--good); border-color:color-mix(in srgb,var(--good) 34%,transparent); }
 .twobtn { display:flex; gap:10px; margin-top:14px; }
+.pill { display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:999px;
+  font-size:.66rem; font-weight:700; letter-spacing:.03em; text-transform:uppercase;
+  background:var(--raise); color:var(--muted); border:1px solid var(--hair); white-space:nowrap; }
+.pill.wait { background:var(--warn-soft); color:var(--warn); border-color:var(--warn-line); }
+.pill.ok { background:var(--good-soft); color:var(--good); border-color:var(--good-line); }
+.pill.brand { background:var(--accent-soft); color:var(--accent); border-color:var(--accent-line); }
 .badge { min-width:20px; height:20px; padding:0 6px; border-radius:999px; background:var(--accent);
   color:var(--accent-ink); font-size:.72rem; font-weight:700; display:inline-grid; place-items:center;
   font-variant-numeric:tabular-nums; }
@@ -319,7 +328,8 @@ select[data-set] { background:var(--raise); border:1px solid var(--hair); border
 .editlbl { display:block; font-size:.68rem; text-transform:uppercase; letter-spacing:.1em;
   color:var(--muted); margin:14px 2px 7px; font-weight:600; }
 input:focus, select:focus, textarea:focus { outline:none; border-color:var(--accent); box-shadow:var(--ring); }
-.cellx { flex:none; background:none; color:var(--muted); font-size:.8rem; padding:3px 3px; line-height:1; }
+.cellx { flex:none; background:none; color:var(--muted); font-size:.8rem; padding:3px 3px; line-height:1; display:inline-flex; align-items:center; }
+.cellx .ic { width:14px; height:14px; stroke-width:2; vertical-align:0; }
 
 /* Small icon buttons keep their width — widening them would just make each one
    overlap the control beside it — but take the row's full height as tap area.
@@ -386,7 +396,7 @@ hr.sep { border:0; border-top:1px solid var(--hair); margin:18px 0; }
 .collapse > summary b { color:var(--ink); }
 
 /* ---------- plan table ---------- */
-.plan-table .trow { display:grid; grid-template-columns:minmax(0,1fr) 66px 126px; gap:8px; align-items:center;
+.plan-table .trow { display:grid; grid-template-columns:minmax(0,1fr) 60px 134px; gap:7px; align-items:center;
   padding:11px 0; border-top:1px solid var(--hair); font-size:.9rem; }
 .plan-table .trow:first-child { border-top:0; }
 .plan-table .trow > span:first-child { line-height:1.25; font-weight:500; }
@@ -582,7 +592,7 @@ hr.sep { border:0; border-top:1px solid var(--hair); margin:18px 0; }
 /* Vertical only: a sideways scroller here traps panning once you've zoomed in,
    and this rule comes after .panel so it would otherwise undo that fix. */
 .sheet-page { max-height:92vh; overflow-y:auto; overflow-x:hidden; }
-.backbtn { font-weight:600; color:var(--accent); font-size:1.2rem; width:38px; }
+.backbtn { font-weight:600; color:var(--accent); font-size:1.2rem; width:38px; display:inline-flex; align-items:center; justify-content:center; }
 .amount { text-align:center; font-size:2.7rem; font-weight:700; margin:10px 0 18px; letter-spacing:-.03em; }
 .amount.zero { color:var(--muted); }
 .pad { display:grid; grid-template-columns:repeat(3,1fr); gap:9px; }

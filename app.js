@@ -1,6 +1,6 @@
-import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=134';
-import { TRANSFERS } from './defaults.js?v=134';
-import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=134';
+import { store, loadLocal, saveSettings, addTx, updateTx, deleteTx, uid, initFirebase, reimportHistory } from './store.js?v=135';
+import { TRANSFERS } from './defaults.js?v=135';
+import { round, ymd, parseYmd, addDays, weekStart, monthStats, weekStats, weekPaidState, standardWeek, weeklyGoal, planTxsFor, afterReset, splitPct, paydaysInMonth, billsTotal, firstTotal, billAmount, categoryAvg, categoryBudget, cardBalance, cardDetail, cycleWindow, rollCardBaseline, billsProjection, cardPlan, paymentSchedule, nextPayday, weekPlan, monthlyIncome, trends, loanStats, investFV, addMonthsYmd, txNet } from './calc.js?v=135';
 
 const $ = (s) => document.querySelector(s);
 // Condense the title bar once the page has moved. Kept on <body> so a
@@ -65,6 +65,8 @@ const ICON = {
   tag: '<path d="M11.5 2.9h8.4a1.2 1.2 0 0 1 1.2 1.2v8.4l-9.2 9.2a1.6 1.6 0 0 1-2.3 0l-7.3-7.3a1.6 1.6 0 0 1 0-2.3z"/><circle cx="16.7" cy="7.3" r="1.3"/>',
   cash: '<rect x="2.4" y="6.2" width="19.2" height="11.6" rx="2.2"/><circle cx="12" cy="12" r="2.6"/><path d="M6.1 12h.01M17.9 12h.01"/>',
   link: '<path d="M10.2 13.8a4 4 0 0 0 5.7 0l2.6-2.6a4 4 0 1 0-5.7-5.7l-1.4 1.4"/><path d="M13.8 10.2a4 4 0 0 0-5.7 0l-2.6 2.6a4 4 0 1 0 5.7 5.7l1.4-1.4"/>',
+  backspace: '<path d="M9.3 5.2h9.5a2.4 2.4 0 0 1 2.4 2.4v8.8a2.4 2.4 0 0 1-2.4 2.4H9.3L2.8 12z"/><path d="m11.6 9.6 5 4.8M16.6 9.6l-5 4.8"/>',
+  reset: '<path d="M3.9 12a8.1 8.1 0 1 0 2.5-5.8L3.3 9.2"/><path d="M3.1 4.6v4.8h4.8"/>',
 };
 const icon = (name, cls = '') => ICON[name] ? `<svg class="ic${cls ? ' ' + cls : ''}" viewBox="0 0 24 24" aria-hidden="true">${ICON[name]}</svg>` : '';
 
@@ -249,7 +251,7 @@ function home() {
       ? `<div class="row"><span class="n">${esc(name)}</span><span class="a">${money(spent)} / ${money(total)}</span></div>
          <div class="bar ${neutralBar(name, act) ? '' : barClass(spent, total)}"><i style="width:${pct(spent, total)}%"></i></div>`
       : `<div class="row"><span class="n">${esc(name)}</span><span class="a">${money(spent)} spent</span></div>`;
-    return `<button class="cat ${open ? 'open' : ''}" data-act="${act}" data-id="${esc(id)}"><div class="emoji">${emoji}</div><div class="body">${inner}</div><span class="chev">›</span></button>`;
+    return `<button class="cat ${open ? 'open' : ''}" data-act="${act}" data-id="${esc(id)}"><div class="emoji">${emoji}</div><div class="body">${inner}</div><span class="chev">${icon('right')}</span></button>`;
   };
   // "Other" is the weekly-spending pool: the weekly budget (standard, ignoring any
   // card adjustment) minus the budgets of weekly categories that have their own
@@ -343,7 +345,7 @@ function txRow(t) {
   return `<div class="tx${picked ? ' selected' : ''}">
     <button class="selbox${picked ? ' on' : ''}" data-act="tx-toggle" data-id="${esc(t.id)}" aria-label="Select for total"></button>
     <button class="tx-main" data-act="tx" data-id="${esc(t.id)}"><div class="emoji">${ico}</div>
-    <div class="body"><div class="t">${esc(label)}${ccDot}</div><div class="s">${sub ? esc(sub) + ' · ' : ''}${dateStr}</div></div>${amt}<span class="chev">›</span></button></div>`;
+    <div class="body"><div class="t">${esc(label)}${ccDot}</div><div class="s">${sub ? esc(sub) + ' · ' : ''}${dateStr}</div></div>${amt}<span class="chev">${icon('right')}</span></button></div>`;
 }
 
 function billsAcctCard(s, now = new Date()) {
@@ -440,14 +442,14 @@ function payoffScheduleHTML(sch) {
     const tag = paid ? ' <span class="paidtag">✓ paid</span>'
       : p.manual ? ' <span class="mantag">edited</span>'
       : trimmed ? ' <span class="mantag">what\'s left</span>' : '';
-    const revert = p.manual && !paid ? `<button class="btn block" data-act="cc-pay-clear" data-id="${p.date}" style="margin-top:8px">↺ Back to the plan</button>` : '';
+    const revert = p.manual && !paid ? `<button class="btn block" data-act="cc-pay-clear" data-id="${p.date}" style="margin-top:8px">${icon('reset')}Back to the plan</button>` : '';
     if (paid) {
       return `<div class="sch-row paid"><div class="sch-d">${label(p.date)}${tag}</div>
         <div class="sch-n"><b class="sch-tot">${money(p.amount)}</b></div></div>`;
     }
     // Closed, a payday is just a date and what you'd pay. Open it to change it.
     return `<details class="sch-row${p.manual ? ' man' : ''}" ${openAttr('pay-' + p.date)}>
-      <summary><span class="sch-d">${label(p.date)}${tag}</span><b class="sch-tot">${money(shown)}</b><span class="chev">›</span></summary>
+      <summary><span class="sch-d">${label(p.date)}${tag}</span><b class="sch-tot">${money(shown)}</b><span class="chev">${icon('right')}</span></summary>
       <div class="sch-edit">
         <div class="se-row"><span>Plan</span><b>${money(plan)}</b></div>
         <div class="se-row"><span>Adjust by</span>
@@ -562,7 +564,7 @@ function cardSection() {
       ${mixEditor(cp)}</details>
     ${payoffScheduleHTML(wp.sch)}
     ${weekDoneRow()}
-    ${hasEdits ? `<button class="btn block" data-act="cc-edits-reset" style="margin-top:8px">↺ Clear manual payment edits</button>` : ''}
+    ${hasEdits ? `<button class="btn block" data-act="cc-edits-reset" style="margin-top:8px">${icon('reset')}Clear manual payment edits</button>` : ''}
     <hr class="sep">` : '';
 
   // One place to say what the card is, and the working underneath it. There used
@@ -693,7 +695,7 @@ function planTab() {
   const stdVal = { pay: st.pay, bills: st.bills, groceries: st.groceries, everyday: st.everyday, savings: st.savings, extra: st.extra };
   const edq = (field) => planEdits()[field] !== undefined;    // has a what-if edit?
   // Always show the reset-to-recommended ↺ (consistent columns + resettable even with a custom value).
-  const resetBtn = (field) => `<button class="cellx" data-act="plan-reset-field" data-id="${field}" title="Reset to recommended">↺</button>`;
+  const resetBtn = (field) => `<button class="cellx" data-act="plan-reset-field" data-id="${field}" title="Reset to recommended" aria-label="Reset to recommended">${icon('reset')}</button>`;
   const erow = (label, field, extra = '') => `<div class="trow"><span>${label}</span><span class="b">${money(stdVal[field])}</span><span class="n"><input class="plancell" data-plan="${field}" type="text" inputmode="decimal" placeholder="0" value="${fmtNum(p[field] || '')}">${resetBtn(field)}<button class="cellx" data-act="plan-clear" data-id="${field}" title="Clear">✕</button></span></div>${extra}`;
 
   const goal = weeklyGoal(s);
@@ -702,7 +704,7 @@ function planTab() {
       ? 'Yours — overrides the card trim'
       : `Working it out for you · ${money(wp.rec.everyday)} this week`}</div></div>
     <input type="text" inputmode="decimal" placeholder="auto" value="${goal != null ? fmtNum(goal) : ''}" data-weeklygoal>
-    ${goal != null ? '<button class="cellx" data-act="goal-clear" title="Back to automatic">↺</button>' : ''}</div>`;
+    ${goal != null ? `<button class="cellx" data-act="goal-clear" title="Back to automatic" aria-label="Back to automatic">${icon('reset')}</button>` : ''}</div>`;
 
   const weekNav = `<div class="weeknav">
     <button data-act="plan-week" data-id="-1" aria-label="Previous week">‹</button>
@@ -759,13 +761,13 @@ function planTab() {
       <div class="trow ${p.leftover < 0 ? 'neg' : 'total'}" id="plan-leftover-row"><span>Left this week</span><span class="b">${money(p.hasCard ? st.extra : 0)}</span><span class="n" id="plan-leftover">${money(p.leftover)}</span></div>
     </div>
     <div class="callout ${p.leftover < 0 ? 'bad' : 'good'}" id="plan-callout">${calloutHTML(p.leftover)}</div>
-    <button class="btn block" id="plan-reset-btn" data-act="plan-reset" ${edited ? '' : 'hidden'}>↺ Reset to recommended</button>
+    <button class="btn block" id="plan-reset-btn" data-act="plan-reset" ${edited ? '' : 'hidden'}>${icon('reset')}Reset to recommended</button>
     ${trimNote}
     ${cardNote ? `<p class="note">${cardNote}</p>` : ''}`;
 
   // Each area is a collapsible section. The weekly planner is open by default; the
   // rest start collapsed. (Native <details>, so open/closed is remembered per tap.)
-  const sec = (title, body, open = false) => `<details class="psec" ${openAttr('psec-' + title.replace(/[^a-z]/gi, '').slice(0, 20), open)}><summary><span class="psec-t">${title}</span><span class="psec-caret">›</span></summary><div class="psec-body">${body}</div></details>`;
+  const sec = (title, body, open = false) => `<details class="psec" ${openAttr('psec-' + title.replace(/[^a-z]/gi, '').slice(0, 20), open)}><summary><span class="psec-t">${title}</span><span class="psec-caret">${icon('right')}</span></summary><div class="psec-body">${body}</div></details>`;
   const billsAcctBody = billsAcctCard(s) + `<button class="btn block" data-act="log-xfer" data-id="bills" style="margin-top:8px">+ Log a transfer to the bills account</button>`;
   // Bare, the row looked unfinished next to the three that carry a figure.
   const baTag = bt.hasBal ? (bt.covered ? ' · covered' : ' · short ' + money(bt.shortfall)) : ' · add your balance';
@@ -815,7 +817,7 @@ function financeLoanCard(loan, st) {
       <div class="row"><span class="n">${esc(loan.name)}</span><span class="a">${paid ? '<b class="goodtext">Paid off</b>' : money(st.balance)}</span></div>
       <div class="bar${paid ? ' done' : ''}"><i style="width:${st.paidPct}%"></i></div>
       <div class="du-note">${paid ? `Paid off${loan.lender ? ` · ${esc(loan.lender)}` : ''}` : `${Math.round(st.paidPct)}% paid · ${moYr(st.payoff)}${loan.lender ? ` · ${esc(loan.lender)}` : ''}`}</div>
-    </div><span class="chev ${open ? 'down' : ''}">›</span></button>`;
+    </div><span class="chev ${open ? 'down' : ''}">${icon('right')}</span></button>`;
   if (!open) return `<div class="card loan ${paid ? 'done' : ''}">${head}</div>`;
 
   const extra = loan.extra || 0;
@@ -925,7 +927,7 @@ function activityBlock() {
     <button class="chip" data-act="trends">${icon('trend')}Trends</button>
     <button class="chip ${ui.all ? 'on' : ''}" data-act="all">All</button></div>
     <details class="filterbox${on ? ' on' : ''}" ${openAttr('act-filter')}>
-      <summary><span class="fb-t">${icon('sliders')}${on ? `Filter · ${esc(act[2])}` : 'Filter'}</span><span class="chev">›</span></summary>
+      <summary><span class="fb-t">${icon('sliders')}${on ? `Filter · ${esc(act[2])}` : 'Filter'}</span><span class="chev">${icon('right')}</span></summary>
       <div class="chips">${chips}</div></details>
     <div id="actlist">${activityList()}</div>`;
 }
@@ -1067,7 +1069,7 @@ async function bankAuto() {
   }
   render();
 }
-const bankMod = async () => (bank ||= await import('./bank.js?v=134'));
+const bankMod = async () => (bank ||= await import('./bank.js?v=135'));
 
 async function bankRun(key, fn) {
   bankUI.busy = key; bankUI.err = ''; render();
@@ -1422,7 +1424,7 @@ function bankBlock() {
 
   const rows = b.inbox.map((it) => `<div class="qrow">
     <div class="top"><span class="nm">${esc(it.note || 'Purchase')}</span><span class="amt${it.type === 'income' ? ' in' : ''}">${it.type === 'income' ? '+' : ''}${money(it.amount)}</span></div>
-    <div class="sub">${esc(tightDate(parseYmd(it.date)))}${it.account ? ' · ' + esc(it.account) : ''}${it.pending ? ' · pending' : ''}</div>
+    <div class="sub">${esc(tightDate(parseYmd(it.date)))}${it.account ? ' · ' + esc(it.account) : ''}${it.pending ? ' <span class="pill wait">Pending</span>' : ''}</div>
     <select data-inbox-cat="${esc(it.id)}">${opts(bankUI.pick[it.id] || '')}</select>
     <div class="acts">
       <button class="btn" data-act="inbox-accept" data-id="${esc(it.id)}"${off('row-' + it.id)}>✓ Add</button>
@@ -1467,7 +1469,7 @@ function bankBlock() {
   // The queues are what you act on, so they stay in the open; everything that
   // is set once and forgotten goes behind a summary.
   const setup = `<details class="psec" ${openAttr('bank-setup')}>
-    <summary><span class="psec-t">Accounts &amp; rules</span><span class="psec-caret">›</span></summary>
+    <summary><span class="psec-t">Accounts &amp; rules</span><span class="psec-caret">${icon('right')}</span></summary>
     <div class="psec-body">
     <div class="acct row"><div class="nm">Signed in as ${esc(b.user.email || b.user.displayName || 'you')}</div>
       <button class="btn tiny" data-act="bank-signout"${off('signout')}>Sign out</button></div>
@@ -1483,7 +1485,7 @@ function bankBlock() {
   return `<h2>Banking</h2><div class="card">${err}
     ${progressHTML()}
     ${synced ? `<div class="note" style="margin:0 0 10px">Imports on its own when you open the app. Last checked ${new Date(synced).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}.</div>` : ''}
-    <button class="btn block" data-act="bank-sync"${off('sync')}>${b.busy === 'sync' ? 'Checking…' : '⟳ Check for new activity'}</button>
+    <button class="btn block" data-act="bank-sync"${off('sync')}>${b.busy === 'sync' ? 'Checking…' : `${icon('refresh')}Check for new activity`}</button>
     <button class="btn block" data-act="bank-activity">${icon('search')}Browse all bank activity</button>
     ${setup}
     </div>
@@ -1538,10 +1540,10 @@ function drawActivity() {
     : !rows.length ? '<div class="empty" style="padding:22px">Nothing here in this period.</div>'
     : rows.map((t) => `<button class="actrow" data-act="activity-log" data-id="${esc(t.id)}">
         <div class="ar-b"><div class="ar-t">${esc(t.name || 'Transaction')}</div>
-          <div class="ar-s">${esc(tightDate(parseYmd(t.date)))} · ${esc(t.account)}${t.pending ? ' · pending' : ''}</div></div>
+          <div class="ar-s">${esc(tightDate(parseYmd(t.date)))} · ${esc(t.account)}${t.pending ? ' <span class="pill wait">Pending</span>' : ''}</div></div>
         <b class="ar-a ${t.outgoing ? '' : 'in'}">${t.outgoing ? '' : '+'}${money(t.amount)}</b></button>`).join('');
   $('#sheet').innerHTML = `<div class="panel"><div class="head">
-      <span style="width:40px"></span><span class="step">All bank activity</span><button data-act="sheet-close" aria-label="Close">✕</button></div>
+      <span style="width:40px"></span><span class="step">All bank activity</span><button data-act="sheet-close" aria-label="Close">${icon('close')}</button></div>
     <div class="chips">${pick}</div>
     ${accts}
     <p class="note" style="margin:0 0 8px">${a.rows ? `${rows.length} transaction${rows.length === 1 ? '' : 's'} · ` : ''}Tap one to log it. Looking here never changes what gets imported.</p>
@@ -1573,7 +1575,7 @@ let flow = null, edit = null, billEdit = null, track = null, avgCat = null, retu
 function closeSheet() { const el = $('#sheet'); el.hidden = true; el.className = 'sheet'; el.innerHTML = ''; flow = null; edit = null; billEdit = null; track = null; returnPlan = null; activity = null; pendingOpen = false; resetSel(); }
 
 // ----- "track later": capture a price only, to finish with category/description later -----
-const keypad = () => `<div class="pad">${['1','2','3','4','5','6','7','8','9','.','0','⌫'].map((k) => `<button data-${track ? 'track' : 'flow'}="key" data-v="${k}">${k}</button>`).join('')}</div>`;
+const keypad = () => `<div class="pad">${['1','2','3','4','5','6','7','8','9','.','0','⌫'].map((k) => `<button data-${track ? 'track' : 'flow'}="key" data-v="${k}" ${k === '⌫' ? 'aria-label="Delete"' : ''}>${k === '⌫' ? icon('backspace') : k}</button>`).join('')}</div>`;
 function addPending(amt) {
   const a = round(parseFloat(amt) || 0);
   if (!(a > 0)) return;
@@ -1583,7 +1585,7 @@ function addPending(amt) {
 function openTrack() { track = { amt: '', count: 0 }; drawTrack(); $('#sheet').hidden = false; }
 function drawTrack() {
   const f = track, amtNum = parseFloat(f.amt) || 0, dis = amtNum ? '' : 'disabled';
-  $('#sheet').innerHTML = `<div class="panel"><div class="head"><span style="width:40px"></span><span class="step">Track later</span><button data-track="close" aria-label="Close">✕</button></div>
+  $('#sheet').innerHTML = `<div class="panel"><div class="head"><span style="width:40px"></span><span class="step">Track later</span><button data-track="close" aria-label="Close">${icon('close')}</button></div>
     <div class="q">Just the price</div>
     
     <div class="amount ${amtNum ? '' : 'zero'}">$${esc(f.amt || '0')}</div>
@@ -1623,12 +1625,12 @@ function drawPending() {
     <button class="loose" data-act="finish-item" data-id="${esc(x.id)}"><div class="emoji">${icon('clock')}</div>
       <div class="body"><div class="t">${money(x.amount)}${x.note ? ` · ${esc(x.note)}` : ''}</div><div class="s">${
         x.source === 'plaid' ? esc(x.account || 'from your bank') : 'added'
-      } · ${tightDate(parseYmd(x.date))}${x.pend ? ' · pending' : ''}</div></div><span class="chev">›</span></button>
+      } · ${tightDate(parseYmd(x.date))}${x.pend ? ' <span class="pill wait">Pending</span>' : ''}</div></div><span class="chev">${icon('right')}</span></button>
     ${x.source === 'plaid' && x.note
       ? `<button class="x" data-act="pending-ignore" data-id="${esc(x.id)}" title="Always ignore ${esc(x.note)}" aria-label="Always ignore">${icon('ban')}</button>`
       : '<span class="x" aria-hidden="true"></span>'}
     <button class="x" data-act="pending-del" data-id="${esc(x.id)}" aria-label="Discard">✕</button></div>`).join('');
-  $('#sheet').innerHTML = `<div class="panel"><div class="head"><span style="width:40px"></span><span class="step">Loose logs to finish</span><button data-act="sheet-close" aria-label="Later">✕</button></div>
+  $('#sheet').innerHTML = `<div class="panel"><div class="head"><span style="width:40px"></span><span class="step">Loose logs to finish</span><button data-act="sheet-close" aria-label="Later">${icon('close')}</button></div>
     ${progressHTML()}
     <p class="note" style="margin:0 0 10px">${pend.length
       ? `${pend.length} item${pend.length === 1 ? '' : 's'} to finish — tap one to give it a category.`
@@ -1714,7 +1716,7 @@ function drawFlow() {
       ${stat}
       ${chips ? `<div class="splitchips">${chips}</div>` : `<p class="note" style="margin:2px 2px 8px">${f.hasTotal ? 'Enter each charge — they must add up to the total.' : 'Enter each charge; they all share one description & category.'}</p>`}
       <div class="amount ${subNum ? '' : 'zero'}">$${esc(f.amt || '0')}</div>
-      <div class="pad">${['1','2','3','4','5','6','7','8','9','.','0','⌫'].map((k) => `<button data-flow="key" data-v="${k}">${k}</button>`).join('')}</div>
+      <div class="pad">${['1','2','3','4','5','6','7','8','9','.','0','⌫'].map((k) => `<button data-flow="key" data-v="${k}" ${k === '⌫' ? 'aria-label="Delete"' : ''}>${k === '⌫' ? icon('backspace') : k}</button>`).join('')}</div>
       <div class="twobtn"><button class="btn block" data-flow="addsplit" ${addDis}>+ Add charge</button><button class="btn primary block" data-flow="splitnext" ${nextDis}>Continue</button></div>
       <button class="btn block" data-flow="cancelsplit" style="margin-top:8px">Cancel</button>`;
   } else if (f.step === 2) {
@@ -1730,7 +1732,7 @@ function drawFlow() {
     body = `<div class="q">How much?</div>
       <div class="catpill"><span class="e">${glyph(c)}</span>${esc(c.name)}${f.count ? ` · item ${f.count + 1}` : ''}</div>
       <div class="amount ${amtNum ? '' : 'zero'}">$${esc(f.amt || '0')}</div>
-      <div class="pad">${['1','2','3','4','5','6','7','8','9','.','0','⌫'].map((k) => `<button data-flow="key" data-v="${k}">${k}</button>`).join('')}</div>
+      <div class="pad">${['1','2','3','4','5','6','7','8','9','.','0','⌫'].map((k) => `<button data-flow="key" data-v="${k}" ${k === '⌫' ? 'aria-label="Delete"' : ''}>${k === '⌫' ? icon('backspace') : k}</button>`).join('')}</div>
       ${actions}`;
   } else {
     title = 'Step 3 of 3';
@@ -1774,8 +1776,8 @@ function drawFlow() {
       ${gasReady ? '' : '<p class="note" style="text-align:center;margin:6px 0 0">Pick a vehicle to save this one.</p>'}`;
   }
   el.innerHTML = `<div class="panel"><div class="head">
-    ${f.step > 1 ? '<button data-flow="back" aria-label="Back">←</button>' : '<span style="width:40px"></span>'}
-    <span class="step">${title}</span><button data-flow="close" aria-label="Close">✕</button></div>${body}</div>`;
+    ${f.step > 1 ? `<button data-flow="back" aria-label="Back">${icon('left')}</button>` : '<span style="width:40px"></span>'}
+    <span class="step">${title}</span><button data-flow="close" aria-label="Close">${icon('close')}</button></div>${body}</div>`;
   if (f.step === 3) setTimeout(() => $('#f-note')?.focus(), 50);
 }
 
@@ -1975,7 +1977,7 @@ function drawEdit() {
   const items = e.type === 'transfer' ? TRANSFERS : S().categories;
   const picker = e.type === 'income' ? '' : `<label class="editlbl">${e.type === 'transfer' ? 'Destination' : 'Category'}</label>
     <div class="cats edit">${items.map((c) => `<button data-edit="cat" data-v="${esc(c.id)}" class="${e.category === c.id ? 'on' : ''}"><span class="e">${glyph(c)}</span>${esc(c.name)}</button>`).join('')}</div>`;
-  el.innerHTML = `<div class="panel"><div class="head"><span style="width:40px"></span><span class="step">Edit item</span><button data-edit="close" aria-label="Close">✕</button></div>
+  el.innerHTML = `<div class="panel"><div class="head"><span style="width:40px"></span><span class="step">Edit item</span><button data-edit="close" aria-label="Close">${icon('close')}</button></div>
     <div class="seg">${[['expense', 'Purchase'], ['income', 'Income'], ['transfer', 'Transfer']].map(([v, l]) => `<button data-edit="type" data-v="${v}" class="${e.type === v ? 'on' : ''}">${l}</button>`).join('')}</div>
     <label class="editlbl">Amount</label>
     <input class="sheet-input" id="e-amt" type="text" inputmode="decimal" value="${fmtNum(e.amount)}">
@@ -2047,14 +2049,14 @@ function drawReturnPlan() {
     const list = store.txs.filter((t) => t.type === 'expense').sort(sortTx).slice(0, 40);
     const rows = list.map((t) => { const c = cat(t.category); return `<button class="tx-main" data-ret="pick" data-id="${esc(t.id)}" style="width:100%">
       <div class="emoji">${glyph(c, 'receipt')}</div><div class="body"><div class="t">${esc(t.note || (c ? c.name : 'Purchase'))}</div><div class="s">${c ? esc(c.name) + ' · ' : ''}${tightDate(parseYmd(t.date))}</div></div><div class="amt">${money(t.amount)}</div></button>`; }).join('') || '<div class="empty">No purchases to choose from.</div>';
-    el.innerHTML = `<div class="panel"><div class="head"><button data-ret="unpick" aria-label="Back">←</button><span class="step">Pick the purchase</span><button data-ret="close" aria-label="Close">✕</button></div>
+    el.innerHTML = `<div class="panel"><div class="head"><button data-ret="unpick" aria-label="Back">${icon('left')}</button><span class="step">Pick the purchase</span><button data-ret="close" aria-label="Close">${icon('close')}</button></div>
       ${rows}
       <button class="btn block" data-ret="unpick" style="margin-top:12px">← Back</button></div>`;
     return;
   }
   const c = cat(r.category), full = Math.abs(r.amount - r.orig) < 0.005;
   const what = r.note ? `“${esc(r.note)}”` : (c ? esc(c.name) : 'this purchase');
-  el.innerHTML = `<div class="panel"><div class="head"><span style="width:40px"></span><span class="step">Plan a return</span><button data-ret="close" aria-label="Close">✕</button></div>
+  el.innerHTML = `<div class="panel"><div class="head"><span style="width:40px"></span><span class="step">Plan a return</span><button data-ret="close" aria-label="Close">${icon('close')}</button></div>
     <p class="note" style="margin:0 0 12px">${what} · ${money(r.orig)}</p>
     <label class="editlbl">Amount to return <span class="muted">(can be more than the purchase)</span></label>
     <input class="sheet-input" id="ret-amt" type="text" inputmode="decimal" value="${fmtNum(r.amount)}">
@@ -2102,7 +2104,7 @@ function openReturns() {
       <button class="btn mini good" data-act="return-done" data-id="${esc(x.id)}" aria-label="Mark returned" title="Mark returned">✓</button>
       <button class="x" data-act="return-del" data-id="${esc(x.id)}" aria-label="Remove">✕</button></div>`;
   }).join('') : '<div class="empty" style="padding:14px">Nothing to return.</div>';
-  $('#sheet').innerHTML = `<div class="panel"><div class="head"><span style="width:40px"></span><span class="step">Planned returns</span><button data-act="sheet-close" aria-label="Close">✕</button></div>
+  $('#sheet').innerHTML = `<div class="panel"><div class="head"><span style="width:40px"></span><span class="step">Planned returns</span><button data-act="sheet-close" aria-label="Close">${icon('close')}</button></div>
     ${rets.length ? `<p class="note" style="margin:0 0 10px">${rets.length} to return · ${money(total)}</p>` : ''}
     ${rows}
     <button class="btn block" data-act="sheet-close" style="margin-top:12px">Close</button></div>`;
@@ -2136,7 +2138,7 @@ function openOverage() {
   }).join('') : '<div class="empty">No weekly-budget purchases last week.</div>';
 
   $('#sheet').innerHTML = `<div class="panel sheet-page"><div class="head">
-      <button class="backbtn" data-act="sheet-close" aria-label="Back">←</button><span class="step">Last week's overage</span><span style="width:28px"></span></div>
+      <button class="backbtn" data-act="sheet-close" aria-label="Back">${icon('left')}</button><span class="step">Last week's overage</span><span style="width:28px"></span></div>
     <div class="card hero" style="box-shadow:none;padding:4px 0">
       <div class="label">You went over last week by</div>
       <div class="big ${over > 0 ? 'neg' : ''}">${money(over)}</div>
@@ -2178,7 +2180,7 @@ function openWeek() {
     const body = w.txsIn.length ? w.txsIn.map(txRow).join('') : '<div class="empty">Nothing this week.</div>';
     return `<details class="wk-week"${w.isNow ? ' open' : ''}><summary>
       <span class="wk-left"><span class="wk-n">Week ${w.n}${w.isNow ? ' · now' : ''}</span><span class="wk-range">${rng}</span></span>
-      <span class="wk-amt"><b>${money(w.spent)}</b><span>${money(w.everyday)} everyday</span></span><span class="caret">▸</span></summary>
+      <span class="wk-amt"><b>${money(w.spent)}</b><span>${money(w.everyday)} everyday</span></span><span class="caret">${icon('right')}</span></summary>
       <div class="wk-body">${body}</div></details>`;
   }).join('');
 
@@ -2190,7 +2192,7 @@ function openWeek() {
   }).join('');
 
   $('#sheet').innerHTML = `<div class="panel sheet-page"><div class="head">
-      <button class="backbtn" data-act="sheet-close" aria-label="Back">←</button><span class="step">${monthShort(ui.month)} · weekly</span><span style="width:28px"></span></div>
+      <button class="backbtn" data-act="sheet-close" aria-label="Back">${icon('left')}</button><span class="step">${monthShort(ui.month)} · weekly</span><span style="width:28px"></span></div>
     <div class="card hero" style="box-shadow:none;padding:4px 0">
       <div class="label">Left to spend this week</div>
       <div class="big ${ws.left < 0 ? 'neg' : ''}">${money(ws.left)}</div>
@@ -2240,7 +2242,7 @@ function openCatAvg(id) {
     return ` from ${a.slice(0, 4) === b.slice(0, 4) ? mon(a) : moYr(a + '-01')} – ${moYr(b + '-01')}`;
   })();
   $('#sheet').innerHTML = `<div class="panel sheet-page"><div class="head">
-      <button class="backbtn" data-act="sheet-close" aria-label="Back">←</button><span class="step">${esc(c.name)} average</span><span style="width:28px"></span></div>
+      <button class="backbtn" data-act="sheet-close" aria-label="Back">${icon('left')}</button><span class="step">${esc(c.name)} average</span><span style="width:28px"></span></div>
     <div class="card hero" style="box-shadow:none;padding:4px 0">
       <div class="label">12-month average</div>
       <div class="big">${money(avg)}</div>
@@ -2263,7 +2265,7 @@ function openTrends() {
       <div class="tr-sub">${sub}</div></div>`;
   }).join('');
   $('#sheet').innerHTML = `<div class="panel sheet-page"><div class="head">
-    <button class="backbtn" data-act="sheet-close" aria-label="Back">←</button><span class="step">Monthly trends</span><span style="width:28px"></span></div>
+    <button class="backbtn" data-act="sheet-close" aria-label="Back">${icon('left')}</button><span class="step">Monthly trends</span><span style="width:28px"></span></div>
     <p class="lead">Averages across ${t.count} month${t.count === 1 ? '' : 's'} of data.</p>
     <div class="tiles">${tile('Avg spent / mo', t.avg.spent)}${tile('Avg saved / mo', t.avg.savings)}${tile('Avg income / mo', t.avg.income)}</div>
     <div class="tiles" style="margin-top:8px">${tile('Avg to bills / mo', t.avg.bills)}${tile('Avg card paid / mo', t.avg.card)}</div>
